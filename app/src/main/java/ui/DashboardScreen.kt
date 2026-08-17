@@ -1,5 +1,9 @@
 package ui
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -12,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Face
@@ -23,6 +28,11 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -40,10 +50,18 @@ fun DashboardScreen(
     onHealthTipsClick: () -> Unit = {}
 ) {
 
+    var showContent by remember {
+        mutableStateOf(false)
+    }
+
+    LaunchedEffect(Unit) {
+        showContent = true
+    }
+
     val background = Brush.verticalGradient(
         colors = listOf(
-            Color(0xFF071A33),
-            Color(0xFF0A2D4F),
+            Color(0xFF06152B),
+            Color(0xFF082A46),
             Color(0xFF064E63)
         )
     )
@@ -52,59 +70,74 @@ fun DashboardScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(background)
-            .padding(20.dp)
     ) {
 
         Column(
-            modifier = Modifier.fillMaxSize()
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(20.dp)
         ) {
 
-            // ------------------------------------------------
-            // TOP SECTION
-            // ------------------------------------------------
+            // =================================================
+            // HEADER
+            // =================================================
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            AnimatedVisibility(
+                visible = showContent,
+                enter = fadeIn(
+                    animationSpec = tween(600)
+                ) + slideInVertically(
+                    initialOffsetY = { -80 },
+                    animationSpec = tween(600)
+                )
             ) {
 
-                Column {
-
-                    Text(
-                        text = "Hello, $userName 👋",
-                        color = Color.White,
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    Spacer(
-                        modifier = Modifier.height(4.dp)
-                    )
-
-                    Text(
-                        text = "How can I help you today?",
-                        color = Color(0xFFB9EAF2),
-                        fontSize = 14.sp
-                    )
-                }
-
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .background(
-                            color = Color.White,
-                            shape = RoundedCornerShape(16.dp)
-                        ),
-                    contentAlignment = Alignment.Center
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
 
-                    Icon(
-                        imageVector = Icons.Default.Person,
-                        contentDescription = "Profile",
-                        tint = Color(0xFF00A9E8),
-                        modifier = Modifier.size(28.dp)
-                    )
+                    Column(
+                        modifier = Modifier.weight(1f)
+                    ) {
+
+                        Text(
+                            text = "Hello, $userName 👋",
+                            color = Color.White,
+                            fontSize = 25.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        Spacer(
+                            modifier = Modifier.height(5.dp)
+                        )
+
+                        Text(
+                            text = "How can I help you today?",
+                            color = Color(0xFFB9EAF2),
+                            fontSize = 14.sp
+                        )
+                    }
+
+                    // Profile icon
+                    Box(
+                        modifier = Modifier
+                            .size(52.dp)
+                            .background(
+                                color = Color.White,
+                                shape = CircleShape
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+
+                        Icon(
+                            imageVector = Icons.Default.Person,
+                            contentDescription = "Profile",
+                            tint = Color(0xFF087EA4),
+                            modifier = Modifier.size(29.dp)
+                        )
+                    }
                 }
             }
 
@@ -112,181 +145,306 @@ fun DashboardScreen(
                 modifier = Modifier.height(28.dp)
             )
 
-            // ------------------------------------------------
-            // AI CHATBOT CARD
-            // ------------------------------------------------
+            // =================================================
+            // AI ASSISTANT CARD
+            // =================================================
 
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        onChatbotClick()
-                    },
-                shape = RoundedCornerShape(20.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = Color(0xFF0D5C70)
+            AnimatedVisibility(
+                visible = showContent,
+                enter = fadeIn(
+                    animationSpec = tween(
+                        durationMillis = 650,
+                        delayMillis = 150
+                    )
+                ) + slideInVertically(
+                    initialOffsetY = { 80 },
+                    animationSpec = tween(
+                        durationMillis = 650,
+                        delayMillis = 150
+                    )
                 )
             ) {
 
-                Row(
-                    modifier = Modifier.padding(20.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            onChatbotClick()
+                        },
+                    shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color(0xFF0D6175)
+                    )
                 ) {
 
-                    Box(
+                    Row(
                         modifier = Modifier
-                            .size(56.dp)
-                            .background(
-                                color = Color.White,
-                                shape = RoundedCornerShape(16.dp)
-                            ),
-                        contentAlignment = Alignment.Center
+                            .fillMaxWidth()
+                            .padding(20.dp),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
 
-                        Icon(
-                            imageVector = Icons.Default.Face,
-                            contentDescription = "AI Medical Assistant",
-                            tint = Color(0xFF00A9E8),
-                            modifier = Modifier.size(30.dp)
-                        )
-                    }
+                        // AI icon
+                        Box(
+                            modifier = Modifier
+                                .size(62.dp)
+                                .background(
+                                    color = Color.White,
+                                    shape = RoundedCornerShape(18.dp)
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
 
-                    Spacer(
-                        modifier = Modifier.size(16.dp)
-                    )
-
-                    Column {
-
-                        Text(
-                            text = "AI Medical Assistant",
-                            color = Color.White,
-                            fontSize = 19.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                            Icon(
+                                imageVector = Icons.Default.Face,
+                                contentDescription = "AI Medical Assistant",
+                                tint = Color(0xFF00A9E8),
+                                modifier = Modifier.size(34.dp)
+                            )
+                        }
 
                         Spacer(
-                            modifier = Modifier.height(4.dp)
+                            modifier = Modifier.size(16.dp)
                         )
 
-                        Text(
-                            text = "Ask your health-related questions",
-                            color = Color(0xFFB9EAF2),
-                            fontSize = 13.sp
-                        )
+                        Column(
+                            modifier = Modifier.weight(1f)
+                        ) {
+
+                            Text(
+                                text = "AI Medical Assistant",
+                                color = Color.White,
+                                fontSize = 19.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+
+                            Spacer(
+                                modifier = Modifier.height(5.dp)
+                            )
+
+                            Text(
+                                text = "Ask your health-related questions",
+                                color = Color(0xFFB9EAF2),
+                                fontSize = 13.sp
+                            )
+
+                            Spacer(
+                                modifier = Modifier.height(8.dp)
+                            )
+
+                            Text(
+                                text = "Tap to chat →",
+                                color = Color(0xFF7DE8F0),
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
             }
 
             Spacer(
-                modifier = Modifier.height(24.dp)
+                modifier = Modifier.height(28.dp)
             )
 
-            // ------------------------------------------------
-            // QUICK SERVICES
-            // ------------------------------------------------
+            // =================================================
+            // QUICK SERVICES TITLE
+            // =================================================
 
-            Text(
-                text = "Quick Services",
-                color = Color.White,
-                fontSize = 19.sp,
-                fontWeight = FontWeight.Bold
-            )
-
-            Spacer(
-                modifier = Modifier.height(14.dp)
-            )
-
-            // ------------------------------------------------
-            // FIRST ROW
-            // ------------------------------------------------
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            AnimatedVisibility(
+                visible = showContent,
+                enter = fadeIn(
+                    animationSpec = tween(
+                        durationMillis = 600,
+                        delayMillis = 300
+                    )
+                )
             ) {
 
-                DashboardServiceCard(
-                    title = "Symptoms",
-                    icon = {
-                        Icon(
-                            imageVector = Icons.Default.Favorite,
-                            contentDescription = "Symptoms Checker",
-                            tint = Color(0xFF00A9E8),
-                            modifier = Modifier.size(30.dp)
-                        )
-                    },
-                    modifier = Modifier.weight(1f),
-                    onClick = onSymptomsClick
-                )
+                Column {
 
-                DashboardServiceCard(
-                    title = "Medicine",
-                    icon = {
-                        Icon(
-                            imageVector = Icons.Default.Info,
-                            contentDescription = "Medicine Information",
-                            tint = Color(0xFF00A9E8),
-                            modifier = Modifier.size(30.dp)
-                        )
-                    },
-                    modifier = Modifier.weight(1f),
-                    onClick = onMedicineClick
+                    Text(
+                        text = "Quick Services",
+                        color = Color.White,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Spacer(
+                        modifier = Modifier.height(5.dp)
+                    )
+
+                    Text(
+                        text = "Choose a service to get started",
+                        color = Color(0xFF8FCBD5),
+                        fontSize = 13.sp
+                    )
+                }
+            }
+
+            Spacer(
+                modifier = Modifier.height(16.dp)
+            )
+
+            // =================================================
+            // SERVICE ROW 1
+            // =================================================
+
+            AnimatedVisibility(
+                visible = showContent,
+                enter = fadeIn(
+                    animationSpec = tween(
+                        durationMillis = 600,
+                        delayMillis = 400
+                    )
+                ) + slideInVertically(
+                    initialOffsetY = { 70 },
+                    animationSpec = tween(
+                        durationMillis = 600,
+                        delayMillis = 400
+                    )
                 )
+            ) {
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+
+                    DashboardServiceCard(
+                        title = "Symptoms",
+                        subtitle = "Check symptoms",
+                        icon = {
+                            Icon(
+                                imageVector = Icons.Default.Favorite,
+                                contentDescription = "Symptoms Checker",
+                                tint = Color(0xFF00A9E8),
+                                modifier = Modifier.size(30.dp)
+                            )
+                        },
+                        modifier = Modifier.weight(1f),
+                        onClick = onSymptomsClick
+                    )
+
+                    DashboardServiceCard(
+                        title = "Medicine",
+                        subtitle = "Medicine info",
+                        icon = {
+                            Icon(
+                                imageVector = Icons.Default.Info,
+                                contentDescription = "Medicine Information",
+                                tint = Color(0xFF00A9E8),
+                                modifier = Modifier.size(30.dp)
+                            )
+                        },
+                        modifier = Modifier.weight(1f),
+                        onClick = onMedicineClick
+                    )
+                }
             }
 
             Spacer(
                 modifier = Modifier.height(12.dp)
             )
 
-            // ------------------------------------------------
-            // SECOND ROW
-            // ------------------------------------------------
+            // =================================================
+            // SERVICE ROW 2
+            // =================================================
 
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            AnimatedVisibility(
+                visible = showContent,
+                enter = fadeIn(
+                    animationSpec = tween(
+                        durationMillis = 600,
+                        delayMillis = 500
+                    )
+                ) + slideInVertically(
+                    initialOffsetY = { 70 },
+                    animationSpec = tween(
+                        durationMillis = 600,
+                        delayMillis = 500
+                    )
+                )
             ) {
 
-                DashboardServiceCard(
-                    title = "Health Tips",
-                    icon = {
-                        Icon(
-                            imageVector = Icons.Default.Favorite,
-                            contentDescription = "Health Tips",
-                            tint = Color(0xFF00A9E8),
-                            modifier = Modifier.size(30.dp)
-                        )
-                    },
-                    modifier = Modifier.weight(1f),
-                    onClick = onHealthTipsClick
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
 
-                // Empty space to keep the layout balanced.
-                Spacer(
-                    modifier = Modifier.weight(1f)
+                    DashboardServiceCard(
+                        title = "Health Tips",
+                        subtitle = "Healthy lifestyle",
+                        icon = {
+                            Icon(
+                                imageVector = Icons.Default.Favorite,
+                                contentDescription = "Health Tips",
+                                tint = Color(0xFF00A9E8),
+                                modifier = Modifier.size(30.dp)
+                            )
+                        },
+                        modifier = Modifier.weight(1f),
+                        onClick = onHealthTipsClick
+                    )
+
+                    // Empty card space
+                    Spacer(
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+
+            Spacer(
+                modifier = Modifier.weight(1f)
+            )
+
+            // =================================================
+            // FOOTER
+            // =================================================
+
+            AnimatedVisibility(
+                visible = showContent,
+                enter = fadeIn(
+                    animationSpec = tween(
+                        durationMillis = 700,
+                        delayMillis = 650
+                    )
+                )
+            ) {
+
+                Text(
+                    text = "MedAssist AI • Your health companion",
+                    modifier = Modifier.fillMaxWidth(),
+                    color = Color(0xFF6FAEB8),
+                    fontSize = 11.sp,
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
                 )
             }
         }
     }
 }
 
-// ------------------------------------------------
+
+// =========================================================
 // REUSABLE SERVICE CARD
-// ------------------------------------------------
+// =========================================================
 
 @Composable
 private fun DashboardServiceCard(
     title: String,
+    subtitle: String,
     icon: @Composable () -> Unit,
     modifier: Modifier = Modifier,
     onClick: () -> Unit = {}
 ) {
 
     Card(
-        modifier = modifier.clickable {
-            onClick()
-        },
-        shape = RoundedCornerShape(18.dp),
+        modifier = modifier
+            .height(145.dp)
+            .clickable {
+                onClick()
+            },
+        shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
             containerColor = Color.White
         )
@@ -294,12 +452,25 @@ private fun DashboardServiceCard(
 
         Column(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(18.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
+                .fillMaxSize()
+                .padding(16.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
         ) {
 
-            icon()
+            // Icon container
+            Box(
+                modifier = Modifier
+                    .size(52.dp)
+                    .background(
+                        color = Color(0xFFE8F8FC),
+                        shape = RoundedCornerShape(16.dp)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+
+                icon()
+            }
 
             Spacer(
                 modifier = Modifier.height(10.dp)
@@ -308,8 +479,18 @@ private fun DashboardServiceCard(
             Text(
                 text = title,
                 color = Color(0xFF071A33),
-                fontSize = 14.sp,
+                fontSize = 15.sp,
                 fontWeight = FontWeight.Bold
+            )
+
+            Spacer(
+                modifier = Modifier.height(3.dp)
+            )
+
+            Text(
+                text = subtitle,
+                color = Color(0xFF607D8B),
+                fontSize = 11.sp
             )
         }
     }
