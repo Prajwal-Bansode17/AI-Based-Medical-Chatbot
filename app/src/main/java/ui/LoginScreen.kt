@@ -1,6 +1,11 @@
-package ui;
-import androidx.compose.foundation.clickable
+package ui
+
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,9 +16,11 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -22,6 +29,7 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -44,9 +52,6 @@ fun LoginScreen(
     onForgotPasswordClick: () -> Unit = {}
 ) {
 
-    var emailError by remember { mutableStateOf("") }
-    var passwordError by remember { mutableStateOf("") }
-
     var email by remember {
         mutableStateOf("")
     }
@@ -59,10 +64,27 @@ fun LoginScreen(
         mutableStateOf(false)
     }
 
+    var emailError by remember {
+        mutableStateOf("")
+    }
+
+    var passwordError by remember {
+        mutableStateOf("")
+    }
+
+    var showContent by remember {
+        mutableStateOf(false)
+    }
+
+    LaunchedEffect(Unit) {
+        showContent = true
+    }
+
+    // Background gradient
     val background = Brush.verticalGradient(
         colors = listOf(
-            Color(0xFF071A33),
-            Color(0xFF0A2D4F),
+            Color(0xFF06152B),
+            Color(0xFF082A46),
             Color(0xFF064E63)
         )
     )
@@ -71,210 +93,425 @@ fun LoginScreen(
         modifier = Modifier
             .fillMaxSize()
             .background(background)
-            .padding(24.dp)
+            .padding(horizontal = 24.dp)
     ) {
 
         Column(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(vertical = 24.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
 
-            // App logo
-            Box(
-                modifier = Modifier
-                    .size(76.dp)
-                    .background(
-                        Color.White,
-                        RoundedCornerShape(22.dp)
-                    ),
-                contentAlignment = Alignment.Center
+            // =================================================
+            // APP LOGO
+            // =================================================
+
+            AnimatedVisibility(
+                visible = showContent,
+                enter = fadeIn(
+                    animationSpec = tween(600)
+                ) + slideInVertically(
+                    initialOffsetY = { -80 },
+                    animationSpec = tween(600)
+                )
             ) {
-                Text(
-                    text = "✚",
-                    color = Color(0xFF00A9E8),
-                    fontSize = 38.sp,
-                    fontWeight = FontWeight.Bold
-                )
-            }
 
-            Spacer(modifier = Modifier.height(18.dp))
+                Box(
+                    modifier = Modifier
+                        .size(88.dp)
+                        .background(
+                            color = Color.White.copy(alpha = 0.12f),
+                            shape = CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
 
-            Text(
-                text = "Welcome Back",
-                color = Color.White,
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Bold
-            )
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            Text(
-                text = "Sign in to continue to MedAssist AI",
-                color = Color(0xFFB9EAF2),
-                fontSize = 14.sp,
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(modifier = Modifier.height(32.dp))
-
-            // Email
-            OutlinedTextField(
-                value = email,
-                onValueChange = {
-                    email = it
-                },
-                isError = emailError.isNotEmpty(),
-                modifier = Modifier.fillMaxWidth(),
-                label = {
-                    Text("Email")
-                },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.Email,
-                        contentDescription = "Email"
-                    )
-                },
-
-                singleLine = true,
-                shape = RoundedCornerShape(14.dp)
-            )
-            if (emailError.isNotEmpty()) {
-                Text(
-                    text = emailError,
-                    color = Color.Red,
-                    fontSize = 12.sp
-                )
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            // Password
-            OutlinedTextField(
-                value = password,
-                onValueChange = {
-                    password = it
-                },
-                isError = passwordError.isNotEmpty(),
-                modifier = Modifier.fillMaxWidth(),
-                label = {
-                    Text("Password")
-                },
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.Lock,
-                        contentDescription = "Password"
-                    )
-                },
-                trailingIcon = {
-                    IconButton(
-                        onClick = {
-                            passwordVisible = !passwordVisible
-                        }
+                    Box(
+                        modifier = Modifier
+                            .size(68.dp)
+                            .background(
+                                color = Color.White,
+                                shape = CircleShape
+                            ),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Text(
-                            text = if (passwordVisible) "◉" else "◌",
-                            fontSize = 20.sp
+
+                        Icon(
+                            imageVector = Icons.Default.Favorite,
+                            contentDescription = "MedAssist AI",
+                            tint = Color(0xFF00A9E8),
+                            modifier = Modifier.size(38.dp)
                         )
                     }
-                },
-                visualTransformation =
-                    if (passwordVisible)
-                        VisualTransformation.None
-                    else
-                        PasswordVisualTransformation(),
-                singleLine = true,
-                shape = RoundedCornerShape(14.dp)
+                }
+            }
+
+            Spacer(
+                modifier = Modifier.height(20.dp)
             )
-            if (passwordError.isNotEmpty()) {
-                Text(
-                    text = passwordError,
-                    color = Color.Red,
-                    fontSize = 12.sp
+
+            // =================================================
+            // WELCOME TEXT
+            // =================================================
+
+            AnimatedVisibility(
+                visible = showContent,
+                enter = fadeIn(
+                    animationSpec = tween(
+                        durationMillis = 600,
+                        delayMillis = 150
+                    )
+                ) + slideInVertically(
+                    initialOffsetY = { 50 },
+                    animationSpec = tween(
+                        durationMillis = 600,
+                        delayMillis = 150
+                    )
                 )
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Forgot password
-            Box(
-                modifier = Modifier.fillMaxWidth(),
-                contentAlignment = Alignment.CenterEnd
             ) {
-                Text(
-                    text = "Forgot Password?",
-                    color = Color(0xFF7DE8F0),
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Medium,
-                    modifier = Modifier.clickable {
-                        onForgotPasswordClick()
-                    }
-                )
-            }
 
-            Spacer(modifier = Modifier.height(24.dp))
-
-            // Login button
-            Button(onClick = {
-
-                emailError = ""
-                passwordError = ""
-
-                var isValid = true
-
-                if (email.isBlank()) {
-                    emailError = "Email is required"
-                    isValid = false
-                } else if (!android.util.Patterns.EMAIL_ADDRESS
-                        .matcher(email)
-                        .matches()
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-                    emailError = "Enter a valid email address"
-                    isValid = false
-                }
 
-                if (password.isBlank()) {
-                    passwordError = "Password is required"
-                    isValid = false
-                } else if (password.length < 6) {
-                    passwordError = "Password must be at least 6 characters"
-                    isValid = false
-                }
+                    Text(
+                        text = "Welcome Back",
+                        color = Color.White,
+                        fontSize = 28.sp,
+                        fontWeight = FontWeight.Bold
+                    )
 
-                if (isValid) {
-                    onLoginClick(email)
+                    Spacer(
+                        modifier = Modifier.height(7.dp)
+                    )
+
+                    Text(
+                        text = "Sign in to continue to MedAssist AI",
+                        color = Color(0xFFB9EAF2),
+                        fontSize = 14.sp,
+                        textAlign = TextAlign.Center
+                    )
                 }
             }
-            ) {
-                Text(
-                    text = "Login",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.Bold
+
+            Spacer(
+                modifier = Modifier.height(30.dp)
+            )
+
+            // =================================================
+            // EMAIL
+            // =================================================
+
+            AnimatedVisibility(
+                visible = showContent,
+                enter = fadeIn(
+                    animationSpec = tween(
+                        durationMillis = 600,
+                        delayMillis = 300
+                    )
+                ) + slideInVertically(
+                    initialOffsetY = { 70 },
+                    animationSpec = tween(
+                        durationMillis = 600,
+                        delayMillis = 300
+                    )
                 )
-            }
-
-            Spacer(modifier = Modifier.height(22.dp))
-
-            // Register
-            Row(
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "Don't have an account? ",
-                    color = Color.White,
-                    fontSize = 14.sp
-                )
 
-                Text(
-                    text = "Register",
-                    color = Color(0xFF7DE8F0),
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.clickable {
-                        onRegisterClick()
+                Column(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+
+                    OutlinedTextField(
+                        value = email,
+                        onValueChange = {
+                            email = it
+                            emailError = ""
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = {
+                            Text("Email")
+                        },
+                        placeholder = {
+                            Text("Enter your email")
+                        },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Email,
+                                contentDescription = "Email"
+                            )
+                        },
+                        isError = emailError.isNotEmpty(),
+                        singleLine = true,
+                        shape = RoundedCornerShape(16.dp)
+                    )
+
+                    if (emailError.isNotEmpty()) {
+
+                        Spacer(
+                            modifier = Modifier.height(4.dp)
+                        )
+
+                        Text(
+                            text = emailError,
+                            color = Color(0xFFFF8A80),
+                            fontSize = 12.sp
+                        )
                     }
+                }
+            }
+
+            Spacer(
+                modifier = Modifier.height(14.dp)
+            )
+
+            // =================================================
+            // PASSWORD
+            // =================================================
+
+            AnimatedVisibility(
+                visible = showContent,
+                enter = fadeIn(
+                    animationSpec = tween(
+                        durationMillis = 600,
+                        delayMillis = 400
+                    )
+                ) + slideInVertically(
+                    initialOffsetY = { 70 },
+                    animationSpec = tween(
+                        durationMillis = 600,
+                        delayMillis = 400
+                    )
                 )
+            ) {
+
+                Column(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+
+                    OutlinedTextField(
+                        value = password,
+                        onValueChange = {
+                            password = it
+                            passwordError = ""
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                        label = {
+                            Text("Password")
+                        },
+                        placeholder = {
+                            Text("Enter your password")
+                        },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Lock,
+                                contentDescription = "Password"
+                            )
+                        },
+                        trailingIcon = {
+
+                            IconButton(
+                                onClick = {
+                                    passwordVisible = !passwordVisible
+                                }
+                            ) {
+
+                                Text(
+                                    text = if (passwordVisible) {
+                                        "◉"
+                                    } else {
+                                        "◌"
+                                    },
+                                    fontSize = 20.sp,
+                                    color = Color(0xFF00A9E8)
+                                )
+                            }
+                        },
+                        visualTransformation = if (passwordVisible) {
+                            VisualTransformation.None
+                        } else {
+                            PasswordVisualTransformation()
+                        },
+                        isError = passwordError.isNotEmpty(),
+                        singleLine = true,
+                        shape = RoundedCornerShape(16.dp)
+                    )
+
+                    if (passwordError.isNotEmpty()) {
+
+                        Spacer(
+                            modifier = Modifier.height(4.dp)
+                        )
+
+                        Text(
+                            text = passwordError,
+                            color = Color(0xFFFF8A80),
+                            fontSize = 12.sp
+                        )
+                    }
+                }
+            }
+
+            Spacer(
+                modifier = Modifier.height(10.dp)
+            )
+
+            // =================================================
+            // FORGOT PASSWORD
+            // =================================================
+
+            AnimatedVisibility(
+                visible = showContent,
+                enter = fadeIn(
+                    animationSpec = tween(
+                        durationMillis = 600,
+                        delayMillis = 500
+                    )
+                )
+            ) {
+
+                Box(
+                    modifier = Modifier.fillMaxWidth(),
+                    contentAlignment = Alignment.CenterEnd
+                ) {
+
+                    Text(
+                        text = "Forgot Password?",
+                        color = Color(0xFF7DE8F0),
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Medium,
+                        modifier = Modifier.clickable {
+                            onForgotPasswordClick()
+                        }
+                    )
+                }
+            }
+
+            Spacer(
+                modifier = Modifier.height(24.dp)
+            )
+
+            // =================================================
+            // LOGIN BUTTON
+            // =================================================
+
+            AnimatedVisibility(
+                visible = showContent,
+                enter = fadeIn(
+                    animationSpec = tween(
+                        durationMillis = 600,
+                        delayMillis = 550
+                    )
+                ) + slideInVertically(
+                    initialOffsetY = { 80 },
+                    animationSpec = tween(
+                        durationMillis = 600,
+                        delayMillis = 550
+                    )
+                )
+            ) {
+
+                Button(
+                    onClick = {
+
+                        emailError = ""
+                        passwordError = ""
+
+                        var isValid = true
+
+                        // Email validation
+                        if (email.isBlank()) {
+
+                            emailError = "Email is required"
+                            isValid = false
+
+                        } else if (
+                            !android.util.Patterns.EMAIL_ADDRESS
+                                .matcher(email)
+                                .matches()
+                        ) {
+
+                            emailError = "Enter a valid email address"
+                            isValid = false
+                        }
+
+                        // Password validation
+                        if (password.isBlank()) {
+
+                            passwordError = "Password is required"
+                            isValid = false
+
+                        } else if (password.length < 6) {
+
+                            passwordError =
+                                "Password must be at least 6 characters"
+
+                            isValid = false
+                        }
+
+                        // Login
+                        if (isValid) {
+                            onLoginClick(email)
+                        }
+                    },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(54.dp),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = Color(0xFF087EA4)
+                    )
+                ) {
+
+                    Text(
+                        text = "Sign In",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            Spacer(
+                modifier = Modifier.height(22.dp)
+            )
+
+            // =================================================
+            // REGISTER
+            // =================================================
+
+            AnimatedVisibility(
+                visible = showContent,
+                enter = fadeIn(
+                    animationSpec = tween(
+                        durationMillis = 600,
+                        delayMillis = 650
+                    )
+                )
+            ) {
+
+                Row(
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+
+                    Text(
+                        text = "Don't have an account? ",
+                        color = Color.White.copy(alpha = 0.85f),
+                        fontSize = 14.sp
+                    )
+
+                    Text(
+                        text = "Register",
+                        color = Color(0xFF7DE8F0),
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.clickable {
+                            onRegisterClick()
+                        }
+                    )
+                }
             }
         }
     }
