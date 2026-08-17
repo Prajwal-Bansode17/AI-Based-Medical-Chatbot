@@ -1,5 +1,6 @@
 package com.example.ai_based_medical_chatbot
 
+import ui.DashboardScreen
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -9,6 +10,7 @@ import ui.LoginScreen
 import ui.RegisterScreen
 import ui.SplashScreen
 import ui.ForgotPasswordScreen
+import ui.ChatbotScreen
 
 class MainActivity : ComponentActivity() {
 
@@ -22,7 +24,20 @@ class MainActivity : ComponentActivity() {
                     mutableStateOf("splash")
                 }
 
+                var userName by remember {
+                    mutableStateOf("")
+                }
+
                 when (currentScreen) {
+
+                    "dashboard" -> {
+                        DashboardScreen(
+                            userName = userName,
+                            onChatbotClick = {
+                                currentScreen = "chatbot"
+                            }
+                        )
+                    }
 
                     "splash" -> {
                         SplashScreen(
@@ -34,8 +49,30 @@ class MainActivity : ComponentActivity() {
 
                     "login" -> {
                         LoginScreen(
-                            onLoginClick = {
-                                // Dashboard will be connected later
+                            onLoginClick = { email ->
+
+                                val namePart = email.substringBefore("@")
+
+                                userName = when {
+                                    namePart.contains(".") ->
+                                        namePart.substringBefore(".")
+                                            .replaceFirstChar { it.uppercase() }
+
+                                    namePart.contains("_") ->
+                                        namePart.substringBefore("_")
+                                            .replaceFirstChar { it.uppercase() }
+
+                                    namePart.contains("-") ->
+                                        namePart.substringBefore("-")
+                                            .replaceFirstChar { it.uppercase() }
+
+                                    else ->
+                                        namePart
+                                            .replace(Regex("([a-z])([A-Z]).*"), "$1")
+                                            .replaceFirstChar { it.uppercase() }
+                                }
+
+                                currentScreen = "dashboard"
                             },
                             onRegisterClick = {
                                 currentScreen = "register"
@@ -58,6 +95,13 @@ class MainActivity : ComponentActivity() {
                         ForgotPasswordScreen(
                             onBackToLogin = {
                                 currentScreen = "login"
+                            }
+                        )
+                    }
+                    "chatbot" -> {
+                        ChatbotScreen(
+                            onBackClick = {
+                                currentScreen = "dashboard"
                             }
                         )
                     }

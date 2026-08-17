@@ -39,7 +39,7 @@ import androidx.compose.ui.unit.sp
 
 @Composable
 fun LoginScreen(
-    onLoginClick: () -> Unit = {},
+    onLoginClick: (String) -> Unit = {},
     onRegisterClick: () -> Unit = {},
     onForgotPasswordClick: () -> Unit = {}
 ) {
@@ -242,7 +242,7 @@ fun LoginScreen(
                 }
 
                 if (isValid) {
-                    onLoginClick()
+                    onLoginClick(email)
                 }
             }
             ) {
