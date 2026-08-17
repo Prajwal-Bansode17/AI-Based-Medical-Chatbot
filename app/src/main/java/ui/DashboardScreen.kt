@@ -36,8 +36,9 @@ import androidx.compose.foundation.clickable
 @Composable
 fun DashboardScreen(
     userName: String,
-    onChatbotClick: () -> Unit = {}
-) {
+    onChatbotClick: () -> Unit = {},
+    onSymptomsClick: () -> Unit = {}
+){
 
     val background = Brush.verticalGradient(
         colors = listOf(
@@ -202,7 +203,11 @@ fun DashboardScreen(
                             modifier = Modifier.size(30.dp)
                         )
                     },
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable {
+                            onSymptomsClick()
+                        }
                 )
 
                 DashboardServiceCard(
