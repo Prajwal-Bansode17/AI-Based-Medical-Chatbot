@@ -1,7 +1,7 @@
 package ui
 
-
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -14,9 +14,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Face
+import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
@@ -29,15 +30,15 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.clickable
-
 
 @Composable
 fun DashboardScreen(
     userName: String,
     onChatbotClick: () -> Unit = {},
-    onSymptomsClick: () -> Unit = {}
-){
+    onSymptomsClick: () -> Unit = {},
+    onMedicineClick: () -> Unit = {},
+    onHealthTipsClick: () -> Unit = {}
+) {
 
     val background = Brush.verticalGradient(
         colors = listOf(
@@ -58,7 +59,7 @@ fun DashboardScreen(
             modifier = Modifier.fillMaxSize()
         ) {
 
-            // Top section
+            // Top Section
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -89,8 +90,8 @@ fun DashboardScreen(
                     modifier = Modifier
                         .size(48.dp)
                         .background(
-                            Color.White,
-                            RoundedCornerShape(16.dp)
+                            color = Color.White,
+                            shape = RoundedCornerShape(16.dp)
                         ),
                     contentAlignment = Alignment.Center
                 ) {
@@ -108,14 +109,14 @@ fun DashboardScreen(
                 modifier = Modifier.height(28.dp)
             )
 
-            // AI Chatbot card
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
-                            onChatbotClick()
-                        },
-                    shape = RoundedCornerShape(20.dp),
+            // AI Chatbot Card
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable {
+                        onChatbotClick()
+                    },
+                shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(
                     containerColor = Color(0xFF0D5C70)
                 )
@@ -130,15 +131,15 @@ fun DashboardScreen(
                         modifier = Modifier
                             .size(56.dp)
                             .background(
-                                Color.White,
-                                RoundedCornerShape(16.dp)
+                                color = Color.White,
+                                shape = RoundedCornerShape(16.dp)
                             ),
                         contentAlignment = Alignment.Center
                     ) {
 
                         Icon(
                             imageVector = Icons.Default.Face,
-                            contentDescription = "AI Chatbot",
+                            contentDescription = "AI Medical Assistant",
                             tint = Color(0xFF00A9E8),
                             modifier = Modifier.size(30.dp)
                         )
@@ -155,7 +156,6 @@ fun DashboardScreen(
                             color = Color.White,
                             fontSize = 19.sp,
                             fontWeight = FontWeight.Bold
-
                         )
 
                         Spacer(
@@ -175,6 +175,7 @@ fun DashboardScreen(
                 modifier = Modifier.height(24.dp)
             )
 
+            // Quick Services
             Text(
                 text = "Quick Services",
                 color = Color.White,
@@ -186,7 +187,7 @@ fun DashboardScreen(
                 modifier = Modifier.height(14.dp)
             )
 
-            // Services
+            // First Row
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(12.dp)
@@ -197,28 +198,55 @@ fun DashboardScreen(
                     icon = {
                         Icon(
                             imageVector = Icons.Default.Favorite,
-                            contentDescription = "Symptoms",
+                            contentDescription = "Symptoms Checker",
                             tint = Color(0xFF00A9E8),
                             modifier = Modifier.size(30.dp)
                         )
                     },
-                    modifier = Modifier
-                        .weight(1f)
-                        .clickable {
-                            onSymptomsClick()
-                        }
+                    modifier = Modifier.weight(1f),
+                    onClick = onSymptomsClick
                 )
 
                 DashboardServiceCard(
                     title = "Medicine",
                     icon = {
                         Icon(
-                            imageVector = Icons.Default.Favorite,
-                            contentDescription = "Medicine",
+                            imageVector = Icons.Default.Info,
+                            contentDescription = "Medicine Information",
                             tint = Color(0xFF00A9E8),
                             modifier = Modifier.size(30.dp)
                         )
                     },
+                    modifier = Modifier.weight(1f),
+                    onClick = onMedicineClick
+                )
+            }
+
+            Spacer(
+                modifier = Modifier.height(12.dp)
+            )
+
+            // Second Row
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+
+                DashboardServiceCard(
+                    title = "Health Tips",
+                    icon = {
+                        Icon(
+                            imageVector = Icons.Default.Favorite,
+                            contentDescription = "Health Tips",
+                            tint = Color(0xFF00A9E8),
+                            modifier = Modifier.size(30.dp)
+                        )
+                    },
+                    modifier = Modifier.weight(1f),
+                    onClick = onHealthTipsClick
+                )
+
+                Spacer(
                     modifier = Modifier.weight(1f)
                 )
             }
@@ -226,15 +254,19 @@ fun DashboardScreen(
     }
 }
 
+// Reusable Service Card
 @Composable
 private fun DashboardServiceCard(
     title: String,
     icon: @Composable () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit = {}
 ) {
 
     Card(
-        modifier = modifier,
+        modifier = modifier.clickable {
+            onClick()
+        },
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(
             containerColor = Color.White
