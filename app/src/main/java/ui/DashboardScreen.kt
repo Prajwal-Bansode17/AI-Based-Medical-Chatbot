@@ -38,8 +38,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+
 
 @Composable
 fun DashboardScreen(
@@ -75,7 +77,12 @@ fun DashboardScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(20.dp)
+                .padding(
+                    start = 20.dp,
+                    end = 20.dp,
+                    top = 40.dp,
+                    bottom = 20.dp
+                )
         ) {
 
             // =================================================
@@ -146,7 +153,7 @@ fun DashboardScreen(
             )
 
             // =================================================
-            // AI ASSISTANT CARD
+            // AI MEDICAL ASSISTANT
             // =================================================
 
             AnimatedVisibility(
@@ -184,7 +191,6 @@ fun DashboardScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
 
-                        // AI icon
                         Box(
                             modifier = Modifier
                                 .size(62.dp)
@@ -248,7 +254,7 @@ fun DashboardScreen(
             )
 
             // =================================================
-            // QUICK SERVICES TITLE
+            // QUICK SERVICES
             // =================================================
 
             AnimatedVisibility(
@@ -387,7 +393,6 @@ fun DashboardScreen(
                         onClick = onHealthTipsClick
                     )
 
-                    // Empty card space
                     Spacer(
                         modifier = Modifier.weight(1f)
                     )
@@ -417,7 +422,7 @@ fun DashboardScreen(
                     modifier = Modifier.fillMaxWidth(),
                     color = Color(0xFF6FAEB8),
                     fontSize = 11.sp,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    textAlign = TextAlign.Center
                 )
             }
         }
@@ -426,7 +431,7 @@ fun DashboardScreen(
 
 
 // =========================================================
-// REUSABLE SERVICE CARD
+// SERVICE CARD
 // =========================================================
 
 @Composable
@@ -458,7 +463,6 @@ private fun DashboardServiceCard(
             verticalArrangement = Arrangement.Center
         ) {
 
-            // Icon container
             Box(
                 modifier = Modifier
                     .size(52.dp)
