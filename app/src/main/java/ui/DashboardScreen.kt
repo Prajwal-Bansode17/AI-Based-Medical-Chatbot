@@ -16,7 +16,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Face
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -36,8 +35,9 @@ import androidx.compose.foundation.clickable
 @Composable
 fun DashboardScreen(
     userName: String,
-    onChatbotClick: () -> Unit = {}
-) {
+    onChatbotClick: () -> Unit = {},
+    onSymptomsClick: () -> Unit = {}
+){
 
     val background = Brush.verticalGradient(
         colors = listOf(
@@ -202,7 +202,11 @@ fun DashboardScreen(
                             modifier = Modifier.size(30.dp)
                         )
                     },
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier
+                        .weight(1f)
+                        .clickable {
+                            onSymptomsClick()
+                        }
                 )
 
                 DashboardServiceCard(

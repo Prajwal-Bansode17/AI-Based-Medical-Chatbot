@@ -11,6 +11,7 @@ import ui.RegisterScreen
 import ui.SplashScreen
 import ui.ForgotPasswordScreen
 import ui.ChatbotScreen
+import ui.SymptomsCheckerScreen
 
 class MainActivity : ComponentActivity() {
 
@@ -35,6 +36,9 @@ class MainActivity : ComponentActivity() {
                             userName = userName,
                             onChatbotClick = {
                                 currentScreen = "chatbot"
+                            },
+                            onSymptomsClick = {
+                                currentScreen = "symptoms"
                             }
                         )
                     }
@@ -100,6 +104,13 @@ class MainActivity : ComponentActivity() {
                     }
                     "chatbot" -> {
                         ChatbotScreen(
+                            onBackClick = {
+                                currentScreen = "dashboard"
+                            }
+                        )
+                    }
+                    "symptoms" -> {
+                        SymptomsCheckerScreen(
                             onBackClick = {
                                 currentScreen = "dashboard"
                             }
