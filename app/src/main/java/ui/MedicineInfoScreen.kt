@@ -1,6 +1,8 @@
 package ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -9,29 +11,53 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Scaffold
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+
+
+// ============================================================
+// THEME COLORS
+// Same theme as Symptoms Checker
+// ============================================================
+
+private val BackgroundColor = Color(0xFF071A33)
+private val CardColor = Color(0xFF123653)
+private val SelectedCardColor = Color(0xFF0D5C70)
+private val PrimaryTextColor = Color.White
+private val SecondaryTextColor = Color(0xFFB9EAF2)
+private val AccentColor = Color(0xFF087EA4)
+private val LightAccentColor = Color(0xFF7DE8F0)
+
+
+// ============================================================
+// MEDICINE DATA MODEL
+// ============================================================
 
 data class Medicine(
     val name: String,
@@ -42,11 +68,16 @@ data class Medicine(
     val warning: String
 )
 
+
+// ============================================================
+// MEDICINE DATA
+// ============================================================
+
 private val medicines = listOf(
 
     Medicine(
         name = "Paracetamol",
-        category = "Pain reliever / Fever reducer",
+        category = "Pain & Fever",
         uses = listOf(
             "Fever",
             "Mild to moderate pain",
@@ -65,7 +96,7 @@ private val medicines = listOf(
 
     Medicine(
         name = "Ibuprofen",
-        category = "Pain reliever / Anti-inflammatory",
+        category = "Pain & Fever",
         uses = listOf(
             "Mild to moderate pain",
             "Inflammation",
@@ -86,7 +117,7 @@ private val medicines = listOf(
 
     Medicine(
         name = "Cetirizine",
-        category = "Antihistamine",
+        category = "Allergy",
         uses = listOf(
             "Allergy symptoms",
             "Sneezing",
@@ -108,7 +139,7 @@ private val medicines = listOf(
 
     Medicine(
         name = "Omeprazole",
-        category = "Acid-reducing medicine",
+        category = "Acid & Stomach",
         uses = listOf(
             "Heartburn",
             "Acid reflux",
@@ -128,8 +159,70 @@ private val medicines = listOf(
     ),
 
     Medicine(
+        name = "Antacid",
+        category = "Acid & Stomach",
+        uses = listOf(
+            "Occasional heartburn",
+            "Acid indigestion",
+            "Temporary relief of stomach acidity"
+        ),
+        precautions = listOf(
+            "Follow the instructions on the specific product.",
+            "Some antacids can interact with other medicines.",
+            "People with kidney problems should seek professional advice."
+        ),
+        commonSideEffects = listOf(
+            "Constipation",
+            "Diarrhea",
+            "Stomach discomfort"
+        ),
+        warning = "Frequent or persistent heartburn should be discussed with a healthcare professional."
+    ),
+
+    Medicine(
+        name = "Saline Nasal Spray",
+        category = "Cold & Nasal",
+        uses = listOf(
+            "Nasal dryness",
+            "Nasal congestion",
+            "Helps moisturize nasal passages"
+        ),
+        precautions = listOf(
+            "Use according to the product instructions.",
+            "Do not share a nasal spray with another person.",
+            "Keep the applicator clean."
+        ),
+        commonSideEffects = listOf(
+            "Temporary nasal irritation",
+            "Mild discomfort"
+        ),
+        warning = "This information is educational and does not replace professional medical advice."
+    ),
+
+    Medicine(
+        name = "Antiseptic",
+        category = "First Aid",
+        uses = listOf(
+            "Cleaning minor cuts and wounds",
+            "Basic first-aid hygiene",
+            "Reducing contamination of minor wounds"
+        ),
+        precautions = listOf(
+            "Use only as directed on the product label.",
+            "Avoid contact with eyes.",
+            "Seek medical care for deep or serious wounds."
+        ),
+        commonSideEffects = listOf(
+            "Skin irritation",
+            "Dryness",
+            "Stinging"
+        ),
+        warning = "Serious, deep, infected, or heavily bleeding wounds require professional medical attention."
+    ),
+
+    Medicine(
         name = "ORS",
-        category = "Oral Rehydration Solution",
+        category = "Hydration",
         uses = listOf(
             "Helps replace fluids and electrolytes.",
             "Dehydration associated with diarrhea or vomiting."
@@ -143,10 +236,54 @@ private val medicines = listOf(
             "Generally well tolerated when prepared and used correctly."
         ),
         warning = "This information is educational and does not replace professional medical advice."
+    ),
+
+    Medicine(
+        name = "Electrolyte Drink",
+        category = "Health & Wellness",
+        uses = listOf(
+            "Provides fluids and electrolytes",
+            "May support hydration during certain activities",
+            "General hydration support"
+        ),
+        precautions = listOf(
+            "Check the sugar and caffeine content.",
+            "Not every sports or energy drink is appropriate during illness.",
+            "People with certain medical conditions should seek professional advice."
+        ),
+        commonSideEffects = listOf(
+            "Stomach discomfort may occur with some products."
+        ),
+        warning = "This information is educational and does not replace professional medical advice."
+    ),
+
+    Medicine(
+        name = "Energy Drink Information",
+        category = "Health & Wellness",
+        uses = listOf(
+            "Provides caffeine and other ingredients intended to increase alertness",
+            "General information about energy drinks",
+            "Understanding caffeine and sugar content"
+        ),
+        precautions = listOf(
+            "Check caffeine and sugar content before consumption.",
+            "Avoid excessive caffeine intake.",
+            "People who are sensitive to caffeine should be cautious."
+        ),
+        commonSideEffects = listOf(
+            "Difficulty sleeping",
+            "Jitteriness",
+            "Increased heart rate"
+        ),
+        warning = "Energy drinks are not medicines and should not be used to treat medical conditions."
     )
 )
 
-@OptIn(ExperimentalMaterial3Api::class)
+
+// ============================================================
+// MEDICINE INFORMATION SCREEN
+// ============================================================
+
 @Composable
 fun MedicineInfoScreen(
     onBackClick: () -> Unit,
@@ -157,117 +294,458 @@ fun MedicineInfoScreen(
         mutableStateOf("")
     }
 
-    val filteredMedicines = medicines.filter { medicine ->
-        medicine.name.contains(searchQuery, ignoreCase = true) ||
-                medicine.category.contains(searchQuery, ignoreCase = true)
+    var selectedCategory by remember {
+        mutableStateOf("All")
     }
 
-    Scaffold(
+    val categories = listOf(
+        "All",
+        "Pain & Fever",
+        "Allergy",
+        "Acid & Stomach",
+        "Cold & Nasal",
+        "First Aid",
+        "Hydration",
+        "Health & Wellness"
+    )
 
-        topBar = {
+    val filteredMedicines = medicines.filter { medicine ->
 
-            TopAppBar(
+        val query = searchQuery.trim()
 
-                title = {
-                    Text(
-                        text = "Medicine Information",
-                        fontWeight = FontWeight.Bold
-                    )
-                },
-
-                navigationIcon = {
-
-                    IconButton(
-                        onClick = onBackClick
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back"
-                        )
+        val matchesSearch =
+            query.isEmpty() ||
+                    medicine.name.contains(query, ignoreCase = true) ||
+                    medicine.category.contains(query, ignoreCase = true) ||
+                    medicine.uses.any {
+                        it.contains(query, ignoreCase = true)
                     }
-                }
-            )
-        }
 
-    ) { paddingValues ->
+        val matchesCategory =
+            selectedCategory == "All" ||
+                    medicine.category == selectedCategory
 
-        Column(
+        matchesSearch && matchesCategory
+    }
+
+
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .background(BackgroundColor)
+    ) {
+
+        // =====================================================
+        // HEADER
+        // =====================================================
+
+        Row(
             modifier = Modifier
-                .fillMaxSize()
-                .padding(paddingValues)
-                .padding(horizontal = 16.dp)
+                .fillMaxWidth()
+                .padding(
+                    horizontal = 12.dp,
+                    vertical = 10.dp
+                ),
+            verticalAlignment = Alignment.CenterVertically
         ) {
 
+            IconButton(
+                onClick = onBackClick
+            ) {
+
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Back",
+                    tint = PrimaryTextColor
+                )
+            }
+
             Spacer(
-                modifier = Modifier.height(8.dp)
+                modifier = Modifier.width(8.dp)
             )
 
-            OutlinedTextField(
+            Column {
 
-                value = searchQuery,
+                Text(
+                    text = "Medicine Information",
+                    color = PrimaryTextColor,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold
+                )
 
-                onValueChange = {
-                    searchQuery = it
-                },
+                Text(
+                    text = "Medicines, first aid & wellness",
+                    color = SecondaryTextColor,
+                    fontSize = 12.sp
+                )
+            }
+        }
 
-                modifier = Modifier.fillMaxWidth(),
 
-                singleLine = true,
+        // =====================================================
+        // CONTENT
+        // =====================================================
 
-                leadingIcon = {
-                    Icon(
-                        imageVector = Icons.Default.Search,
-                        contentDescription = "Search"
-                    )
-                },
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 20.dp),
 
-                placeholder = {
-                    Text("Search medicines...")
+            verticalArrangement =
+                Arrangement.spacedBy(12.dp)
+        ) {
+
+            item {
+
+                Spacer(
+                    modifier = Modifier.height(8.dp)
+                )
+
+                Text(
+                    text = "Medicine & Health Information",
+                    color = PrimaryTextColor,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Spacer(
+                    modifier = Modifier.height(6.dp)
+                )
+
+                Text(
+                    text = "Search medicines and explore general health information.",
+                    color = SecondaryTextColor,
+                    fontSize = 14.sp
+                )
+
+                Spacer(
+                    modifier = Modifier.height(14.dp)
+                )
+
+
+                // =================================================
+                // SEARCH
+                // =================================================
+
+                OutlinedTextField(
+
+                    value = searchQuery,
+
+                    onValueChange = {
+                        searchQuery = it
+                    },
+
+                    modifier = Modifier.fillMaxWidth(),
+
+                    singleLine = true,
+
+                    leadingIcon = {
+
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = "Search",
+                            tint = LightAccentColor
+                        )
+                    },
+
+                    trailingIcon = {
+
+                        if (searchQuery.isNotEmpty()) {
+
+                            IconButton(
+                                onClick = {
+                                    searchQuery = ""
+                                }
+                            ) {
+
+                                Icon(
+                                    imageVector = Icons.Default.Clear,
+                                    contentDescription = "Clear",
+                                    tint = SecondaryTextColor
+                                )
+                            }
+                        }
+                    },
+
+                    placeholder = {
+                        Text(
+                            text = "Search medicine or symptom...",
+                            color = SecondaryTextColor
+                        )
+                    },
+
+                    colors = OutlinedTextFieldDefaults.colors(
+
+                        focusedTextColor = PrimaryTextColor,
+                        unfocusedTextColor = PrimaryTextColor,
+
+                        focusedBorderColor = LightAccentColor,
+                        unfocusedBorderColor = Color(0xFF456B82),
+
+                        cursorColor = LightAccentColor,
+
+                        focusedLabelColor = LightAccentColor,
+                        unfocusedLabelColor = SecondaryTextColor
+                    ),
+
+                    shape = RoundedCornerShape(14.dp)
+                )
+
+                Spacer(
+                    modifier = Modifier.height(16.dp)
+                )
+
+
+                // =================================================
+                // CATEGORY TITLE
+                // =================================================
+
+                Text(
+                    text = "Categories",
+                    color = PrimaryTextColor,
+                    fontSize = 18.sp,
+                    fontWeight = FontWeight.Bold
+                )
+
+                Spacer(
+                    modifier = Modifier.height(8.dp)
+                )
+            }
+
+
+            // =====================================================
+            // CATEGORY CHIPS
+            // =====================================================
+
+            item {
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(
+                            rememberScrollState()
+                        ),
+
+                    horizontalArrangement =
+                        Arrangement.spacedBy(8.dp)
+                ) {
+
+                    categories.forEach { category ->
+
+                        Card(
+
+                            modifier = Modifier.clickable {
+
+                                selectedCategory = category
+
+                            },
+
+                            shape =
+                                RoundedCornerShape(20.dp),
+
+                            colors =
+                                CardDefaults.cardColors(
+
+                                    containerColor =
+                                        if (
+                                            selectedCategory == category
+                                        ) {
+                                            SelectedCardColor
+                                        } else {
+                                            CardColor
+                                        }
+                                )
+                        ) {
+
+                            Text(
+                                text = category,
+
+                                color =
+                                    if (
+                                        selectedCategory == category
+                                    ) {
+                                        LightAccentColor
+                                    } else {
+                                        PrimaryTextColor
+                                    },
+
+                                fontSize = 13.sp,
+
+                                fontWeight =
+                                    FontWeight.Medium,
+
+                                modifier =
+                                    Modifier.padding(
+                                        horizontal = 15.dp,
+                                        vertical = 9.dp
+                                    )
+                            )
+                        }
+                    }
                 }
-            )
 
-            Spacer(
-                modifier = Modifier.height(16.dp)
-            )
+                Spacer(
+                    modifier = Modifier.height(4.dp)
+                )
+            }
 
-            Text(
-                text = "Common Medicines",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold
-            )
 
-            Spacer(
-                modifier = Modifier.height(8.dp)
-            )
+            // =====================================================
+            // RESULT COUNT
+            // =====================================================
+
+            item {
+
+                Text(
+
+                    text =
+                        when (filteredMedicines.size) {
+
+                            0 ->
+                                "No information found"
+
+                            1 ->
+                                "1 result found"
+
+                            else ->
+                                "${filteredMedicines.size} results found"
+                        },
+
+                    color = SecondaryTextColor,
+
+                    fontSize = 13.sp,
+
+                    fontWeight =
+                        FontWeight.Medium
+                )
+            }
+
+
+            // =====================================================
+            // MEDICINE LIST
+            // =====================================================
 
             if (filteredMedicines.isEmpty()) {
 
-                Text(
-                    text = "No medicines found.",
-                    style = MaterialTheme.typography.bodyLarge,
-                    modifier = Modifier.padding(top = 16.dp)
-                )
+                item {
+
+                    Card(
+
+                        modifier = Modifier.fillMaxWidth(),
+
+                        shape =
+                            RoundedCornerShape(16.dp),
+
+                        colors =
+                            CardDefaults.cardColors(
+                                containerColor = CardColor
+                            )
+                    ) {
+
+                        Column(
+
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(24.dp),
+
+                            horizontalAlignment =
+                                Alignment.CenterHorizontally
+                        ) {
+
+                            Text(
+                                text = "🔎",
+                                fontSize = 38.sp
+                            )
+
+                            Spacer(
+                                modifier = Modifier.height(8.dp)
+                            )
+
+                            Text(
+                                text = "No information found",
+                                color = PrimaryTextColor,
+                                fontSize = 17.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+
+                            Spacer(
+                                modifier = Modifier.height(4.dp)
+                            )
+
+                            Text(
+                                text = "Try another medicine or category.",
+                                color = SecondaryTextColor,
+                                fontSize = 13.sp
+                            )
+                        }
+                    }
+                }
 
             } else {
 
-                LazyColumn(
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                items(filteredMedicines) { medicine ->
+
+                    MedicineCard(
+                        medicine = medicine,
+                        onClick = {
+                            onMedicineClick(medicine)
+                        }
+                    )
+                }
+            }
+
+
+            // =====================================================
+            // DISCLAIMER
+            // =====================================================
+
+            item {
+
+                Spacer(
+                    modifier = Modifier.height(6.dp)
+                )
+
+                Card(
+
+                    modifier = Modifier.fillMaxWidth(),
+
+                    shape =
+                        RoundedCornerShape(16.dp),
+
+                    colors =
+                        CardDefaults.cardColors(
+                            containerColor =
+                                Color(0xFF10283D)
+                        )
                 ) {
 
-                    items(filteredMedicines) { medicine ->
+                    Text(
+                        text =
+                            "⚠ This information is for educational purposes only and does not replace professional medical advice.",
 
-                        MedicineCard(
-                            medicine = medicine,
-                            onClick = {
-                                onMedicineClick(medicine)
-                            }
-                        )
-                    }
+                        color =
+                            SecondaryTextColor,
+
+                        fontSize = 12.sp,
+
+                        modifier =
+                            Modifier.padding(16.dp)
+                    )
                 }
+
+                Spacer(
+                    modifier = Modifier.height(20.dp)
+                )
             }
         }
     }
 }
+
+
+// ============================================================
+// MEDICINE CARD
+// ============================================================
 
 @Composable
 private fun MedicineCard(
@@ -275,31 +753,71 @@ private fun MedicineCard(
     onClick: () -> Unit
 ) {
 
+    val categoryIcon = when (medicine.category) {
+
+        "Pain & Fever" -> "💊"
+
+        "Allergy" -> "🤧"
+
+        "Acid & Stomach" -> "🫃"
+
+        "Cold & Nasal" -> "🌡️"
+
+        "First Aid" -> "🩹"
+
+        "Hydration" -> "🥤"
+
+        "Health & Wellness" -> "❤️"
+
+        else -> "⚕️"
+    }
+
+
     Card(
+
         modifier = Modifier
             .fillMaxWidth()
             .clickable {
                 onClick()
             },
 
-        elevation = CardDefaults.cardElevation(
-            defaultElevation = 3.dp
-        )
+        shape =
+            RoundedCornerShape(16.dp),
+
+        colors =
+            CardDefaults.cardColors(
+                containerColor = CardColor
+            )
     ) {
 
         Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(16.dp)
+
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+
+            verticalAlignment =
+                Alignment.CenterVertically
         ) {
 
+            Text(
+                text = categoryIcon,
+                fontSize = 30.sp
+            )
+
+            Spacer(
+                modifier = Modifier.width(14.dp)
+            )
+
             Column(
-                modifier = Modifier.fillMaxWidth()
+                modifier = Modifier.weight(1f)
             ) {
 
                 Text(
                     text = medicine.name,
-                    style = MaterialTheme.typography.titleMedium,
+                    color = PrimaryTextColor,
+                    fontSize = 17.sp,
                     fontWeight = FontWeight.Bold
                 )
 
@@ -309,7 +827,22 @@ private fun MedicineCard(
 
                 Text(
                     text = medicine.category,
-                    style = MaterialTheme.typography.bodyMedium
+                    color = LightAccentColor,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Medium
+                )
+
+                Spacer(
+                    modifier = Modifier.height(5.dp)
+                )
+
+                Text(
+                    text = medicine.uses
+                        .take(2)
+                        .joinToString(" • "),
+
+                    color = SecondaryTextColor,
+                    fontSize = 12.sp
                 )
             }
         }
