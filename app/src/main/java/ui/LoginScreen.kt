@@ -1,11 +1,6 @@
 package ui
 
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,20 +11,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Email
-import androidx.compose.material.icons.filled.Favorite
-import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -45,11 +34,14 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
+
 @Composable
 fun LoginScreen(
-    onLoginClick: (String) -> Unit = {},
-    onRegisterClick: () -> Unit = {},
-    onForgotPasswordClick: () -> Unit = {}
+    onLoginClick: (String, String) -> Unit,
+    onRegisterClick: () -> Unit,
+    onForgotPasswordClick: () -> Unit,
+    isLoading: Boolean = false,
+    loginError: String = ""
 ) {
 
     var email by remember {
@@ -72,447 +64,574 @@ fun LoginScreen(
         mutableStateOf("")
     }
 
-    var showContent by remember {
-        mutableStateOf(false)
-    }
 
-    LaunchedEffect(Unit) {
-        showContent = true
-    }
+    // =========================================================
+    // BACKGROUND
+    // =========================================================
 
-    // Background gradient
-    val background = Brush.verticalGradient(
-        colors = listOf(
-            Color(0xFF06152B),
-            Color(0xFF082A46),
-            Color(0xFF064E63)
+    val backgroundBrush =
+        Brush.verticalGradient(
+            colors = listOf(
+                Color(0xFF06152B),
+                Color(0xFF083B56),
+                Color(0xFF087EA4)
+            )
         )
-    )
+
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(background)
-            .padding(horizontal = 24.dp)
+            .background(backgroundBrush)
     ) {
 
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(vertical = 24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+                .padding(
+                    horizontal = 24.dp,
+                    vertical = 28.dp
+                ),
+
+            horizontalAlignment =
+                Alignment.CenterHorizontally,
+
+            verticalArrangement =
+                Arrangement.Center
         ) {
 
+
             // =================================================
-            // APP LOGO
+            // LOGO
             // =================================================
 
-            AnimatedVisibility(
-                visible = showContent,
-                enter = fadeIn(
-                    animationSpec = tween(600)
-                ) + slideInVertically(
-                    initialOffsetY = { -80 },
-                    animationSpec = tween(600)
-                )
+            Box(
+                modifier = Modifier
+                    .size(82.dp)
+                    .background(
+                        Color.White,
+                        RoundedCornerShape(24.dp)
+                    ),
+
+                contentAlignment =
+                    Alignment.Center
             ) {
 
-                Box(
-                    modifier = Modifier
-                        .size(88.dp)
-                        .background(
-                            color = Color.White.copy(alpha = 0.12f),
-                            shape = CircleShape
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-
-                    Box(
-                        modifier = Modifier
-                            .size(68.dp)
-                            .background(
-                                color = Color.White,
-                                shape = CircleShape
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-
-                        Icon(
-                            imageVector = Icons.Default.Favorite,
-                            contentDescription = "MedAssist AI",
-                            tint = Color(0xFF00A9E8),
-                            modifier = Modifier.size(38.dp)
-                        )
-                    }
-                }
+                Text(
+                    text = "+",
+                    color = Color(0xFF087EA4),
+                    fontSize = 54.sp,
+                    fontWeight = FontWeight.Bold
+                )
             }
 
+
             Spacer(
-                modifier = Modifier.height(20.dp)
+                modifier =
+                    Modifier.height(16.dp)
             )
 
+
+            Text(
+                text = "MedAssist AI",
+                color = Color.White,
+                fontSize = 30.sp,
+                fontWeight = FontWeight.Bold
+            )
+
+
+            Spacer(
+                modifier =
+                    Modifier.height(6.dp)
+            )
+
+
+            Text(
+                text = "Your intelligent health companion",
+                color = Color(0xFFBCEAF2),
+                fontSize = 14.sp,
+                textAlign = TextAlign.Center
+            )
+
+
+            Spacer(
+                modifier =
+                    Modifier.height(26.dp)
+            )
+
+
             // =================================================
-            // WELCOME TEXT
+            // LOGIN CARD
             // =================================================
 
-            AnimatedVisibility(
-                visible = showContent,
-                enter = fadeIn(
-                    animationSpec = tween(
-                        durationMillis = 600,
-                        delayMillis = 150
+            Column(
+
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        Color.White,
+                        RoundedCornerShape(24.dp)
                     )
-                ) + slideInVertically(
-                    initialOffsetY = { 50 },
-                    animationSpec = tween(
-                        durationMillis = 600,
-                        delayMillis = 150
-                    )
-                )
+                    .padding(22.dp)
             ) {
 
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
 
-                    Text(
-                        text = "Welcome Back",
-                        color = Color.White,
-                        fontSize = 28.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                Text(
+                    text = "Welcome Back",
+                    color = Color(0xFF09233F),
+                    fontSize = 25.sp,
+                    fontWeight = FontWeight.Bold
+                )
+
+
+                Spacer(
+                    modifier =
+                        Modifier.height(5.dp)
+                )
+
+
+                Text(
+                    text = "Sign in to continue",
+                    color = Color(0xFF6D7D8A),
+                    fontSize = 14.sp
+                )
+
+
+                Spacer(
+                    modifier =
+                        Modifier.height(20.dp)
+                )
+
+
+                // =================================================
+                // EMAIL
+                // =================================================
+
+                OutlinedTextField(
+
+                    value = email,
+
+                    onValueChange = {
+
+                        email = it
+
+                        emailError = ""
+                    },
+
+                    modifier =
+                        Modifier.fillMaxWidth(),
+
+                    enabled =
+                        !isLoading,
+
+                    singleLine = true,
+
+                    label = {
+                        Text("Email")
+                    },
+
+                    placeholder = {
+                        Text("Enter your email")
+                    },
+
+                    isError =
+                        emailError.isNotEmpty(),
+
+                    shape =
+                        RoundedCornerShape(14.dp)
+                )
+
+
+                if (emailError.isNotEmpty()) {
 
                     Spacer(
-                        modifier = Modifier.height(7.dp)
+                        modifier =
+                            Modifier.height(4.dp)
                     )
 
                     Text(
-                        text = "Sign in to continue to MedAssist AI",
-                        color = Color(0xFFB9EAF2),
-                        fontSize = 14.sp,
-                        textAlign = TextAlign.Center
+                        text = emailError,
+                        color = Color(0xFFD32F2F),
+                        fontSize = 12.sp
                     )
                 }
-            }
 
-            Spacer(
-                modifier = Modifier.height(30.dp)
-            )
 
-            // =================================================
-            // EMAIL
-            // =================================================
-
-            AnimatedVisibility(
-                visible = showContent,
-                enter = fadeIn(
-                    animationSpec = tween(
-                        durationMillis = 600,
-                        delayMillis = 300
-                    )
-                ) + slideInVertically(
-                    initialOffsetY = { 70 },
-                    animationSpec = tween(
-                        durationMillis = 600,
-                        delayMillis = 300
-                    )
+                Spacer(
+                    modifier =
+                        Modifier.height(14.dp)
                 )
-            ) {
 
-                Column(
-                    modifier = Modifier.fillMaxWidth()
-                ) {
 
-                    OutlinedTextField(
-                        value = email,
-                        onValueChange = {
-                            email = it
-                            emailError = ""
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = {
-                            Text("Email")
-                        },
-                        placeholder = {
-                            Text("Enter your email")
-                        },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Default.Email,
-                                contentDescription = "Email"
-                            )
-                        },
-                        isError = emailError.isNotEmpty(),
-                        singleLine = true,
-                        shape = RoundedCornerShape(16.dp)
-                    )
+                // =================================================
+                // PASSWORD
+                // =================================================
 
-                    if (emailError.isNotEmpty()) {
+                OutlinedTextField(
 
-                        Spacer(
-                            modifier = Modifier.height(4.dp)
-                        )
+                    value = password,
 
-                        Text(
-                            text = emailError,
-                            color = Color(0xFFFF8A80),
-                            fontSize = 12.sp
-                        )
-                    }
-                }
-            }
+                    onValueChange = {
 
-            Spacer(
-                modifier = Modifier.height(14.dp)
-            )
+                        password = it
 
-            // =================================================
-            // PASSWORD
-            // =================================================
+                        passwordError = ""
+                    },
 
-            AnimatedVisibility(
-                visible = showContent,
-                enter = fadeIn(
-                    animationSpec = tween(
-                        durationMillis = 600,
-                        delayMillis = 400
-                    )
-                ) + slideInVertically(
-                    initialOffsetY = { 70 },
-                    animationSpec = tween(
-                        durationMillis = 600,
-                        delayMillis = 400
-                    )
-                )
-            ) {
+                    modifier =
+                        Modifier.fillMaxWidth(),
 
-                Column(
-                    modifier = Modifier.fillMaxWidth()
-                ) {
+                    enabled =
+                        !isLoading,
 
-                    OutlinedTextField(
-                        value = password,
-                        onValueChange = {
-                            password = it
-                            passwordError = ""
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                        label = {
-                            Text("Password")
-                        },
-                        placeholder = {
-                            Text("Enter your password")
-                        },
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Default.Lock,
-                                contentDescription = "Password"
-                            )
-                        },
-                        trailingIcon = {
+                    singleLine = true,
 
-                            IconButton(
-                                onClick = {
-                                    passwordVisible = !passwordVisible
-                                }
-                            ) {
+                    label = {
+                        Text("Password")
+                    },
 
-                                Text(
-                                    text = if (passwordVisible) {
-                                        "◉"
-                                    } else {
-                                        "◌"
-                                    },
-                                    fontSize = 20.sp,
-                                    color = Color(0xFF00A9E8)
-                                )
-                            }
-                        },
-                        visualTransformation = if (passwordVisible) {
+                    placeholder = {
+                        Text("Enter your password")
+                    },
+
+                    isError =
+                        passwordError.isNotEmpty(),
+
+                    visualTransformation =
+                        if (passwordVisible) {
                             VisualTransformation.None
                         } else {
                             PasswordVisualTransformation()
                         },
-                        isError = passwordError.isNotEmpty(),
-                        singleLine = true,
-                        shape = RoundedCornerShape(16.dp)
+
+                    trailingIcon = {
+
+                        TextButton(
+                            onClick = {
+                                passwordVisible =
+                                    !passwordVisible
+                            },
+
+                            enabled =
+                                !isLoading
+                        ) {
+
+                            Text(
+                                text =
+                                    if (passwordVisible) {
+                                        "HIDE"
+                                    } else {
+                                        "SHOW"
+                                    },
+
+                                color =
+                                    Color(0xFF087EA4),
+
+                                fontSize = 11.sp,
+
+                                fontWeight =
+                                    FontWeight.Bold
+                            )
+                        }
+                    },
+
+                    shape =
+                        RoundedCornerShape(14.dp)
+                )
+
+
+                if (passwordError.isNotEmpty()) {
+
+                    Spacer(
+                        modifier =
+                            Modifier.height(4.dp)
                     )
 
-                    if (passwordError.isNotEmpty()) {
+                    Text(
+                        text = passwordError,
+                        color = Color(0xFFD32F2F),
+                        fontSize = 12.sp
+                    )
+                }
 
-                        Spacer(
-                            modifier = Modifier.height(4.dp)
-                        )
+
+                // =================================================
+                // FORGOT PASSWORD
+                // =================================================
+
+                Row(
+
+                    modifier =
+                        Modifier.fillMaxWidth(),
+
+                    horizontalArrangement =
+                        Arrangement.End
+                ) {
+
+                    TextButton(
+
+                        onClick =
+                            onForgotPasswordClick,
+
+                        enabled =
+                            !isLoading
+                    ) {
 
                         Text(
-                            text = passwordError,
-                            color = Color(0xFFFF8A80),
-                            fontSize = 12.sp
+                            text =
+                                "Forgot password?",
+
+                            color =
+                                Color(0xFF087EA4),
+
+                            fontSize = 13.sp
                         )
                     }
                 }
-            }
 
-            Spacer(
-                modifier = Modifier.height(10.dp)
-            )
 
-            // =================================================
-            // FORGOT PASSWORD
-            // =================================================
+                // =================================================
+                // SUPABASE LOGIN ERROR
+                // =================================================
 
-            AnimatedVisibility(
-                visible = showContent,
-                enter = fadeIn(
-                    animationSpec = tween(
-                        durationMillis = 600,
-                        delayMillis = 500
-                    )
-                )
-            ) {
+                if (loginError.isNotEmpty()) {
 
-                Box(
-                    modifier = Modifier.fillMaxWidth(),
-                    contentAlignment = Alignment.CenterEnd
-                ) {
+                    Box(
 
-                    Text(
-                        text = "Forgot Password?",
-                        color = Color(0xFF7DE8F0),
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier.clickable {
-                            onForgotPasswordClick()
-                        }
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .background(
+                                    Color(0xFFFFEBEE),
+                                    RoundedCornerShape(12.dp)
+                                )
+                                .padding(13.dp)
+                    ) {
+
+                        Text(
+                            text =
+                                loginError,
+
+                            color =
+                                Color(0xFFC62828),
+
+                            fontSize = 13.sp,
+
+                            fontWeight =
+                                FontWeight.Medium
+                        )
+                    }
+
+
+                    Spacer(
+                        modifier =
+                            Modifier.height(12.dp)
                     )
                 }
-            }
 
-            Spacer(
-                modifier = Modifier.height(24.dp)
-            )
 
-            // =================================================
-            // LOGIN BUTTON
-            // =================================================
-
-            AnimatedVisibility(
-                visible = showContent,
-                enter = fadeIn(
-                    animationSpec = tween(
-                        durationMillis = 600,
-                        delayMillis = 550
-                    )
-                ) + slideInVertically(
-                    initialOffsetY = { 80 },
-                    animationSpec = tween(
-                        durationMillis = 600,
-                        delayMillis = 550
-                    )
-                )
-            ) {
+                // =================================================
+                // SIGN IN
+                // =================================================
 
                 Button(
+
                     onClick = {
 
                         emailError = ""
                         passwordError = ""
 
-                        var isValid = true
+                        val cleanEmail =
+                            email.trim()
 
-                        // Email validation
-                        if (email.isBlank()) {
 
-                            emailError = "Email is required"
-                            isValid = false
+                        // -----------------------------
+                        // EMAIL
+                        // -----------------------------
 
-                        } else if (
-                            !android.util.Patterns.EMAIL_ADDRESS
-                                .matcher(email)
+                        if (cleanEmail.isEmpty()) {
+
+                            emailError =
+                                "Please enter your email."
+
+                            return@Button
+                        }
+
+
+                        if (
+                            !android.util.Patterns
+                                .EMAIL_ADDRESS
+                                .matcher(cleanEmail)
                                 .matches()
                         ) {
 
-                            emailError = "Enter a valid email address"
-                            isValid = false
+                            emailError =
+                                "Please enter a valid email."
+
+                            return@Button
                         }
 
-                        // Password validation
-                        if (password.isBlank()) {
 
-                            passwordError = "Password is required"
-                            isValid = false
+                        // -----------------------------
+                        // PASSWORD
+                        // -----------------------------
 
-                        } else if (password.length < 6) {
+                        if (password.isEmpty()) {
 
                             passwordError =
-                                "Password must be at least 6 characters"
+                                "Please enter your password."
 
-                            isValid = false
+                            return@Button
                         }
 
-                        // Login
-                        if (isValid) {
-                            onLoginClick(email)
+
+                        if (password.length < 6) {
+
+                            passwordError =
+                                "Password must contain at least 6 characters."
+
+                            return@Button
                         }
+
+
+                        // -----------------------------
+                        // LOGIN
+                        // -----------------------------
+
+                        onLoginClick(
+                            cleanEmail,
+                            password
+                        )
                     },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(54.dp),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF087EA4)
-                    )
+
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .height(54.dp),
+
+                    enabled =
+                        !isLoading,
+
+                    shape =
+                        RoundedCornerShape(15.dp),
+
+                    colors =
+                        ButtonDefaults.buttonColors(
+
+                            containerColor =
+                                Color(0xFF087EA4),
+
+                            disabledContainerColor =
+                                Color(0xFF8CBCC7)
+                        )
                 ) {
 
-                    Text(
-                        text = "Sign In",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
-                    )
+                    if (isLoading) {
+
+                        CircularProgressIndicator(
+
+                            modifier =
+                                Modifier.size(22.dp),
+
+                            color =
+                                Color.White,
+
+                            strokeWidth = 2.dp
+                        )
+
+                    } else {
+
+                        Text(
+                            text = "Sign In",
+
+                            color =
+                                Color.White,
+
+                            fontSize = 16.sp,
+
+                            fontWeight =
+                                FontWeight.Bold
+                        )
+                    }
                 }
-            }
 
-            Spacer(
-                modifier = Modifier.height(22.dp)
-            )
 
-            // =================================================
-            // REGISTER
-            // =================================================
-
-            AnimatedVisibility(
-                visible = showContent,
-                enter = fadeIn(
-                    animationSpec = tween(
-                        durationMillis = 600,
-                        delayMillis = 650
-                    )
+                Spacer(
+                    modifier =
+                        Modifier.height(14.dp)
                 )
-            ) {
+
+
+                // =================================================
+                // REGISTER
+                // =================================================
 
                 Row(
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
+
+                    modifier =
+                        Modifier.fillMaxWidth(),
+
+                    horizontalArrangement =
+                        Arrangement.Center,
+
+                    verticalAlignment =
+                        Alignment.CenterVertically
                 ) {
 
                     Text(
-                        text = "Don't have an account? ",
-                        color = Color.White.copy(alpha = 0.85f),
-                        fontSize = 14.sp
+                        text =
+                            "Don't have an account?",
+
+                        color =
+                            Color(0xFF6D7D8A),
+
+                        fontSize = 13.sp
                     )
 
-                    Text(
-                        text = "Register",
-                        color = Color(0xFF7DE8F0),
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        modifier = Modifier.clickable {
-                            onRegisterClick()
-                        }
-                    )
+
+                    TextButton(
+
+                        onClick =
+                            onRegisterClick,
+
+                        enabled =
+                            !isLoading
+                    ) {
+
+                        Text(
+                            text = "Register",
+
+                            color =
+                                Color(0xFF087EA4),
+
+                            fontSize = 14.sp,
+
+                            fontWeight =
+                                FontWeight.Bold
+                        )
+                    }
                 }
             }
+
+
+            Spacer(
+                modifier =
+                    Modifier.height(15.dp)
+            )
+
+
+            Text(
+                text =
+                    "Secure authentication powered by Supabase",
+
+                color =
+                    Color(0xFFBCEAF2),
+
+                fontSize = 11.sp,
+
+                textAlign =
+                    TextAlign.Center
+            )
         }
     }
 }

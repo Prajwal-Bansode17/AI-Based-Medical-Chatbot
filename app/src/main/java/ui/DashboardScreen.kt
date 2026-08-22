@@ -1,9 +1,9 @@
 package ui
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -42,10 +42,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-
 @Composable
 fun DashboardScreen(
     userName: String,
+    onProfileClick: () -> Unit = {},
     onChatbotClick: () -> Unit = {},
     onSymptomsClick: () -> Unit = {},
     onMedicineClick: () -> Unit = {},
@@ -127,14 +127,20 @@ fun DashboardScreen(
                         )
                     }
 
-                    // Profile icon
+                    // =================================================
+                    // PROFILE ICON
+                    // =================================================
+
                     Box(
                         modifier = Modifier
                             .size(52.dp)
                             .background(
                                 color = Color.White,
                                 shape = CircleShape
-                            ),
+                            )
+                            .clickable {
+                                onProfileClick()
+                            },
                         contentAlignment = Alignment.Center
                     ) {
 
@@ -321,6 +327,7 @@ fun DashboardScreen(
                         title = "Symptoms",
                         subtitle = "Check symptoms",
                         icon = {
+
                             Icon(
                                 imageVector = Icons.Default.Favorite,
                                 contentDescription = "Symptoms Checker",
@@ -336,6 +343,7 @@ fun DashboardScreen(
                         title = "Medicine",
                         subtitle = "Medicine info",
                         icon = {
+
                             Icon(
                                 imageVector = Icons.Default.Info,
                                 contentDescription = "Medicine Information",
@@ -382,6 +390,7 @@ fun DashboardScreen(
                         title = "Health Tips",
                         subtitle = "Healthy lifestyle",
                         icon = {
+
                             Icon(
                                 imageVector = Icons.Default.Favorite,
                                 contentDescription = "Health Tips",

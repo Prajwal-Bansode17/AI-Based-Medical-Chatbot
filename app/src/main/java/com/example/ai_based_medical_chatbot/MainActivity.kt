@@ -1,14 +1,20 @@
 package com.example.ai_based_medical_chatbot
 
 import android.os.Bundle
+import android.util.Log
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.setValue
+import com.example.ai_based_medical_chatbot.data.SupabaseClient
 import com.example.ai_based_medical_chatbot.ui.theme.AIBasedMedicalChatbotTheme
+import kotlinx.coroutines.launch
 import ui.ChatbotScreen
 import ui.DashboardScreen
 import ui.ForgotPasswordScreen
@@ -16,330 +22,481 @@ import ui.HealthTipsScreen
 import ui.LoginScreen
 import ui.MedicineDetailScreen
 import ui.MedicineInfoScreen
+import ui.ProfileScreen
 import ui.RegisterScreen
 import ui.SplashScreen
 import ui.SymptomsCheckerScreen
 
+
 class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
+
         super.onCreate(savedInstanceState)
 
         setContent {
+
             AIBasedMedicalChatbotTheme {
+
                 MedicalChatbotNavigation()
             }
         }
     }
 }
 
+
 @Composable
 private fun MedicalChatbotNavigation() {
 
-    /*
-     * Navigation stack.
-     *
-     * Example:
-     *
-     * login
-     *    ↓
-     * dashboard
-     *    ↓
-     * medicine
-     *    ↓
-     * medicineDetail
-     *
-     * Stack:
-     *
-     * [login, dashboard, medicine, medicineDetail]
-     */
-    val screenStack = remember {
-        mutableStateListOf("splash")
-    }
+    // =========================================================
+    // NAVIGATION STACK
+    // =========================================================
 
-    /*
-     * Stores the logged-in user's name.
-     */
-    val userNameState = remember {
+    val screenStack =
+        remember {
+            mutableStateListOf("splash")
+        }
+
+
+    // =========================================================
+    // COROUTINE SCOPE
+    // =========================================================
+
+    val scope =
+        rememberCoroutineScope()
+
+
+    // =========================================================
+    // USER INFORMATION
+    // =========================================================
+
+    var userName by remember {
         mutableStateOf("")
     }
 
-    /*
-     * Stores the medicine selected by the user.
-     */
-    val selectedMedicineState = remember {
+    var userEmail by remember {
+        mutableStateOf("")
+    }
+
+
+    // =========================================================
+    // LOGIN STATE
+    // =========================================================
+
+    var loginLoading by remember {
+        mutableStateOf(false)
+    }
+
+    var loginError by remember {
+        mutableStateOf("")
+    }
+
+
+    // =========================================================
+    // SELECTED MEDICINE
+    // =========================================================
+
+    var selectedMedicine by remember {
         mutableStateOf<ui.Medicine?>(null)
     }
 
-    /*
-     * Current screen is always the last item
-     * in the navigation stack.
-     */
-    val currentScreen = screenStack.last()
 
-    /*
-     * Open a new screen.
-     */
+    // =========================================================
+    // CURRENT SCREEN
+    // =========================================================
+
+    val currentScreen =
+        screenStack.lastOrNull() ?: "login"
+
+
+    // =========================================================
+    // NAVIGATION FUNCTIONS
+    // =========================================================
+
     fun navigateTo(screen: String) {
+
         screenStack.add(screen)
     }
 
-    /*
-     * Go back to the previous screen.
-     */
+
     fun navigateBack() {
+
         if (screenStack.size > 1) {
-            screenStack.removeAt(screenStack.lastIndex)
+
+            screenStack.removeAt(
+                screenStack.lastIndex
+            )
         }
     }
 
-    /*
-     * Android/mobile BACK button.
-     *
-     * Example:
-     *
-     * Dashboard
-     *     ↓
-     * Medicine
-     *
-     * Mobile Back
-     *     ↓
-     * Dashboard
-     */
+
+    // =========================================================
+    // ANDROID BACK BUTTON
+    // =========================================================
+
     BackHandler(
         enabled = screenStack.size > 1
     ) {
+
         navigateBack()
     }
 
+
+    // =========================================================
+    // SCREEN ROUTING
+    // =========================================================
+
     when (currentScreen) {
 
-        // ====================================================
-        // SPLASH
-        // ====================================================
+
+        // =====================================================
+        // SPLASH SCREEN
+        // =====================================================
 
         "splash" -> {
 
             SplashScreen(
+
                 onSplashFinished = {
 
-                    /*
-                     * Splash should not remain in the
-                     * navigation history.
-                     *
-                     * Splash → Login
-                     */
                     screenStack.clear()
+
                     screenStack.add("login")
                 }
             )
         }
 
-        // ====================================================
-        // LOGIN
-        // ====================================================
+
+        // =====================================================
+        // LOGIN SCREEN
+        // =====================================================
 
         "login" -> {
 
             LoginScreen(
 
-                onLoginClick = { email ->
+                onLoginClick = { email, password ->
 
-                    val namePart = email.substringBefore("@")
+                    scope.launch {
 
-                    userNameState.value = when {
+                        loginLoading = true
+                        loginError = ""
 
-                        namePart.contains(".") -> {
-                            namePart
-                                .substringBefore(".")
-                                .replaceFirstChar {
-                                    it.uppercase()
-                                }
-                        }
+                        try {
 
-                        namePart.contains("_") -> {
-                            namePart
-                                .substringBefore("_")
-                                .replaceFirstChar {
-                                    it.uppercase()
-                                }
-                        }
-
-                        namePart.contains("-") -> {
-                            namePart
-                                .substringBefore("-")
-                                .replaceFirstChar {
-                                    it.uppercase()
-                                }
-                        }
-
-                        else -> {
-                            namePart
-                                .replace(
-                                    Regex("([a-z])([A-Z]).*"),
-                                    "$1"
+                            val result =
+                                SupabaseClient.loginUser(
+                                    email = email,
+                                    password = password
                                 )
-                                .replaceFirstChar {
-                                    it.uppercase()
-                                }
+
+
+                            // =================================
+                            // SUCCESS
+                            // =================================
+
+                            result.onSuccess { user ->
+
+                                userEmail =
+                                    user.email
+
+                                userName =
+                                    if (
+                                        user.fullName.isNotBlank()
+                                    ) {
+
+                                        user.fullName
+
+                                    } else {
+
+                                        user.email
+                                            .substringBefore("@")
+                                            .replaceFirstChar {
+                                                it.uppercase()
+                                            }
+                                    }
+
+
+                                loginLoading = false
+                                loginError = ""
+
+
+                                // Go to Dashboard
+                                screenStack.clear()
+
+                                screenStack.add(
+                                    "dashboard"
+                                )
+                            }
+
+
+                            // =================================
+                            // FAILURE
+                            // =================================
+
+                            result.onFailure { error ->
+
+                                loginLoading = false
+
+                                loginError =
+                                    error.message
+                                        ?: "Login failed. Please try again."
+
+                                Log.e(
+                                    "SupabaseLogin",
+                                    loginError
+                                )
+                            }
+
+                        } catch (e: Exception) {
+
+                            loginLoading = false
+
+                            loginError =
+                                e.message
+                                    ?: "Unable to connect to Supabase."
+
+                            Log.e(
+                                "SupabaseLogin",
+                                loginError,
+                                e
+                            )
                         }
                     }
-
-                    /*
-                     * Login successful.
-                     *
-                     * Login → Dashboard
-                     */
-                    navigateTo("dashboard")
                 },
 
+
+                // =============================================
+                // REGISTER
+                // =============================================
+
                 onRegisterClick = {
+
+                    loginError = ""
+
                     navigateTo("register")
                 },
 
+
+                // =============================================
+                // FORGOT PASSWORD
+                // =============================================
+
                 onForgotPasswordClick = {
+
+                    loginError = ""
+
                     navigateTo("forgotPassword")
-                }
+                },
+
+
+                // =============================================
+                // LOADING
+                // =============================================
+
+                isLoading =
+                    loginLoading,
+
+
+                // =============================================
+                // ERROR
+                // =============================================
+
+                loginError =
+                    loginError
             )
         }
 
-        // ====================================================
-        // REGISTER
-        // ====================================================
+
+        // =====================================================
+        // REGISTER SCREEN
+        // =====================================================
 
         "register" -> {
 
             RegisterScreen(
+
+                onRegisterClick = {
+
+                    // Registration successful
+                    // Return to Login
+                    navigateBack()
+                },
+
+                onLoginClick = {
+
+                    navigateBack()
+                },
+
                 onBackToLogin = {
+
                     navigateBack()
                 }
             )
         }
 
-        // ====================================================
+
+        // =====================================================
         // FORGOT PASSWORD
-        // ====================================================
+        // =====================================================
 
         "forgotPassword" -> {
 
             ForgotPasswordScreen(
+
                 onBackToLogin = {
+
                     navigateBack()
                 }
             )
         }
 
-        // ====================================================
+
+        // =====================================================
         // DASHBOARD
-        // ====================================================
+        // =====================================================
 
         "dashboard" -> {
 
             DashboardScreen(
 
-                userName = userNameState.value,
+                userName =
+                    userName,
 
-                /*
-                 * Dashboard → Chatbot
-                 */
+                onProfileClick = {
+
+                    navigateTo("profile")
+                },
+
                 onChatbotClick = {
+
                     navigateTo("chatbot")
                 },
 
-                /*
-                 * Dashboard → Symptoms Checker
-                 */
                 onSymptomsClick = {
+
                     navigateTo("symptoms")
                 },
 
-                /*
-                 * Dashboard → Medicine Information
-                 */
                 onMedicineClick = {
+
                     navigateTo("medicine")
                 },
 
-                /*
-                 * Dashboard → Health Tips
-                 */
                 onHealthTipsClick = {
+
                     navigateTo("healthTips")
                 }
             )
         }
 
-        // ====================================================
+
+        // =====================================================
+        // PROFILE
+        // =====================================================
+
+        "profile" -> {
+
+            ProfileScreen(
+
+                userName =
+                    userName,
+
+                userEmail =
+                    userEmail,
+
+                onBackClick = {
+
+                    navigateBack()
+                },
+
+                onLogoutClick = {
+
+                    userName = ""
+                    userEmail = ""
+
+                    loginError = ""
+                    loginLoading = false
+
+                    screenStack.clear()
+
+                    screenStack.add(
+                        "login"
+                    )
+                }
+            )
+        }
+
+
+        // =====================================================
         // CHATBOT
-        // ====================================================
+        // =====================================================
 
         "chatbot" -> {
 
             ChatbotScreen(
+
                 onBackClick = {
+
                     navigateBack()
                 }
             )
         }
 
-        // ====================================================
+
+        // =====================================================
         // SYMPTOMS CHECKER
-        // ====================================================
+        // =====================================================
 
         "symptoms" -> {
 
             SymptomsCheckerScreen(
+
                 onBackClick = {
+
                     navigateBack()
                 }
             )
         }
 
-        // ====================================================
+
+        // =====================================================
         // MEDICINE INFORMATION
-        // ====================================================
+        // =====================================================
 
         "medicine" -> {
 
             MedicineInfoScreen(
 
-                /*
-                 * Medicine screen → Dashboard
-                 */
                 onBackClick = {
+
                     navigateBack()
                 },
 
-                /*
-                 * Medicine selected.
-                 *
-                 * Medicine → Medicine Detail
-                 */
                 onMedicineClick = { medicine ->
 
-                    selectedMedicineState.value = medicine
+                    selectedMedicine =
+                        medicine
 
-                    navigateTo("medicineDetail")
+                    navigateTo(
+                        "medicineDetail"
+                    )
                 }
             )
         }
 
-        // ====================================================
+
+        // =====================================================
         // MEDICINE DETAIL
-        // ====================================================
+        // =====================================================
 
         "medicineDetail" -> {
 
-            val selectedMedicine =
-                selectedMedicineState.value
+            val medicine =
+                selectedMedicine
 
-            /*
-             * Safety check.
-             *
-             * If no medicine is selected,
-             * return to Medicine Information.
-             */
-            if (selectedMedicine == null) {
+
+            if (medicine == null) {
 
                 navigateBack()
 
@@ -347,26 +504,28 @@ private fun MedicalChatbotNavigation() {
 
                 MedicineDetailScreen(
 
-                    medicine = selectedMedicine,
+                    medicine =
+                        medicine,
 
-                    /*
-                     * Medicine Detail → Medicine Information
-                     */
                     onBackClick = {
+
                         navigateBack()
                     }
                 )
             }
         }
 
-        // ====================================================
+
+        // =====================================================
         // HEALTH TIPS
-        // ====================================================
+        // =====================================================
 
         "healthTips" -> {
 
             HealthTipsScreen(
+
                 onBackClick = {
+
                     navigateBack()
                 }
             )
