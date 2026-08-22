@@ -3,7 +3,9 @@ package ui
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -11,27 +13,25 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -42,6 +42,12 @@ fun SymptomsCheckerScreen(
     onBackClick: () -> Unit = {}
 ) {
 
+    /*
+     * ============================================================
+     * SYMPTOMS
+     * ============================================================
+     */
+
     val symptoms = listOf(
         "Fever",
         "Headache",
@@ -51,230 +57,577 @@ fun SymptomsCheckerScreen(
         "Body Pain"
     )
 
-    val selectedSymptoms = remember {
-        mutableStateListOf<String>()
-    }
+    /*
+     * ============================================================
+     * SELECTED SYMPTOMS
+     * ============================================================
+     */
+
+    val selectedSymptoms =
+        remember {
+            mutableStateListOf<String>()
+        }
 
     var showResult by remember {
         mutableStateOf(false)
     }
 
-    Column(
+    /*
+     * ============================================================
+     * APP COLORS
+     * ============================================================
+     */
+
+    val primary = Color(0xFF087EA4)
+    val darkBlue = Color(0xFF123A56)
+    val gray = Color(0xFF71818C)
+
+    val backgroundTop = Color(0xFFEAF8FC)
+    val backgroundBottom = Color(0xFFD8F0F6)
+
+    /*
+     * ============================================================
+     * MAIN SCREEN
+     * ============================================================
+     */
+
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF071A33))
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        backgroundTop,
+                        backgroundBottom
+                    )
+                )
+            )
     ) {
 
-        // Header
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(
-                    horizontal = 12.dp,
-                    vertical = 10.dp
-                ),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-
-            IconButton(
-                onClick = {
-                    onBackClick()
-                }
-            ) {
-                Icon(
-                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                    contentDescription = "Back",
-                    tint = Color.White
-                )
-            }
-
-            Spacer(
-                modifier = Modifier.size(8.dp)
-            )
-
-            Text(
-                text = "Symptoms Checker",
-                color = Color.White,
-                fontSize = 20.sp,
-                fontWeight = FontWeight.Bold
-            )
-        }
-
         LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(horizontal = 20.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            modifier = Modifier.fillMaxSize(),
+
+            contentPadding = PaddingValues(
+                start = 20.dp,
+                top = 18.dp,
+                end = 20.dp,
+                bottom = 25.dp
+            ),
+
+            verticalArrangement = Arrangement.spacedBy(
+                12.dp
+            )
         ) {
+
+            /*
+             * ====================================================
+             * HEADER
+             * ====================================================
+             */
 
             item {
 
-                Spacer(
-                    modifier = Modifier.height(10.dp)
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
 
-                Text(
-                    text = "Select your symptoms",
-                    color = Color.White,
-                    fontSize = 22.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                    /*
+                     * BACK BUTTON
+                     *
+                     * Text arrow is used instead of Material icon
+                     * to avoid icon dependency errors.
+                     */
 
-                Spacer(
-                    modifier = Modifier.height(6.dp)
-                )
+                    IconButton(
+                        onClick = onBackClick
+                    ) {
 
-                Text(
-                    text = "Choose all the symptoms you are currently experiencing.",
-                    color = Color(0xFFB9EAF2),
-                    fontSize = 14.sp
-                )
+                        Text(
+                            text = "‹",
+                            color = darkBlue,
+                            fontSize = 40.sp,
+                            fontWeight = FontWeight.Light
+                        )
+                    }
 
-                Spacer(
-                    modifier = Modifier.height(12.dp)
-                )
+                    Spacer(
+                        modifier = Modifier.width(5.dp)
+                    )
+
+                    Column {
+
+                        Text(
+                            text = "Symptoms Checker",
+                            color = darkBlue,
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        Spacer(
+                            modifier = Modifier.height(3.dp)
+                        )
+
+                        Text(
+                            text = "Understand what you are experiencing",
+                            color = gray,
+                            fontSize = 12.sp
+                        )
+                    }
+                }
             }
 
-            items(symptoms) { symptom ->
+            /*
+             * ====================================================
+             * INTRO CARD
+             * ====================================================
+             */
 
-                val isSelected = selectedSymptoms.contains(symptom)
+            item {
 
                 Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable {
+                    modifier = Modifier.fillMaxWidth(),
 
-                            if (isSelected) {
-                                selectedSymptoms.remove(symptom)
-                            } else {
-                                selectedSymptoms.add(symptom)
-                            }
+                    shape = RoundedCornerShape(
+                        25.dp
+                    ),
 
-                            showResult = false
-                        },
-                    shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(
-                        containerColor = if (isSelected) {
-                            Color(0xFF0D5C70)
-                        } else {
-                            Color(0xFF123653)
-                        }
+                        containerColor = primary
+                    ),
+
+                    elevation = CardDefaults.cardElevation(
+                        defaultElevation = 8.dp
                     )
                 ) {
 
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalAlignment = Alignment.CenterVertically
+                            .padding(20.dp),
+
+                        verticalAlignment =
+                            Alignment.CenterVertically
                     ) {
 
-                        Text(
-                            text = symptom,
-                            color = Color.White,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Medium,
-                            modifier = Modifier.weight(1f)
+                        /*
+                         * SIMPLE HEALTH LOGO
+                         */
+
+                        Box(
+                            modifier = Modifier
+                                .size(58.dp)
+                                .background(
+                                    color = Color.White.copy(
+                                        alpha = 0.18f
+                                    ),
+                                    shape = RoundedCornerShape(
+                                        17.dp
+                                    )
+                                ),
+
+                            contentAlignment =
+                                Alignment.Center
+                        ) {
+
+                            Text(
+                                text = "+",
+                                color = Color.White,
+                                fontSize = 38.sp,
+                                fontWeight = FontWeight.Light
+                            )
+                        }
+
+                        Spacer(
+                            modifier = Modifier.width(14.dp)
                         )
 
-                        if (isSelected) {
-                            Icon(
-                                imageVector = Icons.Default.Check,
-                                contentDescription = "Selected",
-                                tint = Color(0xFF7DE8F0)
+                        Column {
+
+                            Text(
+                                text = "How are you feeling?",
+                                color = Color.White,
+                                fontSize = 18.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+
+                            Spacer(
+                                modifier = Modifier.height(5.dp)
+                            )
+
+                            Text(
+                                text = "Select all symptoms you currently have.",
+                                color = Color.White.copy(
+                                    alpha = 0.82f
+                                ),
+                                fontSize = 12.sp
                             )
                         }
                     }
                 }
             }
 
+            /*
+             * ====================================================
+             * SECTION TITLE
+             * ====================================================
+             */
+
             item {
 
-                Spacer(
-                    modifier = Modifier.height(8.dp)
+                Text(
+                    text = "Select Symptoms",
+                    color = darkBlue,
+                    fontSize = 19.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.padding(
+                        top = 4.dp
+                    )
                 )
+            }
+
+            /*
+             * ====================================================
+             * SYMPTOM CARDS
+             * ====================================================
+             */
+
+            items(
+                items = symptoms
+            ) { symptom ->
+
+                val selected =
+                    selectedSymptoms.contains(
+                        symptom
+                    )
+
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+
+                            if (selected) {
+
+                                selectedSymptoms.remove(
+                                    symptom
+                                )
+
+                            } else {
+
+                                selectedSymptoms.add(
+                                    symptom
+                                )
+                            }
+
+                            showResult = false
+                        },
+
+                    shape = RoundedCornerShape(
+                        19.dp
+                    ),
+
+                    colors = CardDefaults.cardColors(
+                        containerColor =
+                            if (selected) {
+                                primary
+                            } else {
+                                Color.White
+                            }
+                    ),
+
+                    elevation = CardDefaults.cardElevation(
+                        defaultElevation = 4.dp
+                    )
+                ) {
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(17.dp),
+
+                        verticalAlignment =
+                            Alignment.CenterVertically
+                    ) {
+
+                        /*
+                         * SYMPTOM INDICATOR
+                         */
+
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .background(
+                                    color =
+                                        if (selected) {
+                                            Color.White.copy(
+                                                alpha = 0.18f
+                                            )
+                                        } else {
+                                            Color(0xFFE8F7FB)
+                                        },
+
+                                    shape =
+                                        RoundedCornerShape(
+                                            14.dp
+                                        )
+                                ),
+
+                            contentAlignment =
+                                Alignment.Center
+                        ) {
+
+                            Text(
+                                text =
+                                    when (symptom) {
+                                        "Fever" -> "°"
+                                        "Headache" -> "H"
+                                        "Cough" -> "C"
+                                        "Fatigue" -> "F"
+                                        "Nausea" -> "N"
+                                        "Body Pain" -> "P"
+                                        else -> "+"
+                                    },
+
+                                color =
+                                    if (selected) {
+                                        Color.White
+                                    } else {
+                                        primary
+                                    },
+
+                                fontSize = 18.sp,
+
+                                fontWeight =
+                                    FontWeight.Bold
+                            )
+                        }
+
+                        Spacer(
+                            modifier = Modifier.width(13.dp)
+                        )
+
+                        Text(
+                            text = symptom,
+
+                            color =
+                                if (selected) {
+                                    Color.White
+                                } else {
+                                    darkBlue
+                                },
+
+                            fontSize = 15.sp,
+
+                            fontWeight =
+                                FontWeight.Medium,
+
+                            modifier =
+                                Modifier.weight(1f)
+                        )
+
+                        /*
+                         * CHECK INDICATOR
+                         */
+
+                        if (selected) {
+
+                            Box(
+                                modifier = Modifier
+                                    .size(27.dp)
+                                    .background(
+                                        Color.White,
+                                        RoundedCornerShape(
+                                            50
+                                        )
+                                    ),
+
+                                contentAlignment =
+                                    Alignment.Center
+                            ) {
+
+                                Text(
+                                    text = "✓",
+                                    color = primary,
+                                    fontSize = 17.sp,
+                                    fontWeight =
+                                        FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            /*
+             * ====================================================
+             * CHECK BUTTON
+             * ====================================================
+             */
+
+            item {
 
                 Button(
                     onClick = {
                         showResult = true
                     },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = selectedSymptoms.isNotEmpty(),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = Color(0xFF087EA4),
-                        disabledContainerColor = Color(0xFF35515C)
-                    )
+
+                    enabled =
+                        selectedSymptoms.isNotEmpty(),
+
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(54.dp),
+
+                    shape =
+                        RoundedCornerShape(18.dp),
+
+                    colors =
+                        ButtonDefaults.buttonColors(
+                            containerColor = primary,
+                            disabledContainerColor =
+                                Color(0xFFB7CBD1)
+                        )
                 ) {
+
                     Text(
                         text = "Check Symptoms",
-                        fontSize = 16.sp,
+                        fontSize = 15.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }
+            }
 
-                if (showResult) {
+            /*
+             * ====================================================
+             * RESULT CARD
+             * ====================================================
+             */
 
-                    Spacer(
-                        modifier = Modifier.height(16.dp)
-                    )
+            if (showResult) {
+
+                item {
 
                     Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = Color(0xFF123653)
-                        )
+                        modifier =
+                            Modifier.fillMaxWidth(),
+
+                        shape =
+                            RoundedCornerShape(22.dp),
+
+                        colors =
+                            CardDefaults.cardColors(
+                                containerColor =
+                                    Color.White
+                            ),
+
+                        elevation =
+                            CardDefaults.cardElevation(
+                                defaultElevation = 6.dp
+                            )
                     ) {
 
                         Column(
-                            modifier = Modifier.padding(18.dp)
+                            modifier =
+                                Modifier.padding(20.dp)
                         ) {
 
                             Text(
-                                text = "Symptoms Selected",
-                                color = Color(0xFF7DE8F0),
-                                fontSize = 18.sp,
-                                fontWeight = FontWeight.Bold
+                                text =
+                                    "Selected Symptoms",
+
+                                color =
+                                    primary,
+
+                                fontSize =
+                                    18.sp,
+
+                                fontWeight =
+                                    FontWeight.Bold
                             )
 
                             Spacer(
-                                modifier = Modifier.height(8.dp)
+                                modifier =
+                                    Modifier.height(10.dp)
                             )
 
                             Text(
-                                text = selectedSymptoms.joinToString(", "),
-                                color = Color.White,
-                                fontSize = 14.sp
+                                text =
+                                    selectedSymptoms
+                                        .joinToString(
+                                            separator = ", "
+                                        ),
+
+                                color =
+                                    darkBlue,
+
+                                fontSize =
+                                    14.sp
                             )
 
                             Spacer(
-                                modifier = Modifier.height(12.dp)
+                                modifier =
+                                    Modifier.height(12.dp)
                             )
 
                             Text(
-                                text = "Prediction will be available after the medical ML model is integrated.",
-                                color = Color(0xFFB9EAF2),
-                                fontSize = 13.sp
+                                text =
+                                    "AI-based symptom prediction will be available after the medical model is integrated.",
+
+                                color =
+                                    gray,
+
+                                fontSize =
+                                    12.sp,
+
+                                lineHeight =
+                                    18.sp
                             )
                         }
                     }
                 }
+            }
 
-                Spacer(
-                    modifier = Modifier.height(18.dp)
-                )
+            /*
+             * ====================================================
+             * MEDICAL DISCLAIMER
+             * ====================================================
+             */
 
-                Text(
-                    text = "⚠ This tool is not a medical diagnosis. Please consult a qualified healthcare professional for medical advice.",
-                    color = Color(0xFF9BBCC8),
-                    fontSize = 11.sp,
-                    modifier = Modifier.fillMaxWidth()
-                )
+            item {
 
-                Spacer(
-                    modifier = Modifier.height(20.dp)
-                )
+                Card(
+                    modifier =
+                        Modifier.fillMaxWidth(),
+
+                    shape =
+                        RoundedCornerShape(18.dp),
+
+                    colors =
+                        CardDefaults.cardColors(
+                            containerColor =
+                                Color.White.copy(
+                                    alpha = 0.88f
+                                )
+                        )
+                ) {
+
+                    Text(
+                        text =
+                            "⚠ This tool is not a medical diagnosis. Please consult a qualified healthcare professional for medical advice.",
+
+                        modifier =
+                            Modifier.padding(16.dp),
+
+                        color =
+                            gray,
+
+                        fontSize =
+                            11.sp,
+
+                        lineHeight =
+                            17.sp
+                    )
+                }
             }
         }
     }

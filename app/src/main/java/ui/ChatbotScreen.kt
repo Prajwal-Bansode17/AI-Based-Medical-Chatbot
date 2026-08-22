@@ -14,16 +14,17 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Send
-import androidx.compose.material3.Icon
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -31,12 +32,12 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
-import androidx.compose.runtime.LaunchedEffect
 
 data class ChatMessage(
     val text: String,
@@ -60,6 +61,12 @@ fun ChatbotScreen(
         mutableStateListOf<ChatMessage>()
     }
 
+    /*
+     * ============================================================
+     * SEND MESSAGE
+     * ============================================================
+     */
+
     fun sendMessage(text: String) {
 
         val cleanText = text.trim()
@@ -80,13 +87,13 @@ fun ChatbotScreen(
     }
 
     /*
-     * Temporary AI response.
+     * ============================================================
+     * TEMPORARY AI RESPONSE
      *
-     * This is NOT the ML model yet.
-     * Later we will connect:
-     *
-     * Android → Flask API → ML Model → AI Response
+     * Later we will replace this with your actual AI backend.
+     * ============================================================
      */
+
     LaunchedEffect(isTyping) {
 
         if (isTyping) {
@@ -104,264 +111,424 @@ fun ChatbotScreen(
         }
     }
 
-    Column(
+    /*
+     * ============================================================
+     * APP COLORS
+     * ============================================================
+     */
+
+    val primary = Color(0xFF087EA4)
+    val darkBlue = Color(0xFF123A56)
+    val gray = Color(0xFF71818C)
+    val lightBlue = Color(0xFFEAF8FC)
+    val lightBlueBottom = Color(0xFFD8F0F6)
+
+    /*
+     * ============================================================
+     * MAIN SCREEN
+     * ============================================================
+     */
+
+    Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFF071A33))
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        lightBlue,
+                        lightBlueBottom
+                    )
+                )
+            )
     ) {
 
-        // ---------------------------------------------------------
-        // 4.4.2 CHAT HEADER
-        // ---------------------------------------------------------
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(
-                    horizontal = 12.dp,
-                    vertical = 10.dp
-                ),
-            verticalAlignment = Alignment.CenterVertically
+        Column(
+            modifier = Modifier.fillMaxSize()
         ) {
 
-            IconButton(
-                onClick = {
-                    onBackClick()
-                }
+            /*
+             * ====================================================
+             * HEADER
+             * ====================================================
+             */
+
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(
+                    bottomStart = 25.dp,
+                    bottomEnd = 25.dp
+                ),
+                colors = CardDefaults.cardColors(
+                    containerColor = Color.White
+                ),
+                elevation = CardDefaults.cardElevation(
+                    defaultElevation = 7.dp
+                )
             ) {
 
-                Icon(
-                    imageVector = Icons.Default.ArrowBack,
-                    contentDescription = "Back",
-                    tint = Color.White
-                )
-            }
-
-            Spacer(
-                modifier = Modifier.width(8.dp)
-            )
-
-            Column {
-
-                Text(
-                    text = "AI Medical Assistant",
-                    color = Color.White,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold
-                )
-
-                Text(
-                    text = "Your personal health assistant",
-                    color = Color(0xFFB9EAF2),
-                    fontSize = 12.sp
-                )
-            }
-        }
-
-        // ---------------------------------------------------------
-        // CHAT CONTENT
-        // ---------------------------------------------------------
-
-        Box(
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-        ) {
-
-            if (messages.isEmpty()) {
-
-                // -------------------------------------------------
-                // 4.4.3 AI WELCOME MESSAGE
-                // -------------------------------------------------
-
-                Column(
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(20.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-
-                    Spacer(
-                        modifier = Modifier.height(35.dp)
-                    )
-
-                    Text(
-                        text = "👋",
-                        fontSize = 42.sp
-                    )
-
-                    Spacer(
-                        modifier = Modifier.height(12.dp)
-                    )
-
-                    Text(
-                        text = "How can I help you today?",
-                        color = Color.White,
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    Spacer(
-                        modifier = Modifier.height(8.dp)
-                    )
-
-                    Text(
-                        text = "Ask me about symptoms, diseases,\nmedicines or general health information.",
-                        color = Color(0xFFB9EAF2),
-                        fontSize = 14.sp
-                    )
-
-                    Spacer(
-                        modifier = Modifier.height(28.dp)
-                    )
-
-                    // Suggested questions
-
-                    SuggestedQuestion(
-                        text = "What are the symptoms of fever?",
-                        onClick = {
-                            sendMessage("What are the symptoms of fever?")
-                        }
-                    )
-
-                    SuggestedQuestion(
-                        text = "What causes headache?",
-                        onClick = {
-                            sendMessage("What causes headache?")
-                        }
-                    )
-
-                    SuggestedQuestion(
-                        text = "How can I improve my health?",
-                        onClick = {
-                            sendMessage("How can I improve my health?")
-                        }
-                    )
-                }
-
-            } else {
-
-                // -------------------------------------------------
-                // 4.4.4 USER MESSAGE BUBBLES
-                // 4.4.5 AI RESPONSE BUBBLES
-                // -------------------------------------------------
-
-                LazyColumn(
-                    modifier = Modifier
-                        .fillMaxSize()
                         .padding(
                             horizontal = 12.dp,
-                            vertical = 8.dp
+                            vertical = 12.dp
                         ),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
 
-                    items(messages) { chatMessage ->
+                    /*
+                     * BACK BUTTON
+                     *
+                     * Using text instead of Material icon so
+                     * there is no icon dependency.
+                     */
 
-                        ChatBubble(
-                            message = chatMessage
+                    IconButton(
+                        onClick = onBackClick
+                    ) {
+
+                        Text(
+                            text = "‹",
+                            color = darkBlue,
+                            fontSize = 40.sp,
+                            fontWeight = FontWeight.Light
                         )
                     }
 
-                    // -------------------------------------------------
-                    // 4.4.8 TYPING / LOADING INDICATOR
-                    // -------------------------------------------------
+                    /*
+                     * AI LOGO
+                     */
 
-                    if (isTyping) {
+                    Box(
+                        modifier = Modifier
+                            .size(50.dp)
+                            .background(
+                                color = Color(0xFFE8F7FB),
+                                shape = CircleShape
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
 
-                        item {
+                        Text(
+                            text = "AI",
+                            color = primary,
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
 
-                            TypingIndicator()
+                    Spacer(
+                        modifier = Modifier.width(12.dp)
+                    )
+
+                    Column {
+
+                        Text(
+                            text = "AI Medical Assistant",
+                            color = darkBlue,
+                            fontSize = 19.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        Spacer(
+                            modifier = Modifier.height(3.dp)
+                        )
+
+                        Text(
+                            text = "Your intelligent health companion",
+                            color = gray,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+            }
+
+            /*
+             * ====================================================
+             * CHAT AREA
+             * ====================================================
+             */
+
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+            ) {
+
+                /*
+                 * =================================================
+                 * EMPTY CHAT
+                 * =================================================
+                 */
+
+                if (messages.isEmpty()) {
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+
+                        Spacer(
+                            modifier = Modifier.height(30.dp)
+                        )
+
+                        /*
+                         * AI CIRCLE
+                         */
+
+                        Box(
+                            modifier = Modifier
+                                .size(85.dp)
+                                .background(
+                                    color = Color.White,
+                                    shape = CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+
+                            Text(
+                                text = "AI",
+                                color = primary,
+                                fontSize = 25.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        Spacer(
+                            modifier = Modifier.height(18.dp)
+                        )
+
+                        Text(
+                            text = "How can I help you today?",
+                            color = darkBlue,
+                            fontSize = 21.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        Spacer(
+                            modifier = Modifier.height(7.dp)
+                        )
+
+                        Text(
+                            text = "Ask me about symptoms, medicines,\ndiseases or general health information.",
+                            color = gray,
+                            fontSize = 13.sp
+                        )
+
+                        Spacer(
+                            modifier = Modifier.height(25.dp)
+                        )
+
+                        Text(
+                            text = "Try asking",
+                            color = darkBlue,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        Spacer(
+                            modifier = Modifier.height(10.dp)
+                        )
+
+                        SuggestedQuestion(
+                            text = "What are the symptoms of fever?",
+                            onClick = {
+                                sendMessage(
+                                    "What are the symptoms of fever?"
+                                )
+                            }
+                        )
+
+                        SuggestedQuestion(
+                            text = "What causes headache?",
+                            onClick = {
+                                sendMessage(
+                                    "What causes headache?"
+                                )
+                            }
+                        )
+
+                        SuggestedQuestion(
+                            text = "How can I improve my health?",
+                            onClick = {
+                                sendMessage(
+                                    "How can I improve my health?"
+                                )
+                            }
+                        )
+                    }
+
+                } else {
+
+                    /*
+                     * =================================================
+                     * CHAT MESSAGES
+                     * =================================================
+                     */
+
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                            horizontal = 14.dp,
+                            vertical = 14.dp
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+
+                        items(messages) { chatMessage ->
+
+                            ChatBubble(
+                                message = chatMessage
+                            )
+                        }
+
+                        if (isTyping) {
+
+                            item {
+
+                                TypingIndicator()
+                            }
                         }
                     }
                 }
             }
-        }
 
-        // ---------------------------------------------------------
-        // 4.4.9 MEDICAL DISCLAIMER
-        // ---------------------------------------------------------
+            /*
+             * ====================================================
+             * DISCLAIMER
+             * ====================================================
+             */
 
-        Text(
-            text = "⚠ Medical information is for educational purposes only. Consult a healthcare professional for medical advice.",
-            color = Color(0xFF9BBCC8),
-            fontSize = 10.sp,
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(
-                    horizontal = 16.dp,
-                    vertical = 4.dp
-                )
-        )
-
-        // ---------------------------------------------------------
-        // 4.4.6 MESSAGE INPUT BOX
-        // 4.4.7 SEND BUTTON
-        // ---------------------------------------------------------
-
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(
-                    horizontal = 12.dp,
-                    vertical = 10.dp
-                ),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-
-            OutlinedTextField(
-                value = message,
-
-                onValueChange = {
-                    message = it
-                },
-
-                modifier = Modifier.weight(1f),
-
-                placeholder = {
-                    Text(
-                        text = "Ask something..."
+            Text(
+                text = "⚠ Medical information is for educational purposes only.",
+                color = gray,
+                fontSize = 10.sp,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        horizontal = 16.dp,
+                        vertical = 4.dp
                     )
-                },
-
-                singleLine = true,
-
-                shape = RoundedCornerShape(16.dp),
-
-                enabled = !isTyping
             )
 
-            Spacer(
-                modifier = Modifier.width(8.dp)
-            )
+            /*
+             * ====================================================
+             * MESSAGE INPUT
+             * ====================================================
+             */
 
-            IconButton(
-                onClick = {
-                    sendMessage(message)
-                },
-                enabled = message.trim().isNotEmpty() && !isTyping
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(
+                    topStart = 24.dp,
+                    topEnd = 24.dp
+                ),
+                colors = CardDefaults.cardColors(
+                    containerColor = Color.White
+                ),
+                elevation = CardDefaults.cardElevation(
+                    defaultElevation = 8.dp
+                )
             ) {
 
-                Icon(
-                    imageVector = Icons.Default.Send,
-                    contentDescription = "Send",
-                    tint = if (
-                        message.trim().isNotEmpty() && !isTyping
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(
+                            horizontal = 12.dp,
+                            vertical = 10.dp
+                        ),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+
+                    OutlinedTextField(
+                        value = message,
+
+                        onValueChange = {
+                            message = it
+                        },
+
+                        modifier = Modifier.weight(1f),
+
+                        placeholder = {
+                            Text(
+                                text = "Ask something..."
+                            )
+                        },
+
+                        singleLine = true,
+
+                        enabled = !isTyping,
+
+                        shape = RoundedCornerShape(17.dp),
+
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = primary,
+                            unfocusedBorderColor = Color(0xFFD8E5E9),
+                            cursorColor = primary
+                        )
+                    )
+
+                    Spacer(
+                        modifier = Modifier.width(7.dp)
+                    )
+
+                    /*
+                     * SEND BUTTON
+                     *
+                     * Using a normal Text "➤" instead of
+                     * Material Send icon.
+                     */
+
+                    Box(
+                        modifier = Modifier
+                            .size(50.dp)
+                            .background(
+                                color =
+                                    if (
+                                        message.trim().isNotEmpty() &&
+                                        !isTyping
+                                    ) {
+                                        primary
+                                    } else {
+                                        Color(0xFFB7CBD1)
+                                    },
+                                shape = CircleShape
+                            ),
+                        contentAlignment = Alignment.Center
                     ) {
-                        Color(0xFF7DE8F0)
-                    } else {
-                        Color(0xFF55727D)
+
+                        IconButton(
+                            onClick = {
+                                sendMessage(message)
+                            },
+                            enabled =
+                                message.trim().isNotEmpty() &&
+                                        !isTyping
+                        ) {
+
+                            Text(
+                                text = "➤",
+                                color = Color.White,
+                                fontSize = 22.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
-                )
+                }
             }
         }
     }
 }
 
 
-// ================================================================
-// SUGGESTED QUESTION
-// ================================================================
+/*
+ * ================================================================
+ * SUGGESTED QUESTION
+ * ================================================================
+ */
 
 @Composable
 fun SuggestedQuestion(
@@ -369,83 +536,117 @@ fun SuggestedQuestion(
     onClick: () -> Unit
 ) {
 
-    TextButton(
-        onClick = onClick,
+    Card(
         modifier = Modifier
             .fillMaxWidth()
             .padding(
-                horizontal = 12.dp,
-                vertical = 3.dp
-            )
+                vertical = 4.dp
+            ),
+
+        shape = RoundedCornerShape(17.dp),
+
+        colors = CardDefaults.cardColors(
+            containerColor = Color.White
+        ),
+
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = 3.dp
+        )
     ) {
 
-        Text(
-            text = text,
-            color = Color(0xFF7DE8F0),
-            fontSize = 13.sp
-        )
+        TextButton(
+            onClick = onClick,
+            modifier = Modifier.fillMaxWidth()
+        ) {
+
+            Text(
+                text = text,
+                color = Color(0xFF087EA4),
+                fontSize = 13.sp
+            )
+        }
     }
 }
 
 
-// ================================================================
-// CHAT BUBBLE
-// ================================================================
+/*
+ * ================================================================
+ * CHAT BUBBLE
+ * ================================================================
+ */
 
 @Composable
 fun ChatBubble(
     message: ChatMessage
 ) {
 
+    val primary = Color(0xFF087EA4)
+    val darkBlue = Color(0xFF123A56)
+
     Row(
         modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = if (message.isUser) {
-            Arrangement.End
-        } else {
-            Arrangement.Start
-        }
+        horizontalArrangement =
+            if (message.isUser) {
+                Arrangement.End
+            } else {
+                Arrangement.Start
+            }
     ) {
 
         Box(
             modifier = Modifier
                 .fillMaxWidth(0.82f)
                 .background(
-                    color = if (message.isUser) {
-                        Color(0xFF087EA4)
-                    } else {
-                        Color(0xFF123653)
-                    },
-                    shape = RoundedCornerShape(
-                        topStart = 16.dp,
-                        topEnd = 16.dp,
-                        bottomStart = if (message.isUser) {
-                            16.dp
+                    color =
+                        if (message.isUser) {
+                            primary
                         } else {
-                            4.dp
+                            Color.White
                         },
-                        bottomEnd = if (message.isUser) {
-                            4.dp
-                        } else {
-                            16.dp
-                        }
+                    shape = RoundedCornerShape(
+                        topStart = 18.dp,
+                        topEnd = 18.dp,
+                        bottomStart =
+                            if (message.isUser) {
+                                18.dp
+                            } else {
+                                5.dp
+                            },
+                        bottomEnd =
+                            if (message.isUser) {
+                                5.dp
+                            } else {
+                                18.dp
+                            }
                     )
                 )
-                .padding(13.dp)
+                .padding(14.dp)
         ) {
 
             Text(
                 text = message.text,
-                color = Color.White,
-                fontSize = 14.sp
+
+                color =
+                    if (message.isUser) {
+                        Color.White
+                    } else {
+                        darkBlue
+                    },
+
+                fontSize = 14.sp,
+
+                lineHeight = 20.sp
             )
         }
     }
 }
 
 
-// ================================================================
-// TYPING INDICATOR
-// ================================================================
+/*
+ * ================================================================
+ * TYPING INDICATOR
+ * ================================================================
+ */
 
 @Composable
 fun TypingIndicator() {
@@ -453,30 +654,28 @@ fun TypingIndicator() {
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(
-                start = 8.dp,
-                top = 4.dp,
-                bottom = 4.dp
-            ),
-        verticalAlignment = Alignment.CenterVertically
+            .padding(start = 4.dp),
+
+        verticalAlignment =
+            Alignment.CenterVertically
     ) {
 
         Box(
             modifier = Modifier
                 .background(
-                    Color(0xFF123653),
-                    RoundedCornerShape(16.dp)
+                    color = Color.White,
+                    shape = RoundedCornerShape(17.dp)
                 )
                 .padding(
-                    horizontal = 14.dp,
-                    vertical = 10.dp
+                    horizontal = 16.dp,
+                    vertical = 11.dp
                 )
         ) {
 
             Text(
                 text = "AI is typing...",
-                color = Color(0xFFB9EAF2),
-                fontSize = 13.sp
+                color = Color(0xFF71818C),
+                fontSize = 12.sp
             )
         }
     }

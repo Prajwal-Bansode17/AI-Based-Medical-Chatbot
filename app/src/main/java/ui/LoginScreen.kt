@@ -1,6 +1,7 @@
 package ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -11,11 +12,19 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -25,6 +34,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -43,6 +53,10 @@ fun LoginScreen(
     isLoading: Boolean = false,
     loginError: String = ""
 ) {
+
+    // =========================================================
+    // INPUT STATE
+    // =========================================================
 
     var email by remember {
         mutableStateOf("")
@@ -66,97 +80,181 @@ fun LoginScreen(
 
 
     // =========================================================
-    // BACKGROUND
+    // COLORS
     // =========================================================
 
-    val backgroundBrush =
-        Brush.verticalGradient(
-            colors = listOf(
-                Color(0xFF06152B),
-                Color(0xFF083B56),
-                Color(0xFF087EA4)
-            )
-        )
+    val backgroundTop = Color(0xFFEAF8FC)
 
+    val backgroundBottom = Color(0xFFD8F0F6)
+
+    val primaryBlue = Color(0xFF087EA4)
+
+    val darkBlue = Color(0xFF123A56)
+
+    val lightBlue = Color(0xFFE8F7FB)
+
+    val textDark = Color(0xFF163247)
+
+    val textGray = Color(0xFF71818C)
+
+    val errorRed = Color(0xFFD64545)
+
+
+    // =========================================================
+    // MAIN BACKGROUND
+    // =========================================================
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(backgroundBrush)
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        backgroundTop,
+                        backgroundBottom
+                    )
+                )
+            )
     ) {
+
+        // =====================================================
+        // DECORATIVE BACKGROUND CIRCLE - TOP RIGHT
+        // =====================================================
+
+        Box(
+            modifier = Modifier
+                .size(190.dp)
+                .align(Alignment.TopEnd)
+                .background(
+                    color = Color(0x22087EA4),
+                    shape = CircleShape
+                )
+        )
+
+
+        // =====================================================
+        // DECORATIVE BACKGROUND CIRCLE - BOTTOM LEFT
+        // =====================================================
+
+        Box(
+            modifier = Modifier
+                .size(120.dp)
+                .align(Alignment.BottomStart)
+                .background(
+                    color = Color(0x18087EA4),
+                    shape = CircleShape
+                )
+        )
+
+
+        // =====================================================
+        // MAIN CONTENT
+        // =====================================================
 
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(
-                    horizontal = 24.dp,
-                    vertical = 28.dp
+                    horizontal = 22.dp,
+                    vertical = 24.dp
                 ),
 
-            horizontalAlignment =
-                Alignment.CenterHorizontally,
+            horizontalAlignment = Alignment.CenterHorizontally,
 
-            verticalArrangement =
-                Arrangement.Center
+            verticalArrangement = Arrangement.Center
         ) {
 
 
             // =================================================
-            // LOGO
+            // APP LOGO
             // =================================================
 
             Box(
                 modifier = Modifier
                     .size(82.dp)
+                    .shadow(
+                        elevation = 12.dp,
+                        shape = RoundedCornerShape(25.dp)
+                    )
                     .background(
-                        Color.White,
-                        RoundedCornerShape(24.dp)
+                        color = Color.White,
+                        shape = RoundedCornerShape(25.dp)
+                    )
+                    .border(
+                        width = 1.dp,
+                        color = Color(0xFFE1EEF2),
+                        shape = RoundedCornerShape(25.dp)
                     ),
 
-                contentAlignment =
-                    Alignment.Center
+                contentAlignment = Alignment.Center
             ) {
 
-                Text(
-                    text = "+",
-                    color = Color(0xFF087EA4),
-                    fontSize = 54.sp,
-                    fontWeight = FontWeight.Bold
-                )
+                Box(
+                    modifier = Modifier
+                        .size(52.dp)
+                        .background(
+                            color = primaryBlue,
+                            shape = CircleShape
+                        ),
+
+                    contentAlignment = Alignment.Center
+                ) {
+
+                    Text(
+                        text = "+",
+
+                        color = Color.White,
+
+                        fontSize = 39.sp,
+
+                        fontWeight = FontWeight.Bold
+                    )
+                }
             }
 
 
             Spacer(
-                modifier =
-                    Modifier.height(16.dp)
+                modifier = Modifier.height(14.dp)
             )
 
 
+            // =================================================
+            // APP NAME
+            // =================================================
+
             Text(
                 text = "MedAssist AI",
-                color = Color.White,
-                fontSize = 30.sp,
+
+                color = darkBlue,
+
+                fontSize = 29.sp,
+
                 fontWeight = FontWeight.Bold
             )
 
 
             Spacer(
-                modifier =
-                    Modifier.height(6.dp)
+                modifier = Modifier.height(4.dp)
             )
 
 
+            // =================================================
+            // APP TAGLINE
+            // =================================================
+
             Text(
                 text = "Your intelligent health companion",
-                color = Color(0xFFBCEAF2),
-                fontSize = 14.sp,
+
+                color = textGray,
+
+                fontSize = 13.sp,
+
                 textAlign = TextAlign.Center
             )
 
 
             Spacer(
-                modifier =
-                    Modifier.height(26.dp)
+                modifier = Modifier.height(26.dp)
             )
 
 
@@ -165,137 +263,249 @@ fun LoginScreen(
             // =================================================
 
             Column(
-
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(
-                        Color.White,
-                        RoundedCornerShape(24.dp)
+                    .shadow(
+                        elevation = 14.dp,
+                        shape = RoundedCornerShape(28.dp)
                     )
-                    .padding(22.dp)
+                    .background(
+                        color = Color.White,
+                        shape = RoundedCornerShape(28.dp)
+                    )
+                    .padding(23.dp)
             ) {
 
 
+                // =================================================
+                // WELCOME HEADER
+                // =================================================
+
                 Text(
                     text = "Welcome Back",
-                    color = Color(0xFF09233F),
+
+                    color = textDark,
+
                     fontSize = 25.sp,
+
                     fontWeight = FontWeight.Bold
                 )
 
 
                 Spacer(
-                    modifier =
-                        Modifier.height(5.dp)
+                    modifier = Modifier.height(5.dp)
                 )
 
 
                 Text(
-                    text = "Sign in to continue",
-                    color = Color(0xFF6D7D8A),
-                    fontSize = 14.sp
+                    text = "Sign in to continue to your health dashboard.",
+
+                    color = textGray,
+
+                    fontSize = 13.sp,
+
+                    lineHeight = 19.sp
                 )
 
 
                 Spacer(
-                    modifier =
-                        Modifier.height(20.dp)
+                    modifier = Modifier.height(22.dp)
                 )
 
 
                 // =================================================
-                // EMAIL
+                // EMAIL LABEL
+                // =================================================
+
+                Text(
+                    text = "Email address",
+
+                    color = textDark,
+
+                    fontSize = 13.sp,
+
+                    fontWeight = FontWeight.SemiBold
+                )
+
+
+                Spacer(
+                    modifier = Modifier.height(7.dp)
+                )
+
+
+                // =================================================
+                // EMAIL FIELD
                 // =================================================
 
                 OutlinedTextField(
-
                     value = email,
 
                     onValueChange = {
-
                         email = it
-
                         emailError = ""
                     },
 
-                    modifier =
-                        Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth(),
 
-                    enabled =
-                        !isLoading,
+                    enabled = !isLoading,
 
                     singleLine = true,
 
-                    label = {
-                        Text("Email")
-                    },
-
                     placeholder = {
-                        Text("Enter your email")
+                        Text(
+                            text = "Enter your email",
+
+                            color = Color(0xFF9AAAB3),
+
+                            fontSize = 14.sp
+                        )
                     },
 
-                    isError =
-                        emailError.isNotEmpty(),
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Email,
 
-                    shape =
-                        RoundedCornerShape(14.dp)
+                            contentDescription = "Email",
+
+                            tint = primaryBlue
+                        )
+                    },
+
+                    isError = emailError.isNotEmpty(),
+
+                    shape = RoundedCornerShape(15.dp),
+
+                    colors = OutlinedTextFieldDefaults.colors(
+
+                        focusedBorderColor = primaryBlue,
+
+                        unfocusedBorderColor = Color(0xFFD6E2E7),
+
+                        focusedContainerColor = Color(0xFFFAFDFE),
+
+                        unfocusedContainerColor = Color(0xFFFAFDFE),
+
+                        cursorColor = primaryBlue,
+
+                        focusedTextColor = textDark,
+
+                        unfocusedTextColor = textDark
+                    )
                 )
 
+
+                // =================================================
+                // EMAIL ERROR
+                // =================================================
 
                 if (emailError.isNotEmpty()) {
 
                     Spacer(
-                        modifier =
-                            Modifier.height(4.dp)
+                        modifier = Modifier.height(4.dp)
                     )
 
                     Text(
                         text = emailError,
-                        color = Color(0xFFD32F2F),
-                        fontSize = 12.sp
+
+                        color = errorRed,
+
+                        fontSize = 11.sp
                     )
                 }
 
 
                 Spacer(
-                    modifier =
-                        Modifier.height(14.dp)
+                    modifier = Modifier.height(16.dp)
                 )
 
 
                 // =================================================
-                // PASSWORD
+                // PASSWORD LABEL
+                // =================================================
+
+                Text(
+                    text = "Password",
+
+                    color = textDark,
+
+                    fontSize = 13.sp,
+
+                    fontWeight = FontWeight.SemiBold
+                )
+
+
+                Spacer(
+                    modifier = Modifier.height(7.dp)
+                )
+
+
+                // =================================================
+                // PASSWORD FIELD
                 // =================================================
 
                 OutlinedTextField(
-
                     value = password,
 
                     onValueChange = {
-
                         password = it
-
                         passwordError = ""
                     },
 
-                    modifier =
-                        Modifier.fillMaxWidth(),
+                    modifier = Modifier.fillMaxWidth(),
 
-                    enabled =
-                        !isLoading,
+                    enabled = !isLoading,
 
                     singleLine = true,
 
-                    label = {
-                        Text("Password")
-                    },
-
                     placeholder = {
-                        Text("Enter your password")
+                        Text(
+                            text = "Enter your password",
+
+                            color = Color(0xFF9AAAB3),
+
+                            fontSize = 14.sp
+                        )
                     },
 
-                    isError =
-                        passwordError.isNotEmpty(),
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Lock,
+
+                            contentDescription = "Password",
+
+                            tint = primaryBlue
+                        )
+                    },
+
+                    // =================================================
+                    // SHOW / HIDE PASSWORD
+                    // =================================================
+
+                    trailingIcon = {
+
+                        TextButton(
+                            onClick = {
+                                passwordVisible = !passwordVisible
+                            },
+
+                            enabled = !isLoading
+                        ) {
+
+                            Text(
+                                text = if (passwordVisible) {
+                                    "HIDE"
+                                } else {
+                                    "SHOW"
+                                },
+
+                                color = primaryBlue,
+
+                                fontSize = 11.sp,
+
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    },
 
                     visualTransformation =
                         if (passwordVisible) {
@@ -304,53 +514,45 @@ fun LoginScreen(
                             PasswordVisualTransformation()
                         },
 
-                    trailingIcon = {
+                    isError = passwordError.isNotEmpty(),
 
-                        TextButton(
-                            onClick = {
-                                passwordVisible =
-                                    !passwordVisible
-                            },
+                    shape = RoundedCornerShape(15.dp),
 
-                            enabled =
-                                !isLoading
-                        ) {
+                    colors = OutlinedTextFieldDefaults.colors(
 
-                            Text(
-                                text =
-                                    if (passwordVisible) {
-                                        "HIDE"
-                                    } else {
-                                        "SHOW"
-                                    },
+                        focusedBorderColor = primaryBlue,
 
-                                color =
-                                    Color(0xFF087EA4),
+                        unfocusedBorderColor = Color(0xFFD6E2E7),
 
-                                fontSize = 11.sp,
+                        focusedContainerColor = Color(0xFFFAFDFE),
 
-                                fontWeight =
-                                    FontWeight.Bold
-                            )
-                        }
-                    },
+                        unfocusedContainerColor = Color(0xFFFAFDFE),
 
-                    shape =
-                        RoundedCornerShape(14.dp)
+                        cursorColor = primaryBlue,
+
+                        focusedTextColor = textDark,
+
+                        unfocusedTextColor = textDark
+                    )
                 )
 
+
+                // =================================================
+                // PASSWORD ERROR
+                // =================================================
 
                 if (passwordError.isNotEmpty()) {
 
                     Spacer(
-                        modifier =
-                            Modifier.height(4.dp)
+                        modifier = Modifier.height(4.dp)
                     )
 
                     Text(
                         text = passwordError,
-                        color = Color(0xFFD32F2F),
-                        fontSize = 12.sp
+
+                        color = errorRed,
+
+                        fontSize = 11.sp
                     )
                 }
 
@@ -360,31 +562,25 @@ fun LoginScreen(
                 // =================================================
 
                 Row(
+                    modifier = Modifier.fillMaxWidth(),
 
-                    modifier =
-                        Modifier.fillMaxWidth(),
-
-                    horizontalArrangement =
-                        Arrangement.End
+                    horizontalArrangement = Arrangement.End
                 ) {
 
                     TextButton(
+                        onClick = onForgotPasswordClick,
 
-                        onClick =
-                            onForgotPasswordClick,
-
-                        enabled =
-                            !isLoading
+                        enabled = !isLoading
                     ) {
 
                         Text(
-                            text =
-                                "Forgot password?",
+                            text = "Forgot password?",
 
-                            color =
-                                Color(0xFF087EA4),
+                            color = primaryBlue,
 
-                            fontSize = 13.sp
+                            fontSize = 12.sp,
+
+                            fontWeight = FontWeight.SemiBold
                         )
                     }
                 }
@@ -396,58 +592,113 @@ fun LoginScreen(
 
                 if (loginError.isNotEmpty()) {
 
-                    Box(
+                    Spacer(
+                        modifier = Modifier.height(3.dp)
+                    )
 
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .background(
-                                    Color(0xFFFFEBEE),
-                                    RoundedCornerShape(12.dp)
-                                )
-                                .padding(13.dp)
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(
+                                color = Color(0xFFFFF1F1),
+
+                                shape = RoundedCornerShape(13.dp)
+                            )
+                            .border(
+                                width = 1.dp,
+
+                                color = Color(0xFFFFD4D4),
+
+                                shape = RoundedCornerShape(13.dp)
+                            )
+                            .padding(12.dp)
                     ) {
 
-                        Text(
-                            text =
-                                loginError,
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
 
-                            color =
-                                Color(0xFFC62828),
+                            // =====================================
+                            // ERROR ICON
+                            // =====================================
 
-                            fontSize = 13.sp,
+                            Box(
+                                modifier = Modifier
+                                    .size(28.dp)
+                                    .background(
+                                        color = Color(0xFFFFE1E1),
 
-                            fontWeight =
-                                FontWeight.Medium
-                        )
+                                        shape = CircleShape
+                                    ),
+
+                                contentAlignment = Alignment.Center
+                            ) {
+
+                                Text(
+                                    text = "!",
+
+                                    color = errorRed,
+
+                                    fontSize = 15.sp,
+
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+
+
+                            Spacer(
+                                modifier = Modifier.width(9.dp)
+                            )
+
+
+                            Text(
+                                text = loginError,
+
+                                color = Color(0xFFB52F2F),
+
+                                fontSize = 12.sp,
+
+                                lineHeight = 17.sp,
+
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
                     }
 
 
                     Spacer(
-                        modifier =
-                            Modifier.height(12.dp)
+                        modifier = Modifier.height(12.dp)
                     )
                 }
 
 
                 // =================================================
-                // SIGN IN
+                // SIGN IN BUTTON
                 // =================================================
 
                 Button(
-
                     onClick = {
 
+                        // -----------------------------------------
+                        // RESET ERRORS
+                        // -----------------------------------------
+
                         emailError = ""
+
                         passwordError = ""
+
+
+                        // -----------------------------------------
+                        // CLEAN EMAIL
+                        // -----------------------------------------
 
                         val cleanEmail =
                             email.trim()
 
 
-                        // -----------------------------
-                        // EMAIL
-                        // -----------------------------
+                        // -----------------------------------------
+                        // EMAIL EMPTY
+                        // -----------------------------------------
 
                         if (cleanEmail.isEmpty()) {
 
@@ -457,6 +708,10 @@ fun LoginScreen(
                             return@Button
                         }
 
+
+                        // -----------------------------------------
+                        // EMAIL FORMAT
+                        // -----------------------------------------
 
                         if (
                             !android.util.Patterns
@@ -472,9 +727,9 @@ fun LoginScreen(
                         }
 
 
-                        // -----------------------------
-                        // PASSWORD
-                        // -----------------------------
+                        // -----------------------------------------
+                        // PASSWORD EMPTY
+                        // -----------------------------------------
 
                         if (password.isEmpty()) {
 
@@ -485,6 +740,10 @@ fun LoginScreen(
                         }
 
 
+                        // -----------------------------------------
+                        // PASSWORD LENGTH
+                        // -----------------------------------------
+
                         if (password.length < 6) {
 
                             passwordError =
@@ -494,9 +753,9 @@ fun LoginScreen(
                         }
 
 
-                        // -----------------------------
-                        // LOGIN
-                        // -----------------------------
+                        // -----------------------------------------
+                        // SEND TO MAIN ACTIVITY / SUPABASE
+                        // -----------------------------------------
 
                         onLoginClick(
                             cleanEmail,
@@ -504,39 +763,35 @@ fun LoginScreen(
                         )
                     },
 
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .height(54.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(56.dp),
 
-                    enabled =
-                        !isLoading,
+                    enabled = !isLoading,
 
-                    shape =
-                        RoundedCornerShape(15.dp),
+                    shape = RoundedCornerShape(16.dp),
 
-                    colors =
-                        ButtonDefaults.buttonColors(
+                    colors = ButtonDefaults.buttonColors(
 
-                            containerColor =
-                                Color(0xFF087EA4),
+                        containerColor = primaryBlue,
 
-                            disabledContainerColor =
-                                Color(0xFF8CBCC7)
-                        )
+                        disabledContainerColor =
+                            Color(0xFF9AC5D2)
+                    )
                 ) {
+
+                    // =================================================
+                    // LOADING STATE
+                    // =================================================
 
                     if (isLoading) {
 
                         CircularProgressIndicator(
+                            modifier = Modifier.size(22.dp),
 
-                            modifier =
-                                Modifier.size(22.dp),
+                            color = Color.White,
 
-                            color =
-                                Color.White,
-
-                            strokeWidth = 2.dp
+                            strokeWidth = 2.5.dp
                         )
 
                     } else {
@@ -544,94 +799,173 @@ fun LoginScreen(
                         Text(
                             text = "Sign In",
 
-                            color =
-                                Color.White,
+                            color = Color.White,
 
                             fontSize = 16.sp,
 
-                            fontWeight =
-                                FontWeight.Bold
+                            fontWeight = FontWeight.Bold
                         )
                     }
                 }
 
 
                 Spacer(
-                    modifier =
-                        Modifier.height(14.dp)
+                    modifier = Modifier.height(18.dp)
                 )
 
 
                 // =================================================
-                // REGISTER
+                // OR DIVIDER
                 // =================================================
 
                 Row(
+                    modifier = Modifier.fillMaxWidth(),
 
-                    modifier =
-                        Modifier.fillMaxWidth(),
-
-                    horizontalArrangement =
-                        Arrangement.Center,
-
-                    verticalAlignment =
-                        Alignment.CenterVertically
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
 
-                    Text(
-                        text =
-                            "Don't have an account?",
-
-                        color =
-                            Color(0xFF6D7D8A),
-
-                        fontSize = 13.sp
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(1.dp)
+                            .background(
+                                Color(0xFFE4ECEF)
+                            )
                     )
 
 
-                    TextButton(
+                    Text(
+                        text = "  OR  ",
 
-                        onClick =
-                            onRegisterClick,
+                        color = Color(0xFF9AAAB3),
 
-                        enabled =
-                            !isLoading
-                    ) {
+                        fontSize = 11.sp
+                    )
 
-                        Text(
-                            text = "Register",
 
-                            color =
-                                Color(0xFF087EA4),
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(1.dp)
+                            .background(
+                                Color(0xFFE4ECEF)
+                            )
+                    )
+                }
 
-                            fontSize = 14.sp,
 
-                            fontWeight =
-                                FontWeight.Bold
-                        )
-                    }
+                Spacer(
+                    modifier = Modifier.height(14.dp)
+                )
+
+
+                // =================================================
+                // REGISTER BUTTON
+                // =================================================
+
+                Button(
+                    onClick = onRegisterClick,
+
+                    enabled = !isLoading,
+
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(52.dp),
+
+                    shape = RoundedCornerShape(15.dp),
+
+                    colors = ButtonDefaults.buttonColors(
+
+                        containerColor = lightBlue,
+
+                        contentColor = primaryBlue,
+
+                        disabledContainerColor =
+                            Color(0xFFE5F1F4),
+
+                        disabledContentColor =
+                            Color(0xFF8BAAB5)
+                    )
+                ) {
+
+                    Icon(
+                        imageVector = Icons.Default.Person,
+
+                        contentDescription = "Register",
+
+                        modifier = Modifier.size(18.dp)
+                    )
+
+
+                    Spacer(
+                        modifier = Modifier.width(8.dp)
+                    )
+
+
+                    Text(
+                        text = "Create New Account",
+
+                        fontSize = 14.sp,
+
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
 
 
             Spacer(
-                modifier =
-                    Modifier.height(15.dp)
+                modifier = Modifier.height(16.dp)
             )
 
 
-            Text(
-                text =
-                    "Secure authentication powered by Supabase",
+            // =================================================
+            // SECURITY BADGE
+            // =================================================
 
-                color =
-                    Color(0xFFBCEAF2),
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
 
-                fontSize = 11.sp,
+                Box(
+                    modifier = Modifier
+                        .size(24.dp)
+                        .background(
+                            color = Color.White.copy(
+                                alpha = 0.85f
+                            ),
 
-                textAlign =
-                    TextAlign.Center
-            )
+                            shape = CircleShape
+                        ),
+
+                    contentAlignment = Alignment.Center
+                ) {
+
+                    Icon(
+                        imageVector = Icons.Default.Lock,
+
+                        contentDescription = "Secure",
+
+                        tint = primaryBlue,
+
+                        modifier = Modifier.size(13.dp)
+                    )
+                }
+
+
+                Spacer(
+                    modifier = Modifier.width(7.dp)
+                )
+
+
+                Text(
+                    text =
+                        "Secure authentication powered by Supabase",
+
+                    color = Color(0xFF5D7E8B),
+
+                    fontSize = 10.sp
+                )
+            }
         }
     }
 }
