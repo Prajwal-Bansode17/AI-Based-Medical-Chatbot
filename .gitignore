@@ -15,3 +15,7 @@
 local.properties
 # Android Studio
 .idea/
+ml/models/
+ml/venv/
+__pycache__/
+*.pyc
