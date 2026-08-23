@@ -24,7 +24,7 @@ DATA_FILE = (
     / "data"
     / "raw"
     / "mediq"
-    / "MEDIQ-main"
+    / "ProxyAyush-MEDIQ-00091b1"
     / "data"
     / "mediq_full.csv"
 )

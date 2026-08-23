@@ -8,5 +8,7 @@ data class PredictionResponse(
     val status: String,
     val question: String,
     val intent: String,
-    val confidence: Double
+    val confidence: Double,
+    val answer: String,
+    val answer_similarity: Double
 )
