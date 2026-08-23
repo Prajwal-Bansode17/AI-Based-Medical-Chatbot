@@ -19,3 +19,6 @@ ml/models/
 ml/venv/
 __pycache__/
 *.pyc
+
+ml/data/raw/mediq/
+ml/data/raw/mediq.zip
