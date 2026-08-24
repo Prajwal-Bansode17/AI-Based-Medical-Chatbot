@@ -222,6 +222,7 @@ private fun MedicalChatbotNavigation() {
 
 
                                 // Go to Dashboard
+
                                 screenStack.clear()
 
                                 screenStack.add(
@@ -320,6 +321,7 @@ private fun MedicalChatbotNavigation() {
 
                     // Registration successful
                     // Return to Login
+
                     navigateBack()
                 },
 
@@ -436,7 +438,7 @@ private fun MedicalChatbotNavigation() {
 
             ChatbotScreen(
 
-                onBackClick = {
+                onBack = {
 
                     navigateBack()
                 }

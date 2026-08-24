@@ -1,33 +1,41 @@
-
-
 text,intent
-"I have a fever",symptom_assistance
-"I have fever and headache",symptom_assistance
-"I am feeling weak and tired",symptom_assistance
-"I have a cough",symptom_assistance
-"My throat is hurting",symptom_assistance
-"I have body pain",symptom_assistance
-"What are common symptoms of flu",symptom_information
-"What are the symptoms of a cold",symptom_information
-"How do I know if I have a fever",symptom_information
-"What are common flu symptoms",symptom_information
-"What symptoms should I watch for",symptom_information
-"What are signs of dehydration",symptom_information
-"What is paracetamol used for",medicine_information
-"Tell me about paracetamol",medicine_information
-"What is ibuprofen used for",medicine_information
-"Tell me about cetirizine",medicine_information
-"What does an antibiotic do",medicine_information
-"What is the use of pain medicine",medicine_information
-"How can I stay healthy",general_health
-"Give me some health tips",general_health
-"How can I improve my health",general_health
-"What should I do for a healthy lifestyle",general_health
-"How important is sleep",general_health
-"How much water should I drink",general_health
-"What should I do in a medical emergency",emergency
-"I need urgent medical help",emergency
-"What should I do if someone faints",emergency
-"What should I do if someone has severe chest pain",emergency
-"When should I seek emergency care",emergency
-"I have a serious medical problem",emergency
+I have a fever,symptom_assistance
+I have fever and headache,symptom_assistance
+I am feeling weak and tired,symptom_assistance
+I have a cough,symptom_assistance
+My throat is hurting,symptom_assistance
+I have body pain,symptom_assistance
+What are common symptoms of flu,symptom_information
+What are the symptoms of a cold,symptom_information
+How do I know if I have a fever,symptom_information
+What are common flu symptoms,symptom_information
+What symptoms should I watch for,symptom_information
+What are signs of dehydration,symptom_information
+What is paracetamol used for,medicine_information
+Tell me about paracetamol,medicine_information
+What is ibuprofen used for,medicine_information
+Tell me about cetirizine,medicine_information
+What does an antibiotic do,medicine_information
+What is the use of pain medicine,medicine_information
+How can I stay healthy,general_health
+Give me some health tips,general_health
+How can I improve my health,general_health
+What should I do for a healthy lifestyle,general_health
+How important is sleep,general_health
+How much water should I drink,general_health
+What should I do in a medical emergency,emergency
+I need urgent medical help,emergency
+What should I do if someone faints,emergency
+What should I do if someone has severe chest pain,emergency
+When should I seek emergency care,emergency
+I have a serious medical problem,emergency
+Where is the OPD,opd
+Where is the outpatient department,opd
+Where can I find the OPD,opd
+OPD location please,opd
+Where is outpatient department,opd
+How can I find the OPD,opd
+Tell me the OPD location,opd
+Where is the hospital OPD,opd
+Where should I go for OPD,opd
+OPD department location,opd
