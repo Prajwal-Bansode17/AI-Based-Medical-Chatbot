@@ -2919,3 +2919,26 @@ emergency,someone swallowed something dangerous
 emergency,severe abdominal pain and vomiting blood
 emergency,signs of a heart attack
 emergency,signs of a stroke
+symptom_information,hemoglobin
+symptom_information,anemia
+symptom_information,blood pressure
+symptom_information,dehydration
+disease_information,kidney disease
+disease_information,liver disease
+disease_information,thyroid
+disease_information,cholesterol
+medicine_information,acetaminophen
+nutrition,healthy diet
+prevention,prevent diabetes
+prevention,disease prevention
+general_health,how to stay healthy
+general_health,healthy living
+symptom_assistance,I have a headache
+symptom_assistance,I feel dizzy
+symptom_assistance,I feel weak
+symptom_assistance,my hemoglobin is low
+symptom_assistance,I have breathing difficulty
+symptom_assistance,I am vomiting
+emergency,I am having difficulty breathing
+emergency,I fainted
+emergency,severe bleeding
