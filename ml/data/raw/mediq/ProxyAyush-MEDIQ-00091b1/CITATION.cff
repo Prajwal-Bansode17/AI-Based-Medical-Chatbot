@@ -1,0 +1,45 @@
+cff-version: 1.2.0
+title: "MEDIQ: A Bilingual Hindi-English Medical Question-Answering Dataset"
+message: "If you use this dataset, please cite it using the metadata from this file."
+type: dataset
+authors:
+  - given-names: Ayush
+    family-names: Yadav
+    alias: "Yadav, A."
+version: "0.5.0"
+date-released: "2026-07-01"
+license: CC-BY-4.0
+doi: "10.5281/zenodo.19204472"
+repository-code: "https://github.com/ProxyAyush/MEDIQ"
+url: "https://github.com/ProxyAyush/MEDIQ"
+keywords:
+  - medical-qa
+  - hindi-english
+  - bilingual
+  - chatbot
+  - indian-medical
+  - nlp-dataset
+  - question-answering
+  - code-mixing
+  - healthcare
+  - multilingual
+  - romanized-hindi
+abstract: >-
+  MEDIQ is a continuously growing, bilingual (Hindi-English) question-answering
+  dataset collected from a real-world AI chatbot deployed at a public Indian
+  medical university. It captures authentic user queries about medical education,
+  hospital services, admissions, appointments, and university administration.
+  The dataset includes AI-enriched metadata: corrected language detection
+  (including Romanized Hindi), intent classification, medical relevance scoring,
+  sentiment analysis, answer quality assessment, and topic tagging.
+  The dataset contains zero personally identifiable information and is fully
+  compliant with India's DPDP Act 2023.
+preferred-citation:
+  type: dataset
+  authors:
+    - given-names: Ayush
+      family-names: Yadav
+  title: "MEDIQ: A Bilingual Hindi-English Medical Question-Answering Dataset"
+  year: 2026
+  publisher: Zenodo
+  doi: "10.5281/zenodo.19204472"
