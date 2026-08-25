@@ -7,26 +7,75 @@ import java.util.concurrent.TimeUnit
 
 object RetrofitClient {
 
+    // =========================================================
+    // RENDER CLOUD API
+    // =========================================================
+    // Flask API is deployed on Render.
+    // Laptop वर api.py चालू ठेवण्याची गरज नाही.
+    // =========================================================
+
     private const val BASE_URL =
-        "http://192.168.1.8:5000/"
+        "https://ai-based-medical-chatbot.onrender.com/"
+
+
+    // =========================================================
+    // HTTP CLIENT
+    // =========================================================
 
     private val okHttpClient =
         OkHttpClient.Builder()
-            .connectTimeout(60, TimeUnit.SECONDS)
-            .readTimeout(120, TimeUnit.SECONDS)
-            .writeTimeout(60, TimeUnit.SECONDS)
-            .callTimeout(120, TimeUnit.SECONDS)
+
+            // Time to establish connection
+            .connectTimeout(
+                20,
+                TimeUnit.SECONDS
+            )
+
+            // Time to wait for Flask response
+            .readTimeout(
+                90,
+                TimeUnit.SECONDS
+            )
+
+            // Time allowed to send request
+            .writeTimeout(
+                20,
+                TimeUnit.SECONDS
+            )
+
+            // Maximum total request time
+            .callTimeout(
+                120,
+                TimeUnit.SECONDS
+            )
+
             .build()
+
+
+    // =========================================================
+    // RETROFIT API SERVICE
+    // =========================================================
 
     val apiService: MedicalApiService by lazy {
 
         Retrofit.Builder()
-            .baseUrl(BASE_URL)
-            .client(okHttpClient)
+
+            .baseUrl(
+                BASE_URL
+            )
+
+            .client(
+                okHttpClient
+            )
+
             .addConverterFactory(
                 GsonConverterFactory.create()
             )
+
             .build()
-            .create(MedicalApiService::class.java)
+
+            .create(
+                MedicalApiService::class.java
+            )
     }
 }
