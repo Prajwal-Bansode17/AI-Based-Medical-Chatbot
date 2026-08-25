@@ -1,5 +1,6 @@
 package ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -19,6 +20,8 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Person
@@ -41,12 +44,15 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ai_based_medical_chatbot.R
 import com.example.ai_based_medical_chatbot.data.api.PredictionRequest
 import com.example.ai_based_medical_chatbot.data.api.RetrofitClient
 import kotlinx.coroutines.Dispatchers
@@ -278,17 +284,18 @@ fun ChatbotScreen(
     // MAIN SCREEN
     //
     // IMPORTANT:
-    // NO imePadding() HERE.
-    //
-    // Keyboard padding is applied ONLY to bottom input bar.
+    // imePadding() is ONLY on bottom input bar.
+    // This keeps the keyboard positioning correct.
     // =========================================================
 
     Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .background(
-                Color(0xFFF7F9FC)
-            )
+
+        modifier =
+            Modifier
+                .fillMaxSize()
+                .background(
+                    Color(0xFFF7F9FC)
+                )
     ) {
 
 
@@ -297,10 +304,12 @@ fun ChatbotScreen(
         // =====================================================
 
         Surface(
+
             modifier =
                 Modifier.fillMaxWidth(),
 
-            shadowElevation = 4.dp
+            shadowElevation =
+                4.dp
         ) {
 
             Row(
@@ -318,13 +327,16 @@ fun ChatbotScreen(
             ) {
 
 
-                // BACK
+                // -------------------------------------------------
+                // BACK BUTTON
+                // -------------------------------------------------
 
                 IconButton(
                     onClick = onBack
                 ) {
 
                     Icon(
+
                         imageVector =
                             Icons.Default.ArrowBack,
 
@@ -334,35 +346,13 @@ fun ChatbotScreen(
                 }
 
 
-                // AI CIRCLE
+                // -------------------------------------------------
+                // DOCTOR AI LOGO
+                // -------------------------------------------------
 
-                Box(
-
-                    modifier =
-                        Modifier
-                            .size(44.dp)
-                            .clip(CircleShape)
-                            .background(
-                                Color(0xFF1976D2)
-                            ),
-
-                    contentAlignment =
-                        Alignment.Center
-                ) {
-
-                    Text(
-                        text = "AI",
-
-                        color =
-                            Color.White,
-
-                        fontWeight =
-                            FontWeight.Bold,
-
-                        fontSize =
-                            14.sp
-                    )
-                }
+                MedicalAssistantIcon(
+                    size = 44.dp
+                )
 
 
                 Spacer(
@@ -371,9 +361,12 @@ fun ChatbotScreen(
                 )
 
 
+                // -------------------------------------------------
                 // TITLE
+                // -------------------------------------------------
 
                 Column(
+
                     modifier =
                         Modifier.weight(1f)
                 ) {
@@ -411,7 +404,9 @@ fun ChatbotScreen(
                 }
 
 
+                // -------------------------------------------------
                 // LOADING
+                // -------------------------------------------------
 
                 if (isTyping) {
 
@@ -457,7 +452,9 @@ fun ChatbotScreen(
             ) {
 
 
-                // TOP GAP
+                // -------------------------------------------------
+                // TOP SPACE
+                // -------------------------------------------------
 
                 item {
 
@@ -468,7 +465,9 @@ fun ChatbotScreen(
                 }
 
 
+                // -------------------------------------------------
                 // CHAT MESSAGES
+                // -------------------------------------------------
 
                 items(
                     items = messages
@@ -481,7 +480,9 @@ fun ChatbotScreen(
                 }
 
 
-                // TYPING
+                // -------------------------------------------------
+                // TYPING INDICATOR
+                // -------------------------------------------------
 
                 if (isTyping) {
 
@@ -492,7 +493,9 @@ fun ChatbotScreen(
                 }
 
 
-                // BOTTOM GAP
+                // -------------------------------------------------
+                // BOTTOM SPACE
+                // -------------------------------------------------
 
                 item {
 
@@ -508,9 +511,8 @@ fun ChatbotScreen(
         // =====================================================
         // INPUT BAR
         //
-        // imePadding() ONLY HERE
-        //
-        // This is the important fix.
+        // IMPORTANT:
+        // Keyboard padding ONLY HERE.
         // =====================================================
 
         Surface(
@@ -559,23 +561,55 @@ fun ChatbotScreen(
                     placeholder = {
 
                         Text(
+
                             text =
-                                "Ask a medical question..."
+                                "Ask a medical question...",
+
+                            color =
+                                Color(0xFF9AA0A6),
+
+                            fontSize =
+                                15.sp
                         )
                     },
 
-                    minLines = 1,
 
-                    maxLines = 4,
+                    // -------------------------------------------------
+                    // BRIGHT BLACK USER TEXT
+                    // -------------------------------------------------
+
+                    textStyle =
+                        TextStyle(
+
+                            color =
+                                Color.Black,
+
+                            fontSize =
+                                16.sp,
+
+                            fontWeight =
+                                FontWeight.Medium
+                        ),
+
+
+                    minLines =
+                        1,
+
+                    maxLines =
+                        4,
+
 
                     shape =
                         RoundedCornerShape(22.dp),
 
+
                     keyboardOptions =
                         KeyboardOptions(
+
                             imeAction =
                                 ImeAction.Send
                         ),
+
 
                     keyboardActions =
                         KeyboardActions(
@@ -609,11 +643,13 @@ fun ChatbotScreen(
                         )
                     },
 
+
                     enabled =
                         message
                             .trim()
                             .isNotEmpty()
                                 && !isTyping,
+
 
                     modifier =
                         Modifier
@@ -656,6 +692,37 @@ fun ChatbotScreen(
 
 
 // =============================================================
+// DOCTOR + AI ASSISTANT ICON
+// =============================================================
+
+@Composable
+fun MedicalAssistantIcon(
+    size: Dp
+) {
+
+    Image(
+
+        painter =
+            painterResource(
+                id =
+                    R.drawable.doctor_ai
+            ),
+
+        contentDescription =
+            "MedAssist AI",
+
+        contentScale =
+            ContentScale.Crop,
+
+        modifier =
+            Modifier
+                .size(size)
+                .clip(CircleShape)
+    )
+}
+
+
+// =============================================================
 // MESSAGE BUBBLE
 // =============================================================
 
@@ -681,40 +748,14 @@ fun MessageBubble(
 
 
         // =====================================================
-        // AI ICON
+        // AI DOCTOR LOGO
         // =====================================================
 
         if (!message.isUser) {
 
-            Box(
-
-                modifier =
-                    Modifier
-                        .size(34.dp)
-                        .clip(CircleShape)
-                        .background(
-                            Color(0xFF1976D2)
-                        ),
-
-                contentAlignment =
-                    Alignment.Center
-            ) {
-
-                Text(
-
-                    text =
-                        "AI",
-
-                    color =
-                        Color.White,
-
-                    fontSize =
-                        10.sp,
-
-                    fontWeight =
-                        FontWeight.Bold
-                )
-            }
+            MedicalAssistantIcon(
+                size = 34.dp
+            )
 
 
             Spacer(
@@ -765,6 +806,7 @@ fun MessageBubble(
                                 18.dp
                     ),
 
+
                 color =
                     when {
 
@@ -777,6 +819,7 @@ fun MessageBubble(
                         else ->
                             Color.White
                     },
+
 
                 shadowElevation =
                     if (message.isUser)
@@ -816,7 +859,7 @@ fun MessageBubble(
 
 
             // =================================================
-            // AI DETAILS
+            // INTENT + CONFIDENCE
             // =================================================
 
             if (
@@ -923,37 +966,13 @@ fun TypingIndicator() {
     ) {
 
 
-        // AI ICON
+        // =====================================================
+        // DOCTOR AI LOGO
+        // =====================================================
 
-        Box(
-
-            modifier =
-                Modifier
-                    .size(34.dp)
-                    .clip(CircleShape)
-                    .background(
-                        Color(0xFF1976D2)
-                    ),
-
-            contentAlignment =
-                Alignment.Center
-        ) {
-
-            Text(
-
-                text =
-                    "AI",
-
-                color =
-                    Color.White,
-
-                fontSize =
-                    10.sp,
-
-                fontWeight =
-                    FontWeight.Bold
-            )
-        }
+        MedicalAssistantIcon(
+            size = 34.dp
+        )
 
 
         Spacer(
@@ -961,6 +980,10 @@ fun TypingIndicator() {
                 Modifier.width(7.dp)
         )
 
+
+        // =====================================================
+        // THINKING BOX
+        // =====================================================
 
         Surface(
 
