@@ -1,3 +1,4 @@
+
 from pathlib import Path
 import re
 import sqlite3
@@ -24,11 +25,11 @@ MODEL_FILE = (
     / "medical_intent_model.joblib"
 )
 
-MEDICAL_KNOWLEDGE_FILE = (
+MEDICAL_KNOWLEDGE_DIR = (
     BASE_DIR
     / "data"
     / "raw"
-    / "medical_knowledge.csv"
+    / "medical_knowledge"
 )
 
 CHAT_DB_FILE = (
@@ -426,26 +427,67 @@ print(
     "Loading Medical Knowledge Base..."
 )
 
-if not MEDICAL_KNOWLEDGE_FILE.exists():
 
-    raise FileNotFoundError(
-        "Medical Knowledge file not found: "
-        f"{MEDICAL_KNOWLEDGE_FILE}"
-    )
+def load_medical_knowledge():
 
-medical_knowledge = pd.read_csv(
-    MEDICAL_KNOWLEDGE_FILE
-)
+    if not MEDICAL_KNOWLEDGE_DIR.exists():
+        raise FileNotFoundError(
+            "Medical Knowledge directory not found: "
+            f"{MEDICAL_KNOWLEDGE_DIR}"
+        )
 
-print(
-    "Medical Knowledge Base loaded successfully."
-)
+    csv_files = sorted(MEDICAL_KNOWLEDGE_DIR.glob("*.csv"))
 
+    if not csv_files:
+        raise FileNotFoundError(
+            "No medical knowledge CSV files found in: "
+            f"{MEDICAL_KNOWLEDGE_DIR}"
+        )
+
+    frames = []
+    required_columns = {"symptom", "aliases", "question_type", "response"}
+
+    for csv_file in csv_files:
+        try:
+            frame = pd.read_csv(csv_file)
+        except Exception as exc:
+            print(f"Skipping {csv_file.name}: {exc}")
+            continue
+
+        frame.columns = [str(c).strip().lower() for c in frame.columns]
+        missing = required_columns - set(frame.columns)
+
+        if missing:
+            print(f"Skipping {csv_file.name}: missing columns {sorted(missing)}")
+            continue
+
+        frame = frame[["symptom", "aliases", "question_type", "response"]].copy()
+
+        for column in ["symptom", "aliases", "question_type", "response"]:
+            frame[column] = frame[column].fillna("").astype(str).str.strip()
+
+        frame["symptom"] = frame["symptom"].str.lower()
+        frame["question_type"] = frame["question_type"].str.lower()
+        frame = frame[(frame["symptom"] != "") & (frame["response"] != "")]
+
+        if not frame.empty:
+            frames.append(frame)
+            print(f"Loaded medical KB: {csv_file.name} ({len(frame)} records)")
+
+    if not frames:
+        raise ValueError("No valid medical knowledge records were loaded.")
+
+    return pd.concat(frames, ignore_index=True).drop_duplicates(
+        subset=["symptom", "aliases", "question_type", "response"]
+    ).reset_index(drop=True)
+
+
+medical_knowledge = load_medical_knowledge()
+
+print("Medical Knowledge Base loaded successfully.")
 print("----------------------------------------")
-print(
-    "Medical Knowledge records:",
-    len(medical_knowledge)
-)
+print("Medical Knowledge records:", len(medical_knowledge))
+print("Medical KB files:", len(list(MEDICAL_KNOWLEDGE_DIR.glob("*.csv"))))
 print("----------------------------------------")
 
 
@@ -918,6 +960,7 @@ MEDICAL_TOPIC_ALIASES = {
 
 
 def extract_medical_topics(text):
+
     normalized = normalize_text(text)
     detected = []
 
@@ -928,6 +971,28 @@ def extract_medical_topics(text):
             if (
                 normalized == alias_normalized
                 or f" {alias_normalized} " in f" {normalized} "
+            ):
+                if topic not in detected:
+                    detected.append(topic)
+                break
+
+    # Automatically use aliases from every medical knowledge CSV.
+    for _, row in medical_knowledge.iterrows():
+        topic = str(row.get("symptom", "")).strip().lower()
+        aliases = str(row.get("aliases", "")).split("|")
+
+        if not topic:
+            continue
+
+        for alias in [topic] + aliases:
+            alias_normalized = normalize_text(alias)
+
+            if (
+                alias_normalized
+                and (
+                    normalized == alias_normalized
+                    or f" {alias_normalized} " in f" {normalized} "
+                )
             ):
                 if topic not in detected:
                     detected.append(topic)
@@ -4077,4 +4142,5 @@ if __name__ == "__main__":
         port=5000,
         debug=False
     )
+
 
