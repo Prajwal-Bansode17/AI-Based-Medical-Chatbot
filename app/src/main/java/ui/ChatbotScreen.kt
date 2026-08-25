@@ -1,6 +1,7 @@
 package ui
 
-import androidx.compose.foundation.Image
+import android.content.Context
+import android.util.Log
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -20,8 +21,6 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Person
@@ -44,25 +43,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ai_based_medical_chatbot.R
 import com.example.ai_based_medical_chatbot.data.api.PredictionRequest
 import com.example.ai_based_medical_chatbot.data.api.RetrofitClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-
-
-// =============================================================
-// CHAT MESSAGE
-// =============================================================
+import java.security.MessageDigest
 
 data class ChatMessage(
     val text: String,
@@ -73,15 +63,57 @@ data class ChatMessage(
     val isError: Boolean = false
 )
 
-
-// =============================================================
-// CHATBOT SCREEN
-// =============================================================
-
 @Composable
 fun ChatbotScreen(
+    userEmail: String = "",
     onBack: () -> Unit = {}
 ) {
+
+    val context = LocalContext.current
+
+    // =========================================================
+    // STABLE SESSION ID
+    // =========================================================
+
+    val sessionId = remember(userEmail) {
+
+        if (userEmail.isNotBlank()) {
+
+            "user_" + sha256(
+                userEmail.trim().lowercase()
+            )
+
+        } else {
+
+            val preferences =
+                context.getSharedPreferences(
+                    "medassist_preferences",
+                    Context.MODE_PRIVATE
+                )
+
+            preferences.getString(
+                "session_id",
+                null
+            ) ?: run {
+
+                val newSession =
+                    "android_" + System.currentTimeMillis()
+
+                preferences.edit()
+                    .putString(
+                        "session_id",
+                        newSession
+                    )
+                    .apply()
+
+                newSession
+            }
+        }
+    }
+
+    // =========================================================
+    // STATE
+    // =========================================================
 
     var message by remember {
         mutableStateOf("")
@@ -91,17 +123,19 @@ fun ChatbotScreen(
         mutableStateOf(false)
     }
 
-    val messages = remember {
-        mutableStateListOf<ChatMessage>()
-    }
+    val messages =
+        remember {
+            mutableStateListOf<ChatMessage>()
+        }
 
-    val scope = rememberCoroutineScope()
+    val scope =
+        rememberCoroutineScope()
 
-    val listState = rememberLazyListState()
-
+    val listState =
+        rememberLazyListState()
 
     // =========================================================
-    // WELCOME MESSAGE
+    // WELCOME
     // =========================================================
 
     LaunchedEffect(Unit) {
@@ -114,13 +148,11 @@ fun ChatbotScreen(
                         "Hello! 👋\n\n" +
                                 "I am MedAssist AI. " +
                                 "How can I help you today?",
-
                     isUser = false
                 )
             )
         }
     }
-
 
     // =========================================================
     // AUTO SCROLL
@@ -134,19 +166,21 @@ fun ChatbotScreen(
         if (messages.isNotEmpty()) {
 
             listState.animateScrollToItem(
-                index = messages.lastIndex
+                messages.lastIndex
             )
         }
     }
-
 
     // =========================================================
     // SEND MESSAGE
     // =========================================================
 
-    fun sendMessage(text: String) {
+    fun sendMessage(
+        text: String
+    ) {
 
-        val cleanText = text.trim()
+        val cleanText =
+            text.trim()
 
         if (
             cleanText.isEmpty() ||
@@ -154,7 +188,6 @@ fun ChatbotScreen(
         ) {
             return
         }
-
 
         // -----------------------------------------------------
         // USER MESSAGE
@@ -171,121 +204,205 @@ fun ChatbotScreen(
 
         isTyping = true
 
-
         // -----------------------------------------------------
-        // API CALL
+        // API REQUEST
         // -----------------------------------------------------
 
-        scope.launch(Dispatchers.IO) {
+        scope.launch {
 
             try {
 
                 val response =
-                    RetrofitClient.apiService.predict(
-                        PredictionRequest(
-                            text = cleanText
-                        )
-                    )
+                    withContext(Dispatchers.IO) {
 
+                        RetrofitClient
+                            .apiService
+                            .predict(
 
-                withContext(Dispatchers.Main) {
+                                PredictionRequest(
+                                    sessionId =
+                                        sessionId,
 
-                    if (
-                        response.isSuccessful &&
-                        response.body() != null
-                    ) {
-
-                        val result =
-                            response.body()!!
-
-
-                        messages.add(
-                            ChatMessage(
-                                text = result.answer,
-
-                                isUser = false,
-
-                                intent =
-                                    result.intent,
-
-                                confidence =
-                                    result.confidence,
-
-                                similarity =
-                                    result.answer_similarity
+                                    text =
+                                        cleanText
+                                )
                             )
-                        )
-
-                    } else {
-
-                        val errorMessage =
-                            try {
-
-                                response
-                                    .errorBody()
-                                    ?.string()
-                                    ?: "Unknown server error"
-
-                            } catch (
-                                e: Exception
-                            ) {
-
-                                "Unable to read server error"
-                            }
-
-
-                        messages.add(
-                            ChatMessage(
-
-                                text =
-                                    "Server Error\n\n" +
-                                            "HTTP Code: " +
-                                            "${response.code()}\n\n" +
-                                            errorMessage,
-
-                                isUser = false,
-
-                                isError = true
-                            )
-                        )
                     }
 
-                    isTyping = false
-                }
+                // =================================================
+                // API SUCCESS
+                // =================================================
 
-            } catch (e: Exception) {
+                if (
+                    response.isSuccessful &&
+                    response.body() != null
+                ) {
 
-                withContext(Dispatchers.Main) {
+                    val result =
+                        response.body()!!
+
+                    // -------------------------------------------------
+                    // DEBUG LOG
+                    // -------------------------------------------------
+
+                    Log.d(
+                        "MEDASSIST_API",
+                        "QUESTION = ${result.question}"
+                    )
+
+                    Log.d(
+                        "MEDASSIST_API",
+                        "ANSWER = ${result.answer}"
+                    )
+
+                    Log.d(
+                        "MEDASSIST_API",
+                        "MEASUREMENTS = ${result.measurements}"
+                    )
+
+                    Log.d(
+                        "MEDASSIST_API",
+                        "SOURCE = ${result.source}"
+                    )
+
+                    Log.d(
+                        "MEDASSIST_API",
+                        "SESSION_ID = $sessionId"
+                    )
+
+                    // -------------------------------------------------
+                    // ALWAYS USE FRESH API ANSWER
+                    // -------------------------------------------------
+
+                    val answer =
+                        result.answer.trim()
+
+                    val finalAnswer =
+                        if (answer.isNotEmpty()) {
+
+                            fixMeasurementFormatting(
+                                answer = answer,
+                                measurements = result.measurements
+                            )
+
+                        } else {
+
+                            "Sorry, I could not generate an answer."
+                        }
 
                     messages.add(
+
                         ChatMessage(
 
                             text =
-                                "API Connection Error\n\n" +
-                                        "Type: " +
-                                        "${e.javaClass.simpleName}\n\n" +
-                                        "Message:\n" +
-                                        "${e.message ?: "Unknown error"}",
+                                finalAnswer,
 
-                            isUser = false,
+                            isUser =
+                                false,
 
-                            isError = true
+                            intent =
+                                result.intent,
+
+                            confidence =
+                                result.confidence,
+
+                            similarity =
+                                result.answerSimilarity
                         )
                     )
 
-                    isTyping = false
+                } else {
+
+                    // =================================================
+                    // SERVER ERROR
+                    // =================================================
+
+                    val errorBody =
+
+                        try {
+
+                            response.errorBody()
+                                ?.string()
+
+                        } catch (
+                            _: Exception
+                        ) {
+
+                            null
+                        }
+
+                    Log.e(
+                        "MEDASSIST_API",
+                        "HTTP ERROR ${response.code()} : $errorBody"
+                    )
+
+                    messages.add(
+
+                        ChatMessage(
+
+                            text =
+                                "Server Error\n\n" +
+                                        "HTTP Code: " +
+                                        "${response.code()}\n\n" +
+                                        (
+                                                errorBody
+                                                    ?: "Unable to process your request."
+                                                ),
+
+                            isUser =
+                                false,
+
+                            isError =
+                                true
+                        )
+                    )
                 }
+
+            } catch (
+                e: Exception
+            ) {
+
+                // =================================================
+                // CONNECTION ERROR
+                // =================================================
+
+                Log.e(
+                    "MEDASSIST_API",
+                    "Connection error",
+                    e
+                )
+
+                messages.add(
+
+                    ChatMessage(
+
+                        text =
+                            "API Connection Error\n\n" +
+                                    "Type: " +
+                                    "${e.javaClass.simpleName}\n\n" +
+                                    "Message:\n" +
+                                    (
+                                            e.message
+                                                ?: "Unable to connect to the medical server."
+                                            ),
+
+                        isUser =
+                            false,
+
+                        isError =
+                            true
+                    )
+                )
+
+            } finally {
+
+                isTyping = false
             }
         }
     }
 
-
     // =========================================================
-    // MAIN SCREEN
-    //
-    // IMPORTANT:
-    // imePadding() is ONLY on bottom input bar.
-    // This keeps the keyboard positioning correct.
+    // MAIN UI
     // =========================================================
 
     Column(
@@ -298,9 +415,8 @@ fun ChatbotScreen(
                 )
     ) {
 
-
         // =====================================================
-        // HEADER
+        // TOP BAR
         // =====================================================
 
         Surface(
@@ -319,24 +435,18 @@ fun ChatbotScreen(
                         .fillMaxWidth()
                         .padding(
                             horizontal = 12.dp,
-                            vertical = 10.dp
+                            vertical = 12.dp
                         ),
 
                 verticalAlignment =
                     Alignment.CenterVertically
             ) {
 
-
-                // -------------------------------------------------
-                // BACK BUTTON
-                // -------------------------------------------------
-
                 IconButton(
                     onClick = onBack
                 ) {
 
                     Icon(
-
                         imageVector =
                             Icons.Default.ArrowBack,
 
@@ -345,34 +455,45 @@ fun ChatbotScreen(
                     )
                 }
 
+                Box(
 
-                // -------------------------------------------------
-                // DOCTOR AI LOGO
-                // -------------------------------------------------
+                    modifier =
+                        Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(
+                                Color(0xFF1976D2)
+                            ),
 
-                MedicalAssistantIcon(
-                    size = 44.dp
-                )
+                    contentAlignment =
+                        Alignment.Center
+                ) {
 
+                    Text(
+                        text = "AI",
+
+                        color =
+                            Color.White,
+
+                        fontWeight =
+                            FontWeight.Bold,
+
+                        fontSize =
+                            14.sp
+                    )
+                }
 
                 Spacer(
                     modifier =
                         Modifier.width(12.dp)
                 )
 
-
-                // -------------------------------------------------
-                // TITLE
-                // -------------------------------------------------
-
                 Column(
-
                     modifier =
                         Modifier.weight(1f)
                 ) {
 
                     Text(
-
                         text =
                             "MedAssist AI",
 
@@ -386,9 +507,7 @@ fun ChatbotScreen(
                             Color(0xFF17202A)
                     )
 
-
                     Text(
-
                         text =
                             if (isTyping)
                                 "Thinking..."
@@ -403,17 +522,12 @@ fun ChatbotScreen(
                     )
                 }
 
-
-                // -------------------------------------------------
-                // LOADING
-                // -------------------------------------------------
-
                 if (isTyping) {
 
                     CircularProgressIndicator(
 
                         modifier =
-                            Modifier.size(23.dp),
+                            Modifier.size(24.dp),
 
                         strokeWidth =
                             2.dp
@@ -422,97 +536,64 @@ fun ChatbotScreen(
             }
         }
 
-
         // =====================================================
         // CHAT AREA
         // =====================================================
 
-        Box(
+        LazyColumn(
+
+            state =
+                listState,
 
             modifier =
                 Modifier
                     .weight(1f)
                     .fillMaxWidth()
+                    .padding(
+                        horizontal = 12.dp
+                    ),
+
+            verticalArrangement =
+                Arrangement.spacedBy(10.dp)
         ) {
 
-            LazyColumn(
+            item {
 
-                state =
-                    listState,
+                Spacer(
+                    modifier =
+                        Modifier.height(8.dp)
+                )
+            }
 
-                modifier =
-                    Modifier
-                        .fillMaxSize()
-                        .padding(
-                            horizontal = 12.dp
-                        ),
+            items(
+                items = messages
+            ) { chatMessage ->
 
-                verticalArrangement =
-                    Arrangement.spacedBy(10.dp)
-            ) {
+                MessageBubble(
+                    message =
+                        chatMessage
+                )
+            }
 
-
-                // -------------------------------------------------
-                // TOP SPACE
-                // -------------------------------------------------
-
-                item {
-
-                    Spacer(
-                        modifier =
-                            Modifier.height(16.dp)
-                    )
-                }
-
-
-                // -------------------------------------------------
-                // CHAT MESSAGES
-                // -------------------------------------------------
-
-                items(
-                    items = messages
-                ) { chatMessage ->
-
-                    MessageBubble(
-                        message =
-                            chatMessage
-                    )
-                }
-
-
-                // -------------------------------------------------
-                // TYPING INDICATOR
-                // -------------------------------------------------
-
-                if (isTyping) {
-
-                    item {
-
-                        TypingIndicator()
-                    }
-                }
-
-
-                // -------------------------------------------------
-                // BOTTOM SPACE
-                // -------------------------------------------------
+            if (isTyping) {
 
                 item {
 
-                    Spacer(
-                        modifier =
-                            Modifier.height(16.dp)
-                    )
+                    TypingIndicator()
                 }
+            }
+
+            item {
+
+                Spacer(
+                    modifier =
+                        Modifier.height(8.dp)
+                )
             }
         }
 
-
         // =====================================================
-        // INPUT BAR
-        //
-        // IMPORTANT:
-        // Keyboard padding ONLY HERE.
+        // INPUT AREA
         // =====================================================
 
         Surface(
@@ -532,19 +613,11 @@ fun ChatbotScreen(
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .padding(
-                            horizontal = 12.dp,
-                            vertical = 8.dp
-                        ),
+                        .padding(10.dp),
 
                 verticalAlignment =
-                    Alignment.Bottom
+                    Alignment.CenterVertically
             ) {
-
-
-                // =================================================
-                // TEXT FIELD
-                // =================================================
 
                 OutlinedTextField(
 
@@ -561,78 +634,25 @@ fun ChatbotScreen(
                     placeholder = {
 
                         Text(
-
-                            text =
-                                "Ask a medical question...",
-
-                            color =
-                                Color(0xFF9AA0A6),
-
-                            fontSize =
-                                15.sp
+                            "Ask a medical question..."
                         )
                     },
-
-
-                    // -------------------------------------------------
-                    // BRIGHT BLACK USER TEXT
-                    // -------------------------------------------------
-
-                    textStyle =
-                        TextStyle(
-
-                            color =
-                                Color.Black,
-
-                            fontSize =
-                                16.sp,
-
-                            fontWeight =
-                                FontWeight.Medium
-                        ),
-
-
-                    minLines =
-                        1,
 
                     maxLines =
                         4,
 
-
                     shape =
-                        RoundedCornerShape(22.dp),
-
-
-                    keyboardOptions =
-                        KeyboardOptions(
-
-                            imeAction =
-                                ImeAction.Send
-                        ),
-
-
-                    keyboardActions =
-                        KeyboardActions(
-
-                            onSend = {
-
-                                sendMessage(
-                                    message
-                                )
-                            }
-                        )
+                        RoundedCornerShape(22.dp)
                 )
-
 
                 Spacer(
                     modifier =
                         Modifier.width(8.dp)
                 )
 
-
-                // =================================================
-                // SEND BUTTON
-                // =================================================
+                val canSend =
+                    message.trim().isNotEmpty() &&
+                            !isTyping
 
                 IconButton(
 
@@ -643,13 +663,8 @@ fun ChatbotScreen(
                         )
                     },
 
-
                     enabled =
-                        message
-                            .trim()
-                            .isNotEmpty()
-                                && !isTyping,
-
+                        canSend,
 
                     modifier =
                         Modifier
@@ -657,19 +672,13 @@ fun ChatbotScreen(
                             .clip(CircleShape)
                             .background(
 
-                                if (
-                                    message
-                                        .trim()
-                                        .isNotEmpty()
-                                    && !isTyping
-                                ) {
+                                if (canSend)
 
                                     Color(0xFF1976D2)
 
-                                } else {
+                                else
 
                                     Color(0xFFB0BEC5)
-                                }
                             )
                 ) {
 
@@ -690,37 +699,56 @@ fun ChatbotScreen(
     }
 }
 
-
 // =============================================================
-// DOCTOR + AI ASSISTANT ICON
+// FIX MEDICAL MEASUREMENT DISPLAY
 // =============================================================
 
-@Composable
-fun MedicalAssistantIcon(
-    size: Dp
-) {
+private fun fixMeasurementFormatting(
+    answer: String,
+    measurements: List<com.example.ai_based_medical_chatbot.data.api.Measurement>
+): String {
 
-    Image(
+    var fixedAnswer = answer
 
-        painter =
-            painterResource(
-                id =
-                    R.drawable.doctor_ai
-            ),
+    for (measurement in measurements) {
 
-        contentDescription =
-            "MedAssist AI",
+        val name = measurement.name.trim()
+        val value = measurement.value.trim()
+        val unit = measurement.unit.trim()
 
-        contentScale =
-            ContentScale.Crop,
+        if (name.isBlank() || value.isBlank()) {
+            continue
+        }
 
-        modifier =
-            Modifier
-                .size(size)
-                .clip(CircleShape)
-    )
+        if (!value.contains(".")) {
+            continue
+        }
+
+        val escapedName = Regex.escape(name.replace("_", " "))
+        val unitPart =
+            if (unit.isNotBlank()) {
+                "\\s*" + Regex.escape(unit)
+            } else {
+                ""
+            }
+
+        val pattern = Regex(
+            "(?i)(\\b$escapedName\\b\\s*[:=]?\\s*)\\d+(?:\\.\\d+)?$unitPart"
+        )
+
+        fixedAnswer = pattern.replace(fixedAnswer) { match ->
+            val prefix = match.groupValues[1]
+
+            if (unit.isNotBlank()) {
+                "$prefix$value $unit"
+            } else {
+                "$prefix$value"
+            }
+        }
+    }
+
+    return fixedAnswer
 }
-
 
 // =============================================================
 // MESSAGE BUBBLE
@@ -746,28 +774,43 @@ fun MessageBubble(
             Alignment.Bottom
     ) {
 
-
-        // =====================================================
-        // AI DOCTOR LOGO
-        // =====================================================
-
         if (!message.isUser) {
 
-            MedicalAssistantIcon(
-                size = 34.dp
-            )
+            Box(
 
+                modifier =
+                    Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(
+                            Color(0xFF1976D2)
+                        ),
+
+                contentAlignment =
+                    Alignment.Center
+            ) {
+
+                Text(
+
+                    text =
+                        "AI",
+
+                    color =
+                        Color.White,
+
+                    fontSize =
+                        10.sp,
+
+                    fontWeight =
+                        FontWeight.Bold
+                )
+            }
 
             Spacer(
                 modifier =
                     Modifier.width(7.dp)
             )
         }
-
-
-        // =====================================================
-        // MESSAGE BODY
-        // =====================================================
 
         Column(
 
@@ -780,7 +823,6 @@ fun MessageBubble(
             modifier =
                 Modifier.fillMaxWidth(0.86f)
         ) {
-
 
             Surface(
 
@@ -806,8 +848,8 @@ fun MessageBubble(
                                 18.dp
                     ),
 
-
                 color =
+
                     when {
 
                         message.isError ->
@@ -820,12 +862,13 @@ fun MessageBubble(
                             Color.White
                     },
 
-
                 shadowElevation =
+
                     if (message.isUser)
                         0.dp
                     else
                         2.dp
+
             ) {
 
                 Text(
@@ -850,21 +893,24 @@ fun MessageBubble(
                         21.sp,
 
                     color =
+
                         if (message.isUser)
+
                             Color.White
+
                         else
+
                             Color(0xFF1F2937)
                 )
             }
 
-
             // =================================================
-            // INTENT + CONFIDENCE
+            // AI DETAILS
             // =================================================
 
             if (
                 !message.isUser &&
-                message.intent.isNotEmpty() &&
+                message.intent.isNotBlank() &&
                 !message.isError
             ) {
 
@@ -873,15 +919,13 @@ fun MessageBubble(
                         Modifier.height(4.dp)
                 )
 
-
                 Text(
 
                     text =
                         "Intent: ${message.intent}  •  " +
                                 "Confidence: ${
-                                    String.format(
-                                        "%.1f",
-                                        message.confidence * 100
+                                    formatPercent(
+                                        message.confidence
                                     )
                                 }%",
 
@@ -899,7 +943,6 @@ fun MessageBubble(
             }
         }
 
-
         // =====================================================
         // USER ICON
         // =====================================================
@@ -910,7 +953,6 @@ fun MessageBubble(
                 modifier =
                     Modifier.width(7.dp)
             )
-
 
             Box(
 
@@ -945,7 +987,6 @@ fun MessageBubble(
     }
 }
 
-
 // =============================================================
 // TYPING INDICATOR
 // =============================================================
@@ -965,25 +1006,40 @@ fun TypingIndicator() {
             Alignment.CenterVertically
     ) {
 
+        Box(
 
-        // =====================================================
-        // DOCTOR AI LOGO
-        // =====================================================
+            modifier =
+                Modifier
+                    .size(34.dp)
+                    .clip(CircleShape)
+                    .background(
+                        Color(0xFF1976D2)
+                    ),
 
-        MedicalAssistantIcon(
-            size = 34.dp
-        )
+            contentAlignment =
+                Alignment.Center
+        ) {
 
+            Text(
+
+                text =
+                    "AI",
+
+                color =
+                    Color.White,
+
+                fontSize =
+                    10.sp,
+
+                fontWeight =
+                    FontWeight.Bold
+            )
+        }
 
         Spacer(
             modifier =
                 Modifier.width(7.dp)
         )
-
-
-        // =====================================================
-        // THINKING BOX
-        // =====================================================
 
         Surface(
 
@@ -1022,12 +1078,10 @@ fun TypingIndicator() {
                         2.dp
                 )
 
-
                 Spacer(
                     modifier =
                         Modifier.width(8.dp)
                 )
-
 
                 Text(
 
@@ -1043,4 +1097,41 @@ fun TypingIndicator() {
             }
         }
     }
+}
+
+// =============================================================
+// SHA-256
+// =============================================================
+
+private fun sha256(
+    value: String
+): String {
+
+    val bytes =
+        MessageDigest
+            .getInstance("SHA-256")
+            .digest(
+                value.toByteArray(
+                    Charsets.UTF_8
+                )
+            )
+
+    return bytes.joinToString("") {
+        "%02x".format(it)
+    }
+}
+
+// =============================================================
+// FORMAT PERCENT
+// =============================================================
+
+private fun formatPercent(
+    value: Double
+): String {
+
+    return String.format(
+        java.util.Locale.US,
+        "%.1f",
+        value * 100
+    )
 }
