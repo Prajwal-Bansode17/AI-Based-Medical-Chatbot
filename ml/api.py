@@ -893,6 +893,48 @@ SYMPTOM_ALIASES = {
     ]
 }
 
+# ============================================================
+# ADDITIONAL MEDICAL TOPIC ALIASES
+# ============================================================
+
+MEDICAL_TOPIC_ALIASES = {
+    "diabetes": ["diabetes", "diabetic", "sugar disease", "blood sugar"],
+    "anemia": ["anemia", "anaemia", "low hemoglobin", "low haemoglobin"],
+    "hemoglobin": ["hemoglobin", "haemoglobin", "hb level", "low hb"],
+    "asthma": ["asthma", "asthmatic"],
+    "migraine": ["migraine", "migraine headache"],
+    "dengue": ["dengue"],
+    "malaria": ["malaria"],
+    "typhoid": ["typhoid"],
+    "hypertension": ["hypertension", "high blood pressure", "high bp"],
+    "hypotension": ["hypotension", "low blood pressure", "low bp"],
+    "dehydration": ["dehydration", "dehydrated"],
+    "paracetamol": ["paracetamol", "acetaminophen", "calpol"],
+    "ibuprofen": ["ibuprofen"],
+    "aspirin": ["aspirin"],
+    "cetirizine": ["cetirizine"],
+    "antibiotic": ["antibiotic", "antibiotics"]
+}
+
+
+def extract_medical_topics(text):
+    normalized = normalize_text(text)
+    detected = []
+
+    for topic, aliases in MEDICAL_TOPIC_ALIASES.items():
+        for alias in aliases:
+            alias_normalized = normalize_text(alias)
+
+            if (
+                normalized == alias_normalized
+                or f" {alias_normalized} " in f" {normalized} "
+            ):
+                if topic not in detected:
+                    detected.append(topic)
+                break
+
+    return detected
+
 
 # ============================================================
 # EXTRACT SYMPTOMS
@@ -1011,6 +1053,10 @@ def is_medical_query(text):
         return True
 
     if extract_symptoms(text):
+
+        return True
+
+    if extract_medical_topics(text):
 
         return True
 
@@ -1176,6 +1222,60 @@ def get_knowledge_response(
             "response"
         ]
     ).strip()
+
+
+# ============================================================
+# DIRECT MEDICAL TOPIC RESPONSE
+# ============================================================
+
+def get_topic_knowledge_response(
+    topics,
+    question_type
+):
+    responses = []
+
+    for topic in topics:
+        rows = medical_knowledge[
+            medical_knowledge["symptom"]
+            .astype(str)
+            .str.strip()
+            .str.lower()
+            == topic.lower()
+        ]
+
+        if rows.empty:
+            continue
+
+        matching = rows[
+            rows["question_type"]
+            .astype(str)
+            .str.strip()
+            .str.lower()
+            == question_type.lower()
+        ]
+
+        if matching.empty:
+            matching = rows
+
+        response = str(
+            matching.iloc[0]["response"]
+        ).strip()
+
+        if response:
+            title = topic.replace("_", " ").title()
+            responses.append(f"{title}:\n{response}")
+
+    if not responses:
+        return None
+
+    return (
+        "Here is some general medical information. "
+        "This information does not provide a diagnosis.\n\n"
+        + "\n\n".join(responses)
+        + "\n\nImportant: If symptoms are severe, worsening, "
+        "persistent, or you have an emergency symptom, seek "
+        "urgent medical care."
+    )
 
 
 # ============================================================
@@ -2392,47 +2492,78 @@ def determine_final_intent(
     model_intent,
     confidence
 ):
+    query = normalize_text(text)
+    words = set(query.split())
 
-    query = normalize_text(
-        text
-    )
+    symptoms = extract_symptoms(text)
+    medical_topics = extract_medical_topics(text)
 
-    words = set(
-        query.split()
-    )
-
-    symptoms = extract_symptoms(
-        text
-    )
-
-
-    if (
-        "opd" in words
-        or
-        "outpatient" in words
-    ):
-
-        return "opd"
-
+    # OPD / outpatient is deliberately not a supported intent.
 
     emergency_words = {
-
         "emergency",
         "unconscious",
         "critical",
         "trauma"
     }
 
+    emergency_phrases = [
+        "cannot breathe",
+        "cant breathe",
+        "severe chest pain",
+        "heavy bleeding",
+        "difficulty breathing",
+        "blue lips",
+        "collapsed",
+        "medical emergency"
+    ]
 
-    if words.intersection(
-        emergency_words
+    if (
+        words.intersection(emergency_words)
+        or any(
+            phrase in query
+            for phrase in emergency_phrases
+        )
     ):
-
         return "emergency"
 
+    medicine_topics = {
+        "paracetamol",
+        "ibuprofen",
+        "aspirin",
+        "cetirizine",
+        "antibiotic"
+    }
+
+    disease_topics = {
+        "diabetes",
+        "anemia",
+        "asthma",
+        "migraine",
+        "dengue",
+        "malaria",
+        "typhoid",
+        "hypertension",
+        "hypotension",
+        "dehydration"
+    }
+
+    if any(
+        topic in medicine_topics
+        for topic in medical_topics
+    ):
+        return "medicine_information"
+
+    if any(
+        topic in disease_topics
+        for topic in medical_topics
+    ):
+        return "disease_information"
+
+    if "hemoglobin" in medical_topics:
+        return "symptom_information"
 
     assistance_patterns = [
-
         "i have",
         "i am having",
         "i feel",
@@ -2446,50 +2577,40 @@ def determine_final_intent(
         "mere"
     ]
 
-
     if (
         symptoms
-        and
-        any(
+        and any(
             pattern in query
             for pattern in assistance_patterns
         )
     ):
-
         return "symptom_assistance"
 
-
     information_patterns = [
-
         "symptoms of",
         "symptoms for",
         "what are the symptoms",
         "signs of",
         "symptom of",
-        "symptoms"
+        "symptoms",
+        "what is",
+        "what are",
+        "tell me about"
     ]
-
 
     if (
         symptoms
-        and
-        any(
+        and any(
             pattern in query
             for pattern in information_patterns
         )
     ):
-
         return "symptom_information"
 
-
     if symptoms:
-
         return "symptom_assistance"
 
-
-    return str(
-        model_intent
-    )
+    return str(model_intent)
 
 
 # ============================================================
@@ -3574,6 +3695,58 @@ def predict():
 
 
         # ====================================================
+        # DIRECT MEDICAL TOPIC RESPONSE
+        # ====================================================
+
+        medical_topics = extract_medical_topics(text)
+
+        if medical_topics:
+            topic_question_type = get_question_type(text)
+
+            topic_answer = get_topic_knowledge_response(
+                medical_topics,
+                topic_question_type
+            )
+
+            if topic_answer:
+                save_chat_message(
+                    session_id,
+                    "user",
+                    text,
+                    symptoms
+                )
+
+                save_structured_memories(
+                    session_id=session_id,
+                    text=text,
+                    symptoms=symptoms,
+                    duration=duration
+                )
+
+                save_chat_message(
+                    session_id,
+                    "assistant",
+                    topic_answer,
+                    symptoms
+                )
+
+                return jsonify({
+                    "status": "success",
+                    "session_id": session_id,
+                    "question": text,
+                    "intent": final_intent,
+                    "confidence": round(confidence, 4),
+                    "symptoms": symptoms,
+                    "previous_symptoms": previous_symptoms,
+                    "duration": duration,
+                    "measurements": measurements,
+                    "medical_query": True,
+                    "answer": topic_answer,
+                    "answer_similarity": 1.0,
+                    "source": "medical_knowledge"
+                })
+
+        # ====================================================
         # MEDICAL RESPONSE
         # ====================================================
 
@@ -3904,3 +4077,4 @@ if __name__ == "__main__":
         port=5000,
         debug=False
     )
+
