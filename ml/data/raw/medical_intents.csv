@@ -1,41 +1,2921 @@
-text,intent
-I have a fever,symptom_assistance
-I have fever and headache,symptom_assistance
-I am feeling weak and tired,symptom_assistance
-I have a cough,symptom_assistance
-My throat is hurting,symptom_assistance
-I have body pain,symptom_assistance
-What are common symptoms of flu,symptom_information
-What are the symptoms of a cold,symptom_information
-How do I know if I have a fever,symptom_information
-What are common flu symptoms,symptom_information
-What symptoms should I watch for,symptom_information
-What are signs of dehydration,symptom_information
-What is paracetamol used for,medicine_information
-Tell me about paracetamol,medicine_information
-What is ibuprofen used for,medicine_information
-Tell me about cetirizine,medicine_information
-What does an antibiotic do,medicine_information
-What is the use of pain medicine,medicine_information
-How can I stay healthy,general_health
-Give me some health tips,general_health
-How can I improve my health,general_health
-What should I do for a healthy lifestyle,general_health
-How important is sleep,general_health
-How much water should I drink,general_health
-What should I do in a medical emergency,emergency
-I need urgent medical help,emergency
-What should I do if someone faints,emergency
-What should I do if someone has severe chest pain,emergency
-When should I seek emergency care,emergency
-I have a serious medical problem,emergency
-Where is the OPD,opd
-Where is the outpatient department,opd
-Where can I find the OPD,opd
-OPD location please,opd
-Where is outpatient department,opd
-How can I find the OPD,opd
-Tell me the OPD location,opd
-Where is the hospital OPD,opd
-Where should I go for OPD,opd
-OPD department location,opd
+intent,question
+symptom_information,fever
+symptom_information,what are the symptoms of fever
+symptom_information,what are symptoms of fever
+symptom_information,what are the signs of fever
+symptom_information,signs of fever
+symptom_information,how do I know if I have fever
+symptom_information,what does fever feel like
+symptom_information,is fever serious
+symptom_information,headache
+symptom_information,what are the symptoms of headache
+symptom_information,what are symptoms of headache
+symptom_information,what are the signs of headache
+symptom_information,signs of headache
+symptom_information,how do I know if I have headache
+symptom_information,what does headache feel like
+symptom_information,is headache serious
+symptom_information,cough
+symptom_information,what are the symptoms of cough
+symptom_information,what are symptoms of cough
+symptom_information,what are the signs of cough
+symptom_information,signs of cough
+symptom_information,how do I know if I have cough
+symptom_information,what does cough feel like
+symptom_information,is cough serious
+symptom_information,cold
+symptom_information,what are the symptoms of cold
+symptom_information,what are symptoms of cold
+symptom_information,what are the signs of cold
+symptom_information,signs of cold
+symptom_information,how do I know if I have cold
+symptom_information,what does cold feel like
+symptom_information,is cold serious
+symptom_information,dizziness
+symptom_information,what are the symptoms of dizziness
+symptom_information,what are symptoms of dizziness
+symptom_information,what are the signs of dizziness
+symptom_information,signs of dizziness
+symptom_information,how do I know if I have dizziness
+symptom_information,what does dizziness feel like
+symptom_information,is dizziness serious
+symptom_information,weakness
+symptom_information,what are the symptoms of weakness
+symptom_information,what are symptoms of weakness
+symptom_information,what are the signs of weakness
+symptom_information,signs of weakness
+symptom_information,how do I know if I have weakness
+symptom_information,what does weakness feel like
+symptom_information,is weakness serious
+symptom_information,fatigue
+symptom_information,what are the symptoms of fatigue
+symptom_information,what are symptoms of fatigue
+symptom_information,what are the signs of fatigue
+symptom_information,signs of fatigue
+symptom_information,how do I know if I have fatigue
+symptom_information,what does fatigue feel like
+symptom_information,is fatigue serious
+symptom_information,nausea
+symptom_information,what are the symptoms of nausea
+symptom_information,what are symptoms of nausea
+symptom_information,what are the signs of nausea
+symptom_information,signs of nausea
+symptom_information,how do I know if I have nausea
+symptom_information,what does nausea feel like
+symptom_information,is nausea serious
+symptom_information,vomiting
+symptom_information,what are the symptoms of vomiting
+symptom_information,what are symptoms of vomiting
+symptom_information,what are the signs of vomiting
+symptom_information,signs of vomiting
+symptom_information,how do I know if I have vomiting
+symptom_information,what does vomiting feel like
+symptom_information,is vomiting serious
+symptom_information,diarrhea
+symptom_information,what are the symptoms of diarrhea
+symptom_information,what are symptoms of diarrhea
+symptom_information,what are the signs of diarrhea
+symptom_information,signs of diarrhea
+symptom_information,how do I know if I have diarrhea
+symptom_information,what does diarrhea feel like
+symptom_information,is diarrhea serious
+symptom_information,constipation
+symptom_information,what are the symptoms of constipation
+symptom_information,what are symptoms of constipation
+symptom_information,what are the signs of constipation
+symptom_information,signs of constipation
+symptom_information,how do I know if I have constipation
+symptom_information,what does constipation feel like
+symptom_information,is constipation serious
+symptom_information,stomach pain
+symptom_information,what are the symptoms of stomach pain
+symptom_information,what are symptoms of stomach pain
+symptom_information,what are the signs of stomach pain
+symptom_information,signs of stomach pain
+symptom_information,how do I know if I have stomach pain
+symptom_information,what does stomach pain feel like
+symptom_information,is stomach pain serious
+symptom_information,chest pain
+symptom_information,what are the symptoms of chest pain
+symptom_information,what are symptoms of chest pain
+symptom_information,what are the signs of chest pain
+symptom_information,signs of chest pain
+symptom_information,how do I know if I have chest pain
+symptom_information,what does chest pain feel like
+symptom_information,is chest pain serious
+symptom_information,back pain
+symptom_information,what are the symptoms of back pain
+symptom_information,what are symptoms of back pain
+symptom_information,what are the signs of back pain
+symptom_information,signs of back pain
+symptom_information,how do I know if I have back pain
+symptom_information,what does back pain feel like
+symptom_information,is back pain serious
+symptom_information,joint pain
+symptom_information,what are the symptoms of joint pain
+symptom_information,what are symptoms of joint pain
+symptom_information,what are the signs of joint pain
+symptom_information,signs of joint pain
+symptom_information,how do I know if I have joint pain
+symptom_information,what does joint pain feel like
+symptom_information,is joint pain serious
+symptom_information,sore throat
+symptom_information,what are the symptoms of sore throat
+symptom_information,what are symptoms of sore throat
+symptom_information,what are the signs of sore throat
+symptom_information,signs of sore throat
+symptom_information,how do I know if I have sore throat
+symptom_information,what does sore throat feel like
+symptom_information,is sore throat serious
+symptom_information,runny nose
+symptom_information,what are the symptoms of runny nose
+symptom_information,what are symptoms of runny nose
+symptom_information,what are the signs of runny nose
+symptom_information,signs of runny nose
+symptom_information,how do I know if I have runny nose
+symptom_information,what does runny nose feel like
+symptom_information,is runny nose serious
+symptom_information,body pain
+symptom_information,what are the symptoms of body pain
+symptom_information,what are symptoms of body pain
+symptom_information,what are the signs of body pain
+symptom_information,signs of body pain
+symptom_information,how do I know if I have body pain
+symptom_information,what does body pain feel like
+symptom_information,is body pain serious
+symptom_information,breathing problem
+symptom_information,what are the symptoms of breathing problem
+symptom_information,what are symptoms of breathing problem
+symptom_information,what are the signs of breathing problem
+symptom_information,signs of breathing problem
+symptom_information,how do I know if I have breathing problem
+symptom_information,what does breathing problem feel like
+symptom_information,is breathing problem serious
+symptom_information,shortness of breath
+symptom_information,what are the symptoms of shortness of breath
+symptom_information,what are symptoms of shortness of breath
+symptom_information,what are the signs of shortness of breath
+symptom_information,signs of shortness of breath
+symptom_information,how do I know if I have shortness of breath
+symptom_information,what does shortness of breath feel like
+symptom_information,is shortness of breath serious
+symptom_information,swelling
+symptom_information,what are the symptoms of swelling
+symptom_information,what are symptoms of swelling
+symptom_information,what are the signs of swelling
+symptom_information,signs of swelling
+symptom_information,how do I know if I have swelling
+symptom_information,what does swelling feel like
+symptom_information,is swelling serious
+symptom_information,rash
+symptom_information,what are the symptoms of rash
+symptom_information,what are symptoms of rash
+symptom_information,what are the signs of rash
+symptom_information,signs of rash
+symptom_information,how do I know if I have rash
+symptom_information,what does rash feel like
+symptom_information,is rash serious
+symptom_information,itching
+symptom_information,what are the symptoms of itching
+symptom_information,what are symptoms of itching
+symptom_information,what are the signs of itching
+symptom_information,signs of itching
+symptom_information,how do I know if I have itching
+symptom_information,what does itching feel like
+symptom_information,is itching serious
+symptom_information,abdominal pain
+symptom_information,what are the symptoms of abdominal pain
+symptom_information,what are symptoms of abdominal pain
+symptom_information,what are the signs of abdominal pain
+symptom_information,signs of abdominal pain
+symptom_information,how do I know if I have abdominal pain
+symptom_information,what does abdominal pain feel like
+symptom_information,is abdominal pain serious
+symptom_information,loss of appetite
+symptom_information,what are the symptoms of loss of appetite
+symptom_information,what are symptoms of loss of appetite
+symptom_information,what are the signs of loss of appetite
+symptom_information,signs of loss of appetite
+symptom_information,how do I know if I have loss of appetite
+symptom_information,what does loss of appetite feel like
+symptom_information,is loss of appetite serious
+symptom_information,loss of smell
+symptom_information,what are the symptoms of loss of smell
+symptom_information,what are symptoms of loss of smell
+symptom_information,what are the signs of loss of smell
+symptom_information,signs of loss of smell
+symptom_information,how do I know if I have loss of smell
+symptom_information,what does loss of smell feel like
+symptom_information,is loss of smell serious
+symptom_information,loss of taste
+symptom_information,what are the symptoms of loss of taste
+symptom_information,what are symptoms of loss of taste
+symptom_information,what are the signs of loss of taste
+symptom_information,signs of loss of taste
+symptom_information,how do I know if I have loss of taste
+symptom_information,what does loss of taste feel like
+symptom_information,is loss of taste serious
+symptom_information,high temperature
+symptom_information,what are the symptoms of high temperature
+symptom_information,what are symptoms of high temperature
+symptom_information,what are the signs of high temperature
+symptom_information,signs of high temperature
+symptom_information,how do I know if I have high temperature
+symptom_information,what does high temperature feel like
+symptom_information,is high temperature serious
+symptom_information,low blood pressure
+symptom_information,what are the symptoms of low blood pressure
+symptom_information,what are symptoms of low blood pressure
+symptom_information,what are the signs of low blood pressure
+symptom_information,signs of low blood pressure
+symptom_information,how do I know if I have low blood pressure
+symptom_information,what does low blood pressure feel like
+symptom_information,is low blood pressure serious
+symptom_information,high blood pressure
+symptom_information,what are the symptoms of high blood pressure
+symptom_information,what are symptoms of high blood pressure
+symptom_information,what are the signs of high blood pressure
+symptom_information,signs of high blood pressure
+symptom_information,how do I know if I have high blood pressure
+symptom_information,what does high blood pressure feel like
+symptom_information,is high blood pressure serious
+symptom_information,low hemoglobin
+symptom_information,what are the symptoms of low hemoglobin
+symptom_information,what are symptoms of low hemoglobin
+symptom_information,what are the signs of low hemoglobin
+symptom_information,signs of low hemoglobin
+symptom_information,how do I know if I have low hemoglobin
+symptom_information,what does low hemoglobin feel like
+symptom_information,is low hemoglobin serious
+symptom_information,sneezing
+symptom_information,what are the symptoms of sneezing
+symptom_information,what are symptoms of sneezing
+symptom_information,what are the signs of sneezing
+symptom_information,signs of sneezing
+symptom_information,how do I know if I have sneezing
+symptom_information,what does sneezing feel like
+symptom_information,is sneezing serious
+symptom_information,chills
+symptom_information,what are the symptoms of chills
+symptom_information,what are symptoms of chills
+symptom_information,what are the signs of chills
+symptom_information,signs of chills
+symptom_information,how do I know if I have chills
+symptom_information,what does chills feel like
+symptom_information,is chills serious
+symptom_information,sweating
+symptom_information,what are the symptoms of sweating
+symptom_information,what are symptoms of sweating
+symptom_information,what are the signs of sweating
+symptom_information,signs of sweating
+symptom_information,how do I know if I have sweating
+symptom_information,what does sweating feel like
+symptom_information,is sweating serious
+symptom_information,muscle pain
+symptom_information,what are the symptoms of muscle pain
+symptom_information,what are symptoms of muscle pain
+symptom_information,what are the signs of muscle pain
+symptom_information,signs of muscle pain
+symptom_information,how do I know if I have muscle pain
+symptom_information,what does muscle pain feel like
+symptom_information,is muscle pain serious
+symptom_information,ear pain
+symptom_information,what are the symptoms of ear pain
+symptom_information,what are symptoms of ear pain
+symptom_information,what are the signs of ear pain
+symptom_information,signs of ear pain
+symptom_information,how do I know if I have ear pain
+symptom_information,what does ear pain feel like
+symptom_information,is ear pain serious
+symptom_information,eye pain
+symptom_information,what are the symptoms of eye pain
+symptom_information,what are symptoms of eye pain
+symptom_information,what are the signs of eye pain
+symptom_information,signs of eye pain
+symptom_information,how do I know if I have eye pain
+symptom_information,what does eye pain feel like
+symptom_information,is eye pain serious
+symptom_information,blurred vision
+symptom_information,what are the symptoms of blurred vision
+symptom_information,what are symptoms of blurred vision
+symptom_information,what are the signs of blurred vision
+symptom_information,signs of blurred vision
+symptom_information,how do I know if I have blurred vision
+symptom_information,what does blurred vision feel like
+symptom_information,is blurred vision serious
+symptom_information,ringing in ears
+symptom_information,what are the symptoms of ringing in ears
+symptom_information,what are symptoms of ringing in ears
+symptom_information,what are the signs of ringing in ears
+symptom_information,signs of ringing in ears
+symptom_information,how do I know if I have ringing in ears
+symptom_information,what does ringing in ears feel like
+symptom_information,is ringing in ears serious
+symptom_information,numbness
+symptom_information,what are the symptoms of numbness
+symptom_information,what are symptoms of numbness
+symptom_information,what are the signs of numbness
+symptom_information,signs of numbness
+symptom_information,how do I know if I have numbness
+symptom_information,what does numbness feel like
+symptom_information,is numbness serious
+symptom_information,tingling sensation
+symptom_information,what are the symptoms of tingling sensation
+symptom_information,what are symptoms of tingling sensation
+symptom_information,what are the signs of tingling sensation
+symptom_information,signs of tingling sensation
+symptom_information,how do I know if I have tingling sensation
+symptom_information,what does tingling sensation feel like
+symptom_information,is tingling sensation serious
+symptom_information,leg cramps
+symptom_information,what are the symptoms of leg cramps
+symptom_information,what are symptoms of leg cramps
+symptom_information,what are the signs of leg cramps
+symptom_information,signs of leg cramps
+symptom_information,how do I know if I have leg cramps
+symptom_information,what does leg cramps feel like
+symptom_information,is leg cramps serious
+symptom_information,swollen ankles
+symptom_information,what are the symptoms of swollen ankles
+symptom_information,what are symptoms of swollen ankles
+symptom_information,what are the signs of swollen ankles
+symptom_information,signs of swollen ankles
+symptom_information,how do I know if I have swollen ankles
+symptom_information,what does swollen ankles feel like
+symptom_information,is swollen ankles serious
+symptom_information,swollen glands
+symptom_information,what are the symptoms of swollen glands
+symptom_information,what are symptoms of swollen glands
+symptom_information,what are the signs of swollen glands
+symptom_information,signs of swollen glands
+symptom_information,how do I know if I have swollen glands
+symptom_information,what does swollen glands feel like
+symptom_information,is swollen glands serious
+symptom_information,dry mouth
+symptom_information,what are the symptoms of dry mouth
+symptom_information,what are symptoms of dry mouth
+symptom_information,what are the signs of dry mouth
+symptom_information,signs of dry mouth
+symptom_information,how do I know if I have dry mouth
+symptom_information,what does dry mouth feel like
+symptom_information,is dry mouth serious
+symptom_information,excessive thirst
+symptom_information,what are the symptoms of excessive thirst
+symptom_information,what are symptoms of excessive thirst
+symptom_information,what are the signs of excessive thirst
+symptom_information,signs of excessive thirst
+symptom_information,how do I know if I have excessive thirst
+symptom_information,what does excessive thirst feel like
+symptom_information,is excessive thirst serious
+symptom_information,frequent urination
+symptom_information,what are the symptoms of frequent urination
+symptom_information,what are symptoms of frequent urination
+symptom_information,what are the signs of frequent urination
+symptom_information,signs of frequent urination
+symptom_information,how do I know if I have frequent urination
+symptom_information,what does frequent urination feel like
+symptom_information,is frequent urination serious
+symptom_information,night sweats
+symptom_information,what are the symptoms of night sweats
+symptom_information,what are symptoms of night sweats
+symptom_information,what are the signs of night sweats
+symptom_information,signs of night sweats
+symptom_information,how do I know if I have night sweats
+symptom_information,what does night sweats feel like
+symptom_information,is night sweats serious
+symptom_information,weight loss
+symptom_information,what are the symptoms of weight loss
+symptom_information,what are symptoms of weight loss
+symptom_information,what are the signs of weight loss
+symptom_information,signs of weight loss
+symptom_information,how do I know if I have weight loss
+symptom_information,what does weight loss feel like
+symptom_information,is weight loss serious
+symptom_information,weight gain
+symptom_information,what are the symptoms of weight gain
+symptom_information,what are symptoms of weight gain
+symptom_information,what are the signs of weight gain
+symptom_information,signs of weight gain
+symptom_information,how do I know if I have weight gain
+symptom_information,what does weight gain feel like
+symptom_information,is weight gain serious
+symptom_information,hair loss
+symptom_information,what are the symptoms of hair loss
+symptom_information,what are symptoms of hair loss
+symptom_information,what are the signs of hair loss
+symptom_information,signs of hair loss
+symptom_information,how do I know if I have hair loss
+symptom_information,what does hair loss feel like
+symptom_information,is hair loss serious
+symptom_information,dry skin
+symptom_information,what are the symptoms of dry skin
+symptom_information,what are symptoms of dry skin
+symptom_information,what are the signs of dry skin
+symptom_information,signs of dry skin
+symptom_information,how do I know if I have dry skin
+symptom_information,what does dry skin feel like
+symptom_information,is dry skin serious
+symptom_information,yellow skin
+symptom_information,what are the symptoms of yellow skin
+symptom_information,what are symptoms of yellow skin
+symptom_information,what are the signs of yellow skin
+symptom_information,signs of yellow skin
+symptom_information,how do I know if I have yellow skin
+symptom_information,what does yellow skin feel like
+symptom_information,is yellow skin serious
+symptom_information,yellow eyes
+symptom_information,what are the symptoms of yellow eyes
+symptom_information,what are symptoms of yellow eyes
+symptom_information,what are the signs of yellow eyes
+symptom_information,signs of yellow eyes
+symptom_information,how do I know if I have yellow eyes
+symptom_information,what does yellow eyes feel like
+symptom_information,is yellow eyes serious
+symptom_information,dark urine
+symptom_information,what are the symptoms of dark urine
+symptom_information,what are symptoms of dark urine
+symptom_information,what are the signs of dark urine
+symptom_information,signs of dark urine
+symptom_information,how do I know if I have dark urine
+symptom_information,what does dark urine feel like
+symptom_information,is dark urine serious
+symptom_information,bloating
+symptom_information,what are the symptoms of bloating
+symptom_information,what are symptoms of bloating
+symptom_information,what are the signs of bloating
+symptom_information,signs of bloating
+symptom_information,how do I know if I have bloating
+symptom_information,what does bloating feel like
+symptom_information,is bloating serious
+symptom_information,heartburn
+symptom_information,what are the symptoms of heartburn
+symptom_information,what are symptoms of heartburn
+symptom_information,what are the signs of heartburn
+symptom_information,signs of heartburn
+symptom_information,how do I know if I have heartburn
+symptom_information,what does heartburn feel like
+symptom_information,is heartburn serious
+symptom_information,acid reflux
+symptom_information,what are the symptoms of acid reflux
+symptom_information,what are symptoms of acid reflux
+symptom_information,what are the signs of acid reflux
+symptom_information,signs of acid reflux
+symptom_information,how do I know if I have acid reflux
+symptom_information,what does acid reflux feel like
+symptom_information,is acid reflux serious
+symptom_information,difficulty swallowing
+symptom_information,what are the symptoms of difficulty swallowing
+symptom_information,what are symptoms of difficulty swallowing
+symptom_information,what are the signs of difficulty swallowing
+symptom_information,signs of difficulty swallowing
+symptom_information,how do I know if I have difficulty swallowing
+symptom_information,what does difficulty swallowing feel like
+symptom_information,is difficulty swallowing serious
+symptom_information,hoarseness
+symptom_information,what are the symptoms of hoarseness
+symptom_information,what are symptoms of hoarseness
+symptom_information,what are the signs of hoarseness
+symptom_information,signs of hoarseness
+symptom_information,how do I know if I have hoarseness
+symptom_information,what does hoarseness feel like
+symptom_information,is hoarseness serious
+symptom_information,palpitations
+symptom_information,what are the symptoms of palpitations
+symptom_information,what are symptoms of palpitations
+symptom_information,what are the signs of palpitations
+symptom_information,signs of palpitations
+symptom_information,how do I know if I have palpitations
+symptom_information,what does palpitations feel like
+symptom_information,is palpitations serious
+symptom_information,irregular heartbeat
+symptom_information,what are the symptoms of irregular heartbeat
+symptom_information,what are symptoms of irregular heartbeat
+symptom_information,what are the signs of irregular heartbeat
+symptom_information,signs of irregular heartbeat
+symptom_information,how do I know if I have irregular heartbeat
+symptom_information,what does irregular heartbeat feel like
+symptom_information,is irregular heartbeat serious
+symptom_information,cold hands and feet
+symptom_information,what are the symptoms of cold hands and feet
+symptom_information,what are symptoms of cold hands and feet
+symptom_information,what are the signs of cold hands and feet
+symptom_information,signs of cold hands and feet
+symptom_information,how do I know if I have cold hands and feet
+symptom_information,what does cold hands and feet feel like
+symptom_information,is cold hands and feet serious
+symptom_information,insomnia
+symptom_information,what are the symptoms of insomnia
+symptom_information,what are symptoms of insomnia
+symptom_information,what are the signs of insomnia
+symptom_information,signs of insomnia
+symptom_information,how do I know if I have insomnia
+symptom_information,what does insomnia feel like
+symptom_information,is insomnia serious
+symptom_information,excessive sleepiness
+symptom_information,what are the symptoms of excessive sleepiness
+symptom_information,what are symptoms of excessive sleepiness
+symptom_information,what are the signs of excessive sleepiness
+symptom_information,signs of excessive sleepiness
+symptom_information,how do I know if I have excessive sleepiness
+symptom_information,what does excessive sleepiness feel like
+symptom_information,is excessive sleepiness serious
+symptom_information,memory problems
+symptom_information,what are the symptoms of memory problems
+symptom_information,what are symptoms of memory problems
+symptom_information,what are the signs of memory problems
+symptom_information,signs of memory problems
+symptom_information,how do I know if I have memory problems
+symptom_information,what does memory problems feel like
+symptom_information,is memory problems serious
+symptom_information,confusion
+symptom_information,what are the symptoms of confusion
+symptom_information,what are symptoms of confusion
+symptom_information,what are the signs of confusion
+symptom_information,signs of confusion
+symptom_information,how do I know if I have confusion
+symptom_information,what does confusion feel like
+symptom_information,is confusion serious
+symptom_information,irritability
+symptom_information,what are the symptoms of irritability
+symptom_information,what are symptoms of irritability
+symptom_information,what are the signs of irritability
+symptom_information,signs of irritability
+symptom_information,how do I know if I have irritability
+symptom_information,what does irritability feel like
+symptom_information,is irritability serious
+symptom_information,anxiety
+symptom_information,what are the symptoms of anxiety
+symptom_information,what are symptoms of anxiety
+symptom_information,what are the signs of anxiety
+symptom_information,signs of anxiety
+symptom_information,how do I know if I have anxiety
+symptom_information,what does anxiety feel like
+symptom_information,is anxiety serious
+symptom_information,mood swings
+symptom_information,what are the symptoms of mood swings
+symptom_information,what are symptoms of mood swings
+symptom_information,what are the signs of mood swings
+symptom_information,signs of mood swings
+symptom_information,how do I know if I have mood swings
+symptom_information,what does mood swings feel like
+symptom_information,is mood swings serious
+symptom_information,low energy
+symptom_information,what are the symptoms of low energy
+symptom_information,what are symptoms of low energy
+symptom_information,what are the signs of low energy
+symptom_information,signs of low energy
+symptom_information,how do I know if I have low energy
+symptom_information,what does low energy feel like
+symptom_information,is low energy serious
+symptom_information,bruising easily
+symptom_information,what are the symptoms of bruising easily
+symptom_information,what are symptoms of bruising easily
+symptom_information,what are the signs of bruising easily
+symptom_information,signs of bruising easily
+symptom_information,how do I know if I have bruising easily
+symptom_information,what does bruising easily feel like
+symptom_information,is bruising easily serious
+symptom_information,nosebleeds
+symptom_information,what are the symptoms of nosebleeds
+symptom_information,what are symptoms of nosebleeds
+symptom_information,what are the signs of nosebleeds
+symptom_information,signs of nosebleeds
+symptom_information,how do I know if I have nosebleeds
+symptom_information,what does nosebleeds feel like
+symptom_information,is nosebleeds serious
+symptom_information,bleeding gums
+symptom_information,what are the symptoms of bleeding gums
+symptom_information,what are symptoms of bleeding gums
+symptom_information,what are the signs of bleeding gums
+symptom_information,signs of bleeding gums
+symptom_information,how do I know if I have bleeding gums
+symptom_information,what does bleeding gums feel like
+symptom_information,is bleeding gums serious
+symptom_information,mouth ulcers
+symptom_information,what are the symptoms of mouth ulcers
+symptom_information,what are symptoms of mouth ulcers
+symptom_information,what are the signs of mouth ulcers
+symptom_information,signs of mouth ulcers
+symptom_information,how do I know if I have mouth ulcers
+symptom_information,what does mouth ulcers feel like
+symptom_information,is mouth ulcers serious
+symptom_information,dry cough
+symptom_information,what are the symptoms of dry cough
+symptom_information,what are symptoms of dry cough
+symptom_information,what are the signs of dry cough
+symptom_information,signs of dry cough
+symptom_information,how do I know if I have dry cough
+symptom_information,what does dry cough feel like
+symptom_information,is dry cough serious
+symptom_information,wet cough
+symptom_information,what are the symptoms of wet cough
+symptom_information,what are symptoms of wet cough
+symptom_information,what are the signs of wet cough
+symptom_information,signs of wet cough
+symptom_information,how do I know if I have wet cough
+symptom_information,what does wet cough feel like
+symptom_information,is wet cough serious
+symptom_information,wheezing
+symptom_information,what are the symptoms of wheezing
+symptom_information,what are symptoms of wheezing
+symptom_information,what are the signs of wheezing
+symptom_information,signs of wheezing
+symptom_information,how do I know if I have wheezing
+symptom_information,what does wheezing feel like
+symptom_information,is wheezing serious
+symptom_information,chest tightness
+symptom_information,what are the symptoms of chest tightness
+symptom_information,what are symptoms of chest tightness
+symptom_information,what are the signs of chest tightness
+symptom_information,signs of chest tightness
+symptom_information,how do I know if I have chest tightness
+symptom_information,what does chest tightness feel like
+symptom_information,is chest tightness serious
+symptom_information,neck pain
+symptom_information,what are the symptoms of neck pain
+symptom_information,what are symptoms of neck pain
+symptom_information,what are the signs of neck pain
+symptom_information,signs of neck pain
+symptom_information,how do I know if I have neck pain
+symptom_information,what does neck pain feel like
+symptom_information,is neck pain serious
+symptom_information,stiff neck
+symptom_information,what are the symptoms of stiff neck
+symptom_information,what are symptoms of stiff neck
+symptom_information,what are the signs of stiff neck
+symptom_information,signs of stiff neck
+symptom_information,how do I know if I have stiff neck
+symptom_information,what does stiff neck feel like
+symptom_information,is stiff neck serious
+symptom_information,muscle cramps
+symptom_information,what are the symptoms of muscle cramps
+symptom_information,what are symptoms of muscle cramps
+symptom_information,what are the signs of muscle cramps
+symptom_information,signs of muscle cramps
+symptom_information,how do I know if I have muscle cramps
+symptom_information,what does muscle cramps feel like
+symptom_information,is muscle cramps serious
+symptom_information,leg pain
+symptom_information,what are the symptoms of leg pain
+symptom_information,what are symptoms of leg pain
+symptom_information,what are the signs of leg pain
+symptom_information,signs of leg pain
+symptom_information,how do I know if I have leg pain
+symptom_information,what does leg pain feel like
+symptom_information,is leg pain serious
+symptom_information,foot pain
+symptom_information,what are the symptoms of foot pain
+symptom_information,what are symptoms of foot pain
+symptom_information,what are the signs of foot pain
+symptom_information,signs of foot pain
+symptom_information,how do I know if I have foot pain
+symptom_information,what does foot pain feel like
+symptom_information,is foot pain serious
+symptom_information,swollen joints
+symptom_information,what are the symptoms of swollen joints
+symptom_information,what are symptoms of swollen joints
+symptom_information,what are the signs of swollen joints
+symptom_information,signs of swollen joints
+symptom_information,how do I know if I have swollen joints
+symptom_information,what does swollen joints feel like
+symptom_information,is swollen joints serious
+symptom_information,morning stiffness
+symptom_information,what are the symptoms of morning stiffness
+symptom_information,what are symptoms of morning stiffness
+symptom_information,what are the signs of morning stiffness
+symptom_information,signs of morning stiffness
+symptom_information,how do I know if I have morning stiffness
+symptom_information,what does morning stiffness feel like
+symptom_information,is morning stiffness serious
+symptom_information,blurred eyesight
+symptom_information,what are the symptoms of blurred eyesight
+symptom_information,what are symptoms of blurred eyesight
+symptom_information,what are the signs of blurred eyesight
+symptom_information,signs of blurred eyesight
+symptom_information,how do I know if I have blurred eyesight
+symptom_information,what does blurred eyesight feel like
+symptom_information,is blurred eyesight serious
+symptom_information,watery eyes
+symptom_information,what are the symptoms of watery eyes
+symptom_information,what are symptoms of watery eyes
+symptom_information,what are the signs of watery eyes
+symptom_information,signs of watery eyes
+symptom_information,how do I know if I have watery eyes
+symptom_information,what does watery eyes feel like
+symptom_information,is watery eyes serious
+symptom_information,puffy eyes
+symptom_information,what are the symptoms of puffy eyes
+symptom_information,what are symptoms of puffy eyes
+symptom_information,what are the signs of puffy eyes
+symptom_information,signs of puffy eyes
+symptom_information,how do I know if I have puffy eyes
+symptom_information,what does puffy eyes feel like
+symptom_information,is puffy eyes serious
+symptom_information,cracked lips
+symptom_information,what are the symptoms of cracked lips
+symptom_information,what are symptoms of cracked lips
+symptom_information,what are the signs of cracked lips
+symptom_information,signs of cracked lips
+symptom_information,how do I know if I have cracked lips
+symptom_information,what does cracked lips feel like
+symptom_information,is cracked lips serious
+symptom_information,tongue swelling
+symptom_information,what are the symptoms of tongue swelling
+symptom_information,what are symptoms of tongue swelling
+symptom_information,what are the signs of tongue swelling
+symptom_information,signs of tongue swelling
+symptom_information,how do I know if I have tongue swelling
+symptom_information,what does tongue swelling feel like
+symptom_information,is tongue swelling serious
+symptom_information,earache
+symptom_information,what are the symptoms of earache
+symptom_information,what are symptoms of earache
+symptom_information,what are the signs of earache
+symptom_information,signs of earache
+symptom_information,how do I know if I have earache
+symptom_information,what does earache feel like
+symptom_information,is earache serious
+symptom_information,toothache
+symptom_information,what are the symptoms of toothache
+symptom_information,what are symptoms of toothache
+symptom_information,what are the signs of toothache
+symptom_information,signs of toothache
+symptom_information,how do I know if I have toothache
+symptom_information,what does toothache feel like
+symptom_information,is toothache serious
+symptom_information,gum pain
+symptom_information,what are the symptoms of gum pain
+symptom_information,what are symptoms of gum pain
+symptom_information,what are the signs of gum pain
+symptom_information,signs of gum pain
+symptom_information,how do I know if I have gum pain
+symptom_information,what does gum pain feel like
+symptom_information,is gum pain serious
+symptom_information,jaw pain
+symptom_information,what are the symptoms of jaw pain
+symptom_information,what are symptoms of jaw pain
+symptom_information,what are the signs of jaw pain
+symptom_information,signs of jaw pain
+symptom_information,how do I know if I have jaw pain
+symptom_information,what does jaw pain feel like
+symptom_information,is jaw pain serious
+symptom_information,facial swelling
+symptom_information,what are the symptoms of facial swelling
+symptom_information,what are symptoms of facial swelling
+symptom_information,what are the signs of facial swelling
+symptom_information,signs of facial swelling
+symptom_information,how do I know if I have facial swelling
+symptom_information,what does facial swelling feel like
+symptom_information,is facial swelling serious
+symptom_assistance,I have fever
+symptom_assistance,I am having fever
+symptom_assistance,I have been having fever
+symptom_assistance,I have had fever for two days
+symptom_assistance,I have had fever since yesterday
+symptom_assistance,I think I have fever
+symptom_assistance,I am experiencing fever
+symptom_assistance,what should I do for fever
+symptom_assistance,how can I treat fever
+symptom_assistance,how can I get relief from fever
+symptom_assistance,home remedy for fever
+symptom_assistance,what medicine should I take for fever
+symptom_assistance,I have headache
+symptom_assistance,I am having headache
+symptom_assistance,I have been having headache
+symptom_assistance,I have had headache for two days
+symptom_assistance,I have had headache since yesterday
+symptom_assistance,I think I have headache
+symptom_assistance,I am experiencing headache
+symptom_assistance,what should I do for headache
+symptom_assistance,how can I treat headache
+symptom_assistance,how can I get relief from headache
+symptom_assistance,home remedy for headache
+symptom_assistance,what medicine should I take for headache
+symptom_assistance,I have cough
+symptom_assistance,I am having cough
+symptom_assistance,I have been having cough
+symptom_assistance,I have had cough for two days
+symptom_assistance,I have had cough since yesterday
+symptom_assistance,I think I have cough
+symptom_assistance,I am experiencing cough
+symptom_assistance,what should I do for cough
+symptom_assistance,how can I treat cough
+symptom_assistance,how can I get relief from cough
+symptom_assistance,home remedy for cough
+symptom_assistance,what medicine should I take for cough
+symptom_assistance,I have cold
+symptom_assistance,I am having cold
+symptom_assistance,I have been having cold
+symptom_assistance,I have had cold for two days
+symptom_assistance,I have had cold since yesterday
+symptom_assistance,I think I have cold
+symptom_assistance,I am experiencing cold
+symptom_assistance,what should I do for cold
+symptom_assistance,how can I treat cold
+symptom_assistance,how can I get relief from cold
+symptom_assistance,home remedy for cold
+symptom_assistance,what medicine should I take for cold
+symptom_assistance,I have dizziness
+symptom_assistance,I am having dizziness
+symptom_assistance,I have been having dizziness
+symptom_assistance,I have had dizziness for two days
+symptom_assistance,I have had dizziness since yesterday
+symptom_assistance,I think I have dizziness
+symptom_assistance,I am experiencing dizziness
+symptom_assistance,what should I do for dizziness
+symptom_assistance,how can I treat dizziness
+symptom_assistance,how can I get relief from dizziness
+symptom_assistance,home remedy for dizziness
+symptom_assistance,what medicine should I take for dizziness
+symptom_assistance,I have weakness
+symptom_assistance,I am having weakness
+symptom_assistance,I have been having weakness
+symptom_assistance,I have had weakness for two days
+symptom_assistance,I have had weakness since yesterday
+symptom_assistance,I think I have weakness
+symptom_assistance,I am experiencing weakness
+symptom_assistance,what should I do for weakness
+symptom_assistance,how can I treat weakness
+symptom_assistance,how can I get relief from weakness
+symptom_assistance,home remedy for weakness
+symptom_assistance,what medicine should I take for weakness
+symptom_assistance,I have fatigue
+symptom_assistance,I am having fatigue
+symptom_assistance,I have been having fatigue
+symptom_assistance,I have had fatigue for two days
+symptom_assistance,I have had fatigue since yesterday
+symptom_assistance,I think I have fatigue
+symptom_assistance,I am experiencing fatigue
+symptom_assistance,what should I do for fatigue
+symptom_assistance,how can I treat fatigue
+symptom_assistance,how can I get relief from fatigue
+symptom_assistance,home remedy for fatigue
+symptom_assistance,what medicine should I take for fatigue
+symptom_assistance,I have nausea
+symptom_assistance,I am having nausea
+symptom_assistance,I have been having nausea
+symptom_assistance,I have had nausea for two days
+symptom_assistance,I have had nausea since yesterday
+symptom_assistance,I think I have nausea
+symptom_assistance,I am experiencing nausea
+symptom_assistance,what should I do for nausea
+symptom_assistance,how can I treat nausea
+symptom_assistance,how can I get relief from nausea
+symptom_assistance,home remedy for nausea
+symptom_assistance,what medicine should I take for nausea
+symptom_assistance,I have vomiting
+symptom_assistance,I am having vomiting
+symptom_assistance,I have been having vomiting
+symptom_assistance,I have had vomiting for two days
+symptom_assistance,I have had vomiting since yesterday
+symptom_assistance,I think I have vomiting
+symptom_assistance,I am experiencing vomiting
+symptom_assistance,what should I do for vomiting
+symptom_assistance,how can I treat vomiting
+symptom_assistance,how can I get relief from vomiting
+symptom_assistance,home remedy for vomiting
+symptom_assistance,what medicine should I take for vomiting
+symptom_assistance,I have diarrhea
+symptom_assistance,I am having diarrhea
+symptom_assistance,I have been having diarrhea
+symptom_assistance,I have had diarrhea for two days
+symptom_assistance,I have had diarrhea since yesterday
+symptom_assistance,I think I have diarrhea
+symptom_assistance,I am experiencing diarrhea
+symptom_assistance,what should I do for diarrhea
+symptom_assistance,how can I treat diarrhea
+symptom_assistance,how can I get relief from diarrhea
+symptom_assistance,home remedy for diarrhea
+symptom_assistance,what medicine should I take for diarrhea
+symptom_assistance,I have constipation
+symptom_assistance,I am having constipation
+symptom_assistance,I have been having constipation
+symptom_assistance,I have had constipation for two days
+symptom_assistance,I have had constipation since yesterday
+symptom_assistance,I think I have constipation
+symptom_assistance,I am experiencing constipation
+symptom_assistance,what should I do for constipation
+symptom_assistance,how can I treat constipation
+symptom_assistance,how can I get relief from constipation
+symptom_assistance,home remedy for constipation
+symptom_assistance,what medicine should I take for constipation
+symptom_assistance,I have stomach pain
+symptom_assistance,I am having stomach pain
+symptom_assistance,I have been having stomach pain
+symptom_assistance,I have had stomach pain for two days
+symptom_assistance,I have had stomach pain since yesterday
+symptom_assistance,I think I have stomach pain
+symptom_assistance,I am experiencing stomach pain
+symptom_assistance,what should I do for stomach pain
+symptom_assistance,how can I treat stomach pain
+symptom_assistance,how can I get relief from stomach pain
+symptom_assistance,home remedy for stomach pain
+symptom_assistance,what medicine should I take for stomach pain
+symptom_assistance,I have chest pain
+symptom_assistance,I am having chest pain
+symptom_assistance,I have been having chest pain
+symptom_assistance,I have had chest pain for two days
+symptom_assistance,I have had chest pain since yesterday
+symptom_assistance,I think I have chest pain
+symptom_assistance,I am experiencing chest pain
+symptom_assistance,what should I do for chest pain
+symptom_assistance,how can I treat chest pain
+symptom_assistance,how can I get relief from chest pain
+symptom_assistance,home remedy for chest pain
+symptom_assistance,what medicine should I take for chest pain
+symptom_assistance,I have back pain
+symptom_assistance,I am having back pain
+symptom_assistance,I have been having back pain
+symptom_assistance,I have had back pain for two days
+symptom_assistance,I have had back pain since yesterday
+symptom_assistance,I think I have back pain
+symptom_assistance,I am experiencing back pain
+symptom_assistance,what should I do for back pain
+symptom_assistance,how can I treat back pain
+symptom_assistance,how can I get relief from back pain
+symptom_assistance,home remedy for back pain
+symptom_assistance,what medicine should I take for back pain
+symptom_assistance,I have joint pain
+symptom_assistance,I am having joint pain
+symptom_assistance,I have been having joint pain
+symptom_assistance,I have had joint pain for two days
+symptom_assistance,I have had joint pain since yesterday
+symptom_assistance,I think I have joint pain
+symptom_assistance,I am experiencing joint pain
+symptom_assistance,what should I do for joint pain
+symptom_assistance,how can I treat joint pain
+symptom_assistance,how can I get relief from joint pain
+symptom_assistance,home remedy for joint pain
+symptom_assistance,what medicine should I take for joint pain
+symptom_assistance,I have sore throat
+symptom_assistance,I am having sore throat
+symptom_assistance,I have been having sore throat
+symptom_assistance,I have had sore throat for two days
+symptom_assistance,I have had sore throat since yesterday
+symptom_assistance,I think I have sore throat
+symptom_assistance,I am experiencing sore throat
+symptom_assistance,what should I do for sore throat
+symptom_assistance,how can I treat sore throat
+symptom_assistance,how can I get relief from sore throat
+symptom_assistance,home remedy for sore throat
+symptom_assistance,what medicine should I take for sore throat
+symptom_assistance,I have runny nose
+symptom_assistance,I am having runny nose
+symptom_assistance,I have been having runny nose
+symptom_assistance,I have had runny nose for two days
+symptom_assistance,I have had runny nose since yesterday
+symptom_assistance,I think I have runny nose
+symptom_assistance,I am experiencing runny nose
+symptom_assistance,what should I do for runny nose
+symptom_assistance,how can I treat runny nose
+symptom_assistance,how can I get relief from runny nose
+symptom_assistance,home remedy for runny nose
+symptom_assistance,what medicine should I take for runny nose
+symptom_assistance,I have body pain
+symptom_assistance,I am having body pain
+symptom_assistance,I have been having body pain
+symptom_assistance,I have had body pain for two days
+symptom_assistance,I have had body pain since yesterday
+symptom_assistance,I think I have body pain
+symptom_assistance,I am experiencing body pain
+symptom_assistance,what should I do for body pain
+symptom_assistance,how can I treat body pain
+symptom_assistance,how can I get relief from body pain
+symptom_assistance,home remedy for body pain
+symptom_assistance,what medicine should I take for body pain
+symptom_assistance,I have breathing problem
+symptom_assistance,I am having breathing problem
+symptom_assistance,I have been having breathing problem
+symptom_assistance,I have had breathing problem for two days
+symptom_assistance,I have had breathing problem since yesterday
+symptom_assistance,I think I have breathing problem
+symptom_assistance,I am experiencing breathing problem
+symptom_assistance,what should I do for breathing problem
+symptom_assistance,how can I treat breathing problem
+symptom_assistance,how can I get relief from breathing problem
+symptom_assistance,home remedy for breathing problem
+symptom_assistance,what medicine should I take for breathing problem
+symptom_assistance,I have shortness of breath
+symptom_assistance,I am having shortness of breath
+symptom_assistance,I have been having shortness of breath
+symptom_assistance,I have had shortness of breath for two days
+symptom_assistance,I have had shortness of breath since yesterday
+symptom_assistance,I think I have shortness of breath
+symptom_assistance,I am experiencing shortness of breath
+symptom_assistance,what should I do for shortness of breath
+symptom_assistance,how can I treat shortness of breath
+symptom_assistance,how can I get relief from shortness of breath
+symptom_assistance,home remedy for shortness of breath
+symptom_assistance,what medicine should I take for shortness of breath
+symptom_assistance,I have swelling
+symptom_assistance,I am having swelling
+symptom_assistance,I have been having swelling
+symptom_assistance,I have had swelling for two days
+symptom_assistance,I have had swelling since yesterday
+symptom_assistance,I think I have swelling
+symptom_assistance,I am experiencing swelling
+symptom_assistance,what should I do for swelling
+symptom_assistance,how can I treat swelling
+symptom_assistance,how can I get relief from swelling
+symptom_assistance,home remedy for swelling
+symptom_assistance,what medicine should I take for swelling
+symptom_assistance,I have rash
+symptom_assistance,I am having rash
+symptom_assistance,I have been having rash
+symptom_assistance,I have had rash for two days
+symptom_assistance,I have had rash since yesterday
+symptom_assistance,I think I have rash
+symptom_assistance,I am experiencing rash
+symptom_assistance,what should I do for rash
+symptom_assistance,how can I treat rash
+symptom_assistance,how can I get relief from rash
+symptom_assistance,home remedy for rash
+symptom_assistance,what medicine should I take for rash
+symptom_assistance,I have itching
+symptom_assistance,I am having itching
+symptom_assistance,I have been having itching
+symptom_assistance,I have had itching for two days
+symptom_assistance,I have had itching since yesterday
+symptom_assistance,I think I have itching
+symptom_assistance,I am experiencing itching
+symptom_assistance,what should I do for itching
+symptom_assistance,how can I treat itching
+symptom_assistance,how can I get relief from itching
+symptom_assistance,home remedy for itching
+symptom_assistance,what medicine should I take for itching
+symptom_assistance,I have abdominal pain
+symptom_assistance,I am having abdominal pain
+symptom_assistance,I have been having abdominal pain
+symptom_assistance,I have had abdominal pain for two days
+symptom_assistance,I have had abdominal pain since yesterday
+symptom_assistance,I think I have abdominal pain
+symptom_assistance,I am experiencing abdominal pain
+symptom_assistance,what should I do for abdominal pain
+symptom_assistance,how can I treat abdominal pain
+symptom_assistance,how can I get relief from abdominal pain
+symptom_assistance,home remedy for abdominal pain
+symptom_assistance,what medicine should I take for abdominal pain
+symptom_assistance,I have loss of appetite
+symptom_assistance,I am having loss of appetite
+symptom_assistance,I have been having loss of appetite
+symptom_assistance,I have had loss of appetite for two days
+symptom_assistance,I have had loss of appetite since yesterday
+symptom_assistance,I think I have loss of appetite
+symptom_assistance,I am experiencing loss of appetite
+symptom_assistance,what should I do for loss of appetite
+symptom_assistance,how can I treat loss of appetite
+symptom_assistance,how can I get relief from loss of appetite
+symptom_assistance,home remedy for loss of appetite
+symptom_assistance,what medicine should I take for loss of appetite
+symptom_assistance,I have loss of smell
+symptom_assistance,I am having loss of smell
+symptom_assistance,I have been having loss of smell
+symptom_assistance,I have had loss of smell for two days
+symptom_assistance,I have had loss of smell since yesterday
+symptom_assistance,I think I have loss of smell
+symptom_assistance,I am experiencing loss of smell
+symptom_assistance,what should I do for loss of smell
+symptom_assistance,how can I treat loss of smell
+symptom_assistance,how can I get relief from loss of smell
+symptom_assistance,home remedy for loss of smell
+symptom_assistance,what medicine should I take for loss of smell
+symptom_assistance,I have loss of taste
+symptom_assistance,I am having loss of taste
+symptom_assistance,I have been having loss of taste
+symptom_assistance,I have had loss of taste for two days
+symptom_assistance,I have had loss of taste since yesterday
+symptom_assistance,I think I have loss of taste
+symptom_assistance,I am experiencing loss of taste
+symptom_assistance,what should I do for loss of taste
+symptom_assistance,how can I treat loss of taste
+symptom_assistance,how can I get relief from loss of taste
+symptom_assistance,home remedy for loss of taste
+symptom_assistance,what medicine should I take for loss of taste
+symptom_assistance,I have high temperature
+symptom_assistance,I am having high temperature
+symptom_assistance,I have been having high temperature
+symptom_assistance,I have had high temperature for two days
+symptom_assistance,I have had high temperature since yesterday
+symptom_assistance,I think I have high temperature
+symptom_assistance,I am experiencing high temperature
+symptom_assistance,what should I do for high temperature
+symptom_assistance,how can I treat high temperature
+symptom_assistance,how can I get relief from high temperature
+symptom_assistance,home remedy for high temperature
+symptom_assistance,what medicine should I take for high temperature
+symptom_assistance,I have low blood pressure
+symptom_assistance,I am having low blood pressure
+symptom_assistance,I have been having low blood pressure
+symptom_assistance,I have had low blood pressure for two days
+symptom_assistance,I have had low blood pressure since yesterday
+symptom_assistance,I think I have low blood pressure
+symptom_assistance,I am experiencing low blood pressure
+symptom_assistance,what should I do for low blood pressure
+symptom_assistance,how can I treat low blood pressure
+symptom_assistance,how can I get relief from low blood pressure
+symptom_assistance,home remedy for low blood pressure
+symptom_assistance,what medicine should I take for low blood pressure
+symptom_assistance,I have high blood pressure
+symptom_assistance,I am having high blood pressure
+symptom_assistance,I have been having high blood pressure
+symptom_assistance,I have had high blood pressure for two days
+symptom_assistance,I have had high blood pressure since yesterday
+symptom_assistance,I think I have high blood pressure
+symptom_assistance,I am experiencing high blood pressure
+symptom_assistance,what should I do for high blood pressure
+symptom_assistance,how can I treat high blood pressure
+symptom_assistance,how can I get relief from high blood pressure
+symptom_assistance,home remedy for high blood pressure
+symptom_assistance,what medicine should I take for high blood pressure
+symptom_assistance,I have low hemoglobin
+symptom_assistance,I am having low hemoglobin
+symptom_assistance,I have been having low hemoglobin
+symptom_assistance,I have had low hemoglobin for two days
+symptom_assistance,I have had low hemoglobin since yesterday
+symptom_assistance,I think I have low hemoglobin
+symptom_assistance,I am experiencing low hemoglobin
+symptom_assistance,what should I do for low hemoglobin
+symptom_assistance,how can I treat low hemoglobin
+symptom_assistance,how can I get relief from low hemoglobin
+symptom_assistance,home remedy for low hemoglobin
+symptom_assistance,what medicine should I take for low hemoglobin
+symptom_assistance,I have sneezing
+symptom_assistance,I am having sneezing
+symptom_assistance,I have been having sneezing
+symptom_assistance,I have had sneezing for two days
+symptom_assistance,I have had sneezing since yesterday
+symptom_assistance,I think I have sneezing
+symptom_assistance,I am experiencing sneezing
+symptom_assistance,what should I do for sneezing
+symptom_assistance,how can I treat sneezing
+symptom_assistance,how can I get relief from sneezing
+symptom_assistance,home remedy for sneezing
+symptom_assistance,what medicine should I take for sneezing
+symptom_assistance,I have chills
+symptom_assistance,I am having chills
+symptom_assistance,I have been having chills
+symptom_assistance,I have had chills for two days
+symptom_assistance,I have had chills since yesterday
+symptom_assistance,I think I have chills
+symptom_assistance,I am experiencing chills
+symptom_assistance,what should I do for chills
+symptom_assistance,how can I treat chills
+symptom_assistance,how can I get relief from chills
+symptom_assistance,home remedy for chills
+symptom_assistance,what medicine should I take for chills
+symptom_assistance,I have sweating
+symptom_assistance,I am having sweating
+symptom_assistance,I have been having sweating
+symptom_assistance,I have had sweating for two days
+symptom_assistance,I have had sweating since yesterday
+symptom_assistance,I think I have sweating
+symptom_assistance,I am experiencing sweating
+symptom_assistance,what should I do for sweating
+symptom_assistance,how can I treat sweating
+symptom_assistance,how can I get relief from sweating
+symptom_assistance,home remedy for sweating
+symptom_assistance,what medicine should I take for sweating
+symptom_assistance,I have muscle pain
+symptom_assistance,I am having muscle pain
+symptom_assistance,I have been having muscle pain
+symptom_assistance,I have had muscle pain for two days
+symptom_assistance,I have had muscle pain since yesterday
+symptom_assistance,I think I have muscle pain
+symptom_assistance,I am experiencing muscle pain
+symptom_assistance,what should I do for muscle pain
+symptom_assistance,how can I treat muscle pain
+symptom_assistance,how can I get relief from muscle pain
+symptom_assistance,home remedy for muscle pain
+symptom_assistance,what medicine should I take for muscle pain
+symptom_assistance,I have ear pain
+symptom_assistance,I am having ear pain
+symptom_assistance,I have been having ear pain
+symptom_assistance,I have had ear pain for two days
+symptom_assistance,I have had ear pain since yesterday
+symptom_assistance,I think I have ear pain
+symptom_assistance,I am experiencing ear pain
+symptom_assistance,what should I do for ear pain
+symptom_assistance,how can I treat ear pain
+symptom_assistance,how can I get relief from ear pain
+symptom_assistance,home remedy for ear pain
+symptom_assistance,what medicine should I take for ear pain
+symptom_assistance,I have eye pain
+symptom_assistance,I am having eye pain
+symptom_assistance,I have been having eye pain
+symptom_assistance,I have had eye pain for two days
+symptom_assistance,I have had eye pain since yesterday
+symptom_assistance,I think I have eye pain
+symptom_assistance,I am experiencing eye pain
+symptom_assistance,what should I do for eye pain
+symptom_assistance,how can I treat eye pain
+symptom_assistance,how can I get relief from eye pain
+symptom_assistance,home remedy for eye pain
+symptom_assistance,what medicine should I take for eye pain
+symptom_assistance,I have blurred vision
+symptom_assistance,I am having blurred vision
+symptom_assistance,I have been having blurred vision
+symptom_assistance,I have had blurred vision for two days
+symptom_assistance,I have had blurred vision since yesterday
+symptom_assistance,I think I have blurred vision
+symptom_assistance,I am experiencing blurred vision
+symptom_assistance,what should I do for blurred vision
+symptom_assistance,how can I treat blurred vision
+symptom_assistance,how can I get relief from blurred vision
+symptom_assistance,home remedy for blurred vision
+symptom_assistance,what medicine should I take for blurred vision
+symptom_assistance,I have ringing in ears
+symptom_assistance,I am having ringing in ears
+symptom_assistance,I have been having ringing in ears
+symptom_assistance,I have had ringing in ears for two days
+symptom_assistance,I have had ringing in ears since yesterday
+symptom_assistance,I think I have ringing in ears
+symptom_assistance,I am experiencing ringing in ears
+symptom_assistance,what should I do for ringing in ears
+symptom_assistance,how can I treat ringing in ears
+symptom_assistance,how can I get relief from ringing in ears
+symptom_assistance,home remedy for ringing in ears
+symptom_assistance,what medicine should I take for ringing in ears
+symptom_assistance,I have numbness
+symptom_assistance,I am having numbness
+symptom_assistance,I have been having numbness
+symptom_assistance,I have had numbness for two days
+symptom_assistance,I have had numbness since yesterday
+symptom_assistance,I think I have numbness
+symptom_assistance,I am experiencing numbness
+symptom_assistance,what should I do for numbness
+symptom_assistance,how can I treat numbness
+symptom_assistance,how can I get relief from numbness
+symptom_assistance,home remedy for numbness
+symptom_assistance,what medicine should I take for numbness
+symptom_assistance,I have tingling sensation
+symptom_assistance,I am having tingling sensation
+symptom_assistance,I have been having tingling sensation
+symptom_assistance,I have had tingling sensation for two days
+symptom_assistance,I have had tingling sensation since yesterday
+symptom_assistance,I think I have tingling sensation
+symptom_assistance,I am experiencing tingling sensation
+symptom_assistance,what should I do for tingling sensation
+symptom_assistance,how can I treat tingling sensation
+symptom_assistance,how can I get relief from tingling sensation
+symptom_assistance,home remedy for tingling sensation
+symptom_assistance,what medicine should I take for tingling sensation
+symptom_assistance,I have leg cramps
+symptom_assistance,I am having leg cramps
+symptom_assistance,I have been having leg cramps
+symptom_assistance,I have had leg cramps for two days
+symptom_assistance,I have had leg cramps since yesterday
+symptom_assistance,I think I have leg cramps
+symptom_assistance,I am experiencing leg cramps
+symptom_assistance,what should I do for leg cramps
+symptom_assistance,how can I treat leg cramps
+symptom_assistance,how can I get relief from leg cramps
+symptom_assistance,home remedy for leg cramps
+symptom_assistance,what medicine should I take for leg cramps
+symptom_assistance,I have swollen ankles
+symptom_assistance,I am having swollen ankles
+symptom_assistance,I have been having swollen ankles
+symptom_assistance,I have had swollen ankles for two days
+symptom_assistance,I have had swollen ankles since yesterday
+symptom_assistance,I think I have swollen ankles
+symptom_assistance,I am experiencing swollen ankles
+symptom_assistance,what should I do for swollen ankles
+symptom_assistance,how can I treat swollen ankles
+symptom_assistance,how can I get relief from swollen ankles
+symptom_assistance,home remedy for swollen ankles
+symptom_assistance,what medicine should I take for swollen ankles
+symptom_assistance,I have swollen glands
+symptom_assistance,I am having swollen glands
+symptom_assistance,I have been having swollen glands
+symptom_assistance,I have had swollen glands for two days
+symptom_assistance,I have had swollen glands since yesterday
+symptom_assistance,I think I have swollen glands
+symptom_assistance,I am experiencing swollen glands
+symptom_assistance,what should I do for swollen glands
+symptom_assistance,how can I treat swollen glands
+symptom_assistance,how can I get relief from swollen glands
+symptom_assistance,home remedy for swollen glands
+symptom_assistance,what medicine should I take for swollen glands
+symptom_assistance,I have dry mouth
+symptom_assistance,I am having dry mouth
+symptom_assistance,I have been having dry mouth
+symptom_assistance,I have had dry mouth for two days
+symptom_assistance,I have had dry mouth since yesterday
+symptom_assistance,I think I have dry mouth
+symptom_assistance,I am experiencing dry mouth
+symptom_assistance,what should I do for dry mouth
+symptom_assistance,how can I treat dry mouth
+symptom_assistance,how can I get relief from dry mouth
+symptom_assistance,home remedy for dry mouth
+symptom_assistance,what medicine should I take for dry mouth
+symptom_assistance,I have excessive thirst
+symptom_assistance,I am having excessive thirst
+symptom_assistance,I have been having excessive thirst
+symptom_assistance,I have had excessive thirst for two days
+symptom_assistance,I have had excessive thirst since yesterday
+symptom_assistance,I think I have excessive thirst
+symptom_assistance,I am experiencing excessive thirst
+symptom_assistance,what should I do for excessive thirst
+symptom_assistance,how can I treat excessive thirst
+symptom_assistance,how can I get relief from excessive thirst
+symptom_assistance,home remedy for excessive thirst
+symptom_assistance,what medicine should I take for excessive thirst
+symptom_assistance,I have frequent urination
+symptom_assistance,I am having frequent urination
+symptom_assistance,I have been having frequent urination
+symptom_assistance,I have had frequent urination for two days
+symptom_assistance,I have had frequent urination since yesterday
+symptom_assistance,I think I have frequent urination
+symptom_assistance,I am experiencing frequent urination
+symptom_assistance,what should I do for frequent urination
+symptom_assistance,how can I treat frequent urination
+symptom_assistance,how can I get relief from frequent urination
+symptom_assistance,home remedy for frequent urination
+symptom_assistance,what medicine should I take for frequent urination
+symptom_assistance,I have night sweats
+symptom_assistance,I am having night sweats
+symptom_assistance,I have been having night sweats
+symptom_assistance,I have had night sweats for two days
+symptom_assistance,I have had night sweats since yesterday
+symptom_assistance,I think I have night sweats
+symptom_assistance,I am experiencing night sweats
+symptom_assistance,what should I do for night sweats
+symptom_assistance,how can I treat night sweats
+symptom_assistance,how can I get relief from night sweats
+symptom_assistance,home remedy for night sweats
+symptom_assistance,what medicine should I take for night sweats
+symptom_assistance,I have weight loss
+symptom_assistance,I am having weight loss
+symptom_assistance,I have been having weight loss
+symptom_assistance,I have had weight loss for two days
+symptom_assistance,I have had weight loss since yesterday
+symptom_assistance,I think I have weight loss
+symptom_assistance,I am experiencing weight loss
+symptom_assistance,what should I do for weight loss
+symptom_assistance,how can I treat weight loss
+symptom_assistance,how can I get relief from weight loss
+symptom_assistance,home remedy for weight loss
+symptom_assistance,what medicine should I take for weight loss
+symptom_assistance,I have weight gain
+symptom_assistance,I am having weight gain
+symptom_assistance,I have been having weight gain
+symptom_assistance,I have had weight gain for two days
+symptom_assistance,I have had weight gain since yesterday
+symptom_assistance,I think I have weight gain
+symptom_assistance,I am experiencing weight gain
+symptom_assistance,what should I do for weight gain
+symptom_assistance,how can I treat weight gain
+symptom_assistance,how can I get relief from weight gain
+symptom_assistance,home remedy for weight gain
+symptom_assistance,what medicine should I take for weight gain
+symptom_assistance,I have hair loss
+symptom_assistance,I am having hair loss
+symptom_assistance,I have been having hair loss
+symptom_assistance,I have had hair loss for two days
+symptom_assistance,I have had hair loss since yesterday
+symptom_assistance,I think I have hair loss
+symptom_assistance,I am experiencing hair loss
+symptom_assistance,what should I do for hair loss
+symptom_assistance,how can I treat hair loss
+symptom_assistance,how can I get relief from hair loss
+symptom_assistance,home remedy for hair loss
+symptom_assistance,what medicine should I take for hair loss
+symptom_assistance,I have dry skin
+symptom_assistance,I am having dry skin
+symptom_assistance,I have been having dry skin
+symptom_assistance,I have had dry skin for two days
+symptom_assistance,I have had dry skin since yesterday
+symptom_assistance,I think I have dry skin
+symptom_assistance,I am experiencing dry skin
+symptom_assistance,what should I do for dry skin
+symptom_assistance,how can I treat dry skin
+symptom_assistance,how can I get relief from dry skin
+symptom_assistance,home remedy for dry skin
+symptom_assistance,what medicine should I take for dry skin
+symptom_assistance,I have yellow skin
+symptom_assistance,I am having yellow skin
+symptom_assistance,I have been having yellow skin
+symptom_assistance,I have had yellow skin for two days
+symptom_assistance,I have had yellow skin since yesterday
+symptom_assistance,I think I have yellow skin
+symptom_assistance,I am experiencing yellow skin
+symptom_assistance,what should I do for yellow skin
+symptom_assistance,how can I treat yellow skin
+symptom_assistance,how can I get relief from yellow skin
+symptom_assistance,home remedy for yellow skin
+symptom_assistance,what medicine should I take for yellow skin
+symptom_assistance,I have yellow eyes
+symptom_assistance,I am having yellow eyes
+symptom_assistance,I have been having yellow eyes
+symptom_assistance,I have had yellow eyes for two days
+symptom_assistance,I have had yellow eyes since yesterday
+symptom_assistance,I think I have yellow eyes
+symptom_assistance,I am experiencing yellow eyes
+symptom_assistance,what should I do for yellow eyes
+symptom_assistance,how can I treat yellow eyes
+symptom_assistance,how can I get relief from yellow eyes
+symptom_assistance,home remedy for yellow eyes
+symptom_assistance,what medicine should I take for yellow eyes
+symptom_assistance,I have dark urine
+symptom_assistance,I am having dark urine
+symptom_assistance,I have been having dark urine
+symptom_assistance,I have had dark urine for two days
+symptom_assistance,I have had dark urine since yesterday
+symptom_assistance,I think I have dark urine
+symptom_assistance,I am experiencing dark urine
+symptom_assistance,what should I do for dark urine
+symptom_assistance,how can I treat dark urine
+symptom_assistance,how can I get relief from dark urine
+symptom_assistance,home remedy for dark urine
+symptom_assistance,what medicine should I take for dark urine
+symptom_assistance,I have bloating
+symptom_assistance,I am having bloating
+symptom_assistance,I have been having bloating
+symptom_assistance,I have had bloating for two days
+symptom_assistance,I have had bloating since yesterday
+symptom_assistance,I think I have bloating
+symptom_assistance,I am experiencing bloating
+symptom_assistance,what should I do for bloating
+symptom_assistance,how can I treat bloating
+symptom_assistance,how can I get relief from bloating
+symptom_assistance,home remedy for bloating
+symptom_assistance,what medicine should I take for bloating
+symptom_assistance,I have heartburn
+symptom_assistance,I am having heartburn
+symptom_assistance,I have been having heartburn
+symptom_assistance,I have had heartburn for two days
+symptom_assistance,I have had heartburn since yesterday
+symptom_assistance,I think I have heartburn
+symptom_assistance,I am experiencing heartburn
+symptom_assistance,what should I do for heartburn
+symptom_assistance,how can I treat heartburn
+symptom_assistance,how can I get relief from heartburn
+symptom_assistance,home remedy for heartburn
+symptom_assistance,what medicine should I take for heartburn
+symptom_assistance,I have acid reflux
+symptom_assistance,I am having acid reflux
+symptom_assistance,I have been having acid reflux
+symptom_assistance,I have had acid reflux for two days
+symptom_assistance,I have had acid reflux since yesterday
+symptom_assistance,I think I have acid reflux
+symptom_assistance,I am experiencing acid reflux
+symptom_assistance,what should I do for acid reflux
+symptom_assistance,how can I treat acid reflux
+symptom_assistance,how can I get relief from acid reflux
+symptom_assistance,home remedy for acid reflux
+symptom_assistance,what medicine should I take for acid reflux
+symptom_assistance,I have difficulty swallowing
+symptom_assistance,I am having difficulty swallowing
+symptom_assistance,I have been having difficulty swallowing
+symptom_assistance,I have had difficulty swallowing for two days
+symptom_assistance,I have had difficulty swallowing since yesterday
+symptom_assistance,I think I have difficulty swallowing
+symptom_assistance,I am experiencing difficulty swallowing
+symptom_assistance,what should I do for difficulty swallowing
+symptom_assistance,how can I treat difficulty swallowing
+symptom_assistance,how can I get relief from difficulty swallowing
+symptom_assistance,home remedy for difficulty swallowing
+symptom_assistance,what medicine should I take for difficulty swallowing
+symptom_assistance,I have hoarseness
+symptom_assistance,I am having hoarseness
+symptom_assistance,I have been having hoarseness
+symptom_assistance,I have had hoarseness for two days
+symptom_assistance,I have had hoarseness since yesterday
+symptom_assistance,I think I have hoarseness
+symptom_assistance,I am experiencing hoarseness
+symptom_assistance,what should I do for hoarseness
+symptom_assistance,how can I treat hoarseness
+symptom_assistance,how can I get relief from hoarseness
+symptom_assistance,home remedy for hoarseness
+symptom_assistance,what medicine should I take for hoarseness
+symptom_assistance,I have palpitations
+symptom_assistance,I am having palpitations
+symptom_assistance,I have been having palpitations
+symptom_assistance,I have had palpitations for two days
+symptom_assistance,I have had palpitations since yesterday
+symptom_assistance,I think I have palpitations
+symptom_assistance,I am experiencing palpitations
+symptom_assistance,what should I do for palpitations
+symptom_assistance,how can I treat palpitations
+symptom_assistance,how can I get relief from palpitations
+symptom_assistance,home remedy for palpitations
+symptom_assistance,what medicine should I take for palpitations
+symptom_assistance,I have irregular heartbeat
+symptom_assistance,I am having irregular heartbeat
+symptom_assistance,I have been having irregular heartbeat
+symptom_assistance,I have had irregular heartbeat for two days
+symptom_assistance,I have had irregular heartbeat since yesterday
+symptom_assistance,I think I have irregular heartbeat
+symptom_assistance,I am experiencing irregular heartbeat
+symptom_assistance,what should I do for irregular heartbeat
+symptom_assistance,how can I treat irregular heartbeat
+symptom_assistance,how can I get relief from irregular heartbeat
+symptom_assistance,home remedy for irregular heartbeat
+symptom_assistance,what medicine should I take for irregular heartbeat
+symptom_assistance,I have cold hands and feet
+symptom_assistance,I am having cold hands and feet
+symptom_assistance,I have been having cold hands and feet
+symptom_assistance,I have had cold hands and feet for two days
+symptom_assistance,I have had cold hands and feet since yesterday
+symptom_assistance,I think I have cold hands and feet
+symptom_assistance,I am experiencing cold hands and feet
+symptom_assistance,what should I do for cold hands and feet
+symptom_assistance,how can I treat cold hands and feet
+symptom_assistance,how can I get relief from cold hands and feet
+symptom_assistance,home remedy for cold hands and feet
+symptom_assistance,what medicine should I take for cold hands and feet
+symptom_assistance,I have insomnia
+symptom_assistance,I am having insomnia
+symptom_assistance,I have been having insomnia
+symptom_assistance,I have had insomnia for two days
+symptom_assistance,I have had insomnia since yesterday
+symptom_assistance,I think I have insomnia
+symptom_assistance,I am experiencing insomnia
+symptom_assistance,what should I do for insomnia
+symptom_assistance,how can I treat insomnia
+symptom_assistance,how can I get relief from insomnia
+symptom_assistance,home remedy for insomnia
+symptom_assistance,what medicine should I take for insomnia
+symptom_assistance,I have excessive sleepiness
+symptom_assistance,I am having excessive sleepiness
+symptom_assistance,I have been having excessive sleepiness
+symptom_assistance,I have had excessive sleepiness for two days
+symptom_assistance,I have had excessive sleepiness since yesterday
+symptom_assistance,I think I have excessive sleepiness
+symptom_assistance,I am experiencing excessive sleepiness
+symptom_assistance,what should I do for excessive sleepiness
+symptom_assistance,how can I treat excessive sleepiness
+symptom_assistance,how can I get relief from excessive sleepiness
+symptom_assistance,home remedy for excessive sleepiness
+symptom_assistance,what medicine should I take for excessive sleepiness
+symptom_assistance,I have memory problems
+symptom_assistance,I am having memory problems
+symptom_assistance,I have been having memory problems
+symptom_assistance,I have had memory problems for two days
+symptom_assistance,I have had memory problems since yesterday
+symptom_assistance,I think I have memory problems
+symptom_assistance,I am experiencing memory problems
+symptom_assistance,what should I do for memory problems
+symptom_assistance,how can I treat memory problems
+symptom_assistance,how can I get relief from memory problems
+symptom_assistance,home remedy for memory problems
+symptom_assistance,what medicine should I take for memory problems
+symptom_assistance,I have confusion
+symptom_assistance,I am having confusion
+symptom_assistance,I have been having confusion
+symptom_assistance,I have had confusion for two days
+symptom_assistance,I have had confusion since yesterday
+symptom_assistance,I think I have confusion
+symptom_assistance,I am experiencing confusion
+symptom_assistance,what should I do for confusion
+symptom_assistance,how can I treat confusion
+symptom_assistance,how can I get relief from confusion
+symptom_assistance,home remedy for confusion
+symptom_assistance,what medicine should I take for confusion
+symptom_assistance,I have irritability
+symptom_assistance,I am having irritability
+symptom_assistance,I have been having irritability
+symptom_assistance,I have had irritability for two days
+symptom_assistance,I have had irritability since yesterday
+symptom_assistance,I think I have irritability
+symptom_assistance,I am experiencing irritability
+symptom_assistance,what should I do for irritability
+symptom_assistance,how can I treat irritability
+symptom_assistance,how can I get relief from irritability
+symptom_assistance,home remedy for irritability
+symptom_assistance,what medicine should I take for irritability
+symptom_assistance,I have anxiety
+symptom_assistance,I am having anxiety
+symptom_assistance,I have been having anxiety
+symptom_assistance,I have had anxiety for two days
+symptom_assistance,I have had anxiety since yesterday
+symptom_assistance,I think I have anxiety
+symptom_assistance,I am experiencing anxiety
+symptom_assistance,what should I do for anxiety
+symptom_assistance,how can I treat anxiety
+symptom_assistance,how can I get relief from anxiety
+symptom_assistance,home remedy for anxiety
+symptom_assistance,what medicine should I take for anxiety
+symptom_assistance,I have mood swings
+symptom_assistance,I am having mood swings
+symptom_assistance,I have been having mood swings
+symptom_assistance,I have had mood swings for two days
+symptom_assistance,I have had mood swings since yesterday
+symptom_assistance,I think I have mood swings
+symptom_assistance,I am experiencing mood swings
+symptom_assistance,what should I do for mood swings
+symptom_assistance,how can I treat mood swings
+symptom_assistance,how can I get relief from mood swings
+symptom_assistance,home remedy for mood swings
+symptom_assistance,what medicine should I take for mood swings
+symptom_assistance,I have low energy
+symptom_assistance,I am having low energy
+symptom_assistance,I have been having low energy
+symptom_assistance,I have had low energy for two days
+symptom_assistance,I have had low energy since yesterday
+symptom_assistance,I think I have low energy
+symptom_assistance,I am experiencing low energy
+symptom_assistance,what should I do for low energy
+symptom_assistance,how can I treat low energy
+symptom_assistance,how can I get relief from low energy
+symptom_assistance,home remedy for low energy
+symptom_assistance,what medicine should I take for low energy
+symptom_assistance,I have bruising easily
+symptom_assistance,I am having bruising easily
+symptom_assistance,I have been having bruising easily
+symptom_assistance,I have had bruising easily for two days
+symptom_assistance,I have had bruising easily since yesterday
+symptom_assistance,I think I have bruising easily
+symptom_assistance,I am experiencing bruising easily
+symptom_assistance,what should I do for bruising easily
+symptom_assistance,how can I treat bruising easily
+symptom_assistance,how can I get relief from bruising easily
+symptom_assistance,home remedy for bruising easily
+symptom_assistance,what medicine should I take for bruising easily
+symptom_assistance,I have nosebleeds
+symptom_assistance,I am having nosebleeds
+symptom_assistance,I have been having nosebleeds
+symptom_assistance,I have had nosebleeds for two days
+symptom_assistance,I have had nosebleeds since yesterday
+symptom_assistance,I think I have nosebleeds
+symptom_assistance,I am experiencing nosebleeds
+symptom_assistance,what should I do for nosebleeds
+symptom_assistance,how can I treat nosebleeds
+symptom_assistance,how can I get relief from nosebleeds
+symptom_assistance,home remedy for nosebleeds
+symptom_assistance,what medicine should I take for nosebleeds
+symptom_assistance,I have bleeding gums
+symptom_assistance,I am having bleeding gums
+symptom_assistance,I have been having bleeding gums
+symptom_assistance,I have had bleeding gums for two days
+symptom_assistance,I have had bleeding gums since yesterday
+symptom_assistance,I think I have bleeding gums
+symptom_assistance,I am experiencing bleeding gums
+symptom_assistance,what should I do for bleeding gums
+symptom_assistance,how can I treat bleeding gums
+symptom_assistance,how can I get relief from bleeding gums
+symptom_assistance,home remedy for bleeding gums
+symptom_assistance,what medicine should I take for bleeding gums
+symptom_assistance,I have mouth ulcers
+symptom_assistance,I am having mouth ulcers
+symptom_assistance,I have been having mouth ulcers
+symptom_assistance,I have had mouth ulcers for two days
+symptom_assistance,I have had mouth ulcers since yesterday
+symptom_assistance,I think I have mouth ulcers
+symptom_assistance,I am experiencing mouth ulcers
+symptom_assistance,what should I do for mouth ulcers
+symptom_assistance,how can I treat mouth ulcers
+symptom_assistance,how can I get relief from mouth ulcers
+symptom_assistance,home remedy for mouth ulcers
+symptom_assistance,what medicine should I take for mouth ulcers
+symptom_assistance,I have dry cough
+symptom_assistance,I am having dry cough
+symptom_assistance,I have been having dry cough
+symptom_assistance,I have had dry cough for two days
+symptom_assistance,I have had dry cough since yesterday
+symptom_assistance,I think I have dry cough
+symptom_assistance,I am experiencing dry cough
+symptom_assistance,what should I do for dry cough
+symptom_assistance,how can I treat dry cough
+symptom_assistance,how can I get relief from dry cough
+symptom_assistance,home remedy for dry cough
+symptom_assistance,what medicine should I take for dry cough
+symptom_assistance,I have wet cough
+symptom_assistance,I am having wet cough
+symptom_assistance,I have been having wet cough
+symptom_assistance,I have had wet cough for two days
+symptom_assistance,I have had wet cough since yesterday
+symptom_assistance,I think I have wet cough
+symptom_assistance,I am experiencing wet cough
+symptom_assistance,what should I do for wet cough
+symptom_assistance,how can I treat wet cough
+symptom_assistance,how can I get relief from wet cough
+symptom_assistance,home remedy for wet cough
+symptom_assistance,what medicine should I take for wet cough
+symptom_assistance,I have wheezing
+symptom_assistance,I am having wheezing
+symptom_assistance,I have been having wheezing
+symptom_assistance,I have had wheezing for two days
+symptom_assistance,I have had wheezing since yesterday
+symptom_assistance,I think I have wheezing
+symptom_assistance,I am experiencing wheezing
+symptom_assistance,what should I do for wheezing
+symptom_assistance,how can I treat wheezing
+symptom_assistance,how can I get relief from wheezing
+symptom_assistance,home remedy for wheezing
+symptom_assistance,what medicine should I take for wheezing
+symptom_assistance,I have chest tightness
+symptom_assistance,I am having chest tightness
+symptom_assistance,I have been having chest tightness
+symptom_assistance,I have had chest tightness for two days
+symptom_assistance,I have had chest tightness since yesterday
+symptom_assistance,I think I have chest tightness
+symptom_assistance,I am experiencing chest tightness
+symptom_assistance,what should I do for chest tightness
+symptom_assistance,how can I treat chest tightness
+symptom_assistance,how can I get relief from chest tightness
+symptom_assistance,home remedy for chest tightness
+symptom_assistance,what medicine should I take for chest tightness
+symptom_assistance,I have neck pain
+symptom_assistance,I am having neck pain
+symptom_assistance,I have been having neck pain
+symptom_assistance,I have had neck pain for two days
+symptom_assistance,I have had neck pain since yesterday
+symptom_assistance,I think I have neck pain
+symptom_assistance,I am experiencing neck pain
+symptom_assistance,what should I do for neck pain
+symptom_assistance,how can I treat neck pain
+symptom_assistance,how can I get relief from neck pain
+symptom_assistance,home remedy for neck pain
+symptom_assistance,what medicine should I take for neck pain
+symptom_assistance,I have stiff neck
+symptom_assistance,I am having stiff neck
+symptom_assistance,I have been having stiff neck
+symptom_assistance,I have had stiff neck for two days
+symptom_assistance,I have had stiff neck since yesterday
+symptom_assistance,I think I have stiff neck
+symptom_assistance,I am experiencing stiff neck
+symptom_assistance,what should I do for stiff neck
+symptom_assistance,how can I treat stiff neck
+symptom_assistance,how can I get relief from stiff neck
+symptom_assistance,home remedy for stiff neck
+symptom_assistance,what medicine should I take for stiff neck
+symptom_assistance,I have muscle cramps
+symptom_assistance,I am having muscle cramps
+symptom_assistance,I have been having muscle cramps
+symptom_assistance,I have had muscle cramps for two days
+symptom_assistance,I have had muscle cramps since yesterday
+symptom_assistance,I think I have muscle cramps
+symptom_assistance,I am experiencing muscle cramps
+symptom_assistance,what should I do for muscle cramps
+symptom_assistance,how can I treat muscle cramps
+symptom_assistance,how can I get relief from muscle cramps
+symptom_assistance,home remedy for muscle cramps
+symptom_assistance,what medicine should I take for muscle cramps
+symptom_assistance,I have leg pain
+symptom_assistance,I am having leg pain
+symptom_assistance,I have been having leg pain
+symptom_assistance,I have had leg pain for two days
+symptom_assistance,I have had leg pain since yesterday
+symptom_assistance,I think I have leg pain
+symptom_assistance,I am experiencing leg pain
+symptom_assistance,what should I do for leg pain
+symptom_assistance,how can I treat leg pain
+symptom_assistance,how can I get relief from leg pain
+symptom_assistance,home remedy for leg pain
+symptom_assistance,what medicine should I take for leg pain
+symptom_assistance,I have foot pain
+symptom_assistance,I am having foot pain
+symptom_assistance,I have been having foot pain
+symptom_assistance,I have had foot pain for two days
+symptom_assistance,I have had foot pain since yesterday
+symptom_assistance,I think I have foot pain
+symptom_assistance,I am experiencing foot pain
+symptom_assistance,what should I do for foot pain
+symptom_assistance,how can I treat foot pain
+symptom_assistance,how can I get relief from foot pain
+symptom_assistance,home remedy for foot pain
+symptom_assistance,what medicine should I take for foot pain
+symptom_assistance,I have swollen joints
+symptom_assistance,I am having swollen joints
+symptom_assistance,I have been having swollen joints
+symptom_assistance,I have had swollen joints for two days
+symptom_assistance,I have had swollen joints since yesterday
+symptom_assistance,I think I have swollen joints
+symptom_assistance,I am experiencing swollen joints
+symptom_assistance,what should I do for swollen joints
+symptom_assistance,how can I treat swollen joints
+symptom_assistance,how can I get relief from swollen joints
+symptom_assistance,home remedy for swollen joints
+symptom_assistance,what medicine should I take for swollen joints
+symptom_assistance,I have morning stiffness
+symptom_assistance,I am having morning stiffness
+symptom_assistance,I have been having morning stiffness
+symptom_assistance,I have had morning stiffness for two days
+symptom_assistance,I have had morning stiffness since yesterday
+symptom_assistance,I think I have morning stiffness
+symptom_assistance,I am experiencing morning stiffness
+symptom_assistance,what should I do for morning stiffness
+symptom_assistance,how can I treat morning stiffness
+symptom_assistance,how can I get relief from morning stiffness
+symptom_assistance,home remedy for morning stiffness
+symptom_assistance,what medicine should I take for morning stiffness
+symptom_assistance,I have blurred eyesight
+symptom_assistance,I am having blurred eyesight
+symptom_assistance,I have been having blurred eyesight
+symptom_assistance,I have had blurred eyesight for two days
+symptom_assistance,I have had blurred eyesight since yesterday
+symptom_assistance,I think I have blurred eyesight
+symptom_assistance,I am experiencing blurred eyesight
+symptom_assistance,what should I do for blurred eyesight
+symptom_assistance,how can I treat blurred eyesight
+symptom_assistance,how can I get relief from blurred eyesight
+symptom_assistance,home remedy for blurred eyesight
+symptom_assistance,what medicine should I take for blurred eyesight
+symptom_assistance,I have watery eyes
+symptom_assistance,I am having watery eyes
+symptom_assistance,I have been having watery eyes
+symptom_assistance,I have had watery eyes for two days
+symptom_assistance,I have had watery eyes since yesterday
+symptom_assistance,I think I have watery eyes
+symptom_assistance,I am experiencing watery eyes
+symptom_assistance,what should I do for watery eyes
+symptom_assistance,how can I treat watery eyes
+symptom_assistance,how can I get relief from watery eyes
+symptom_assistance,home remedy for watery eyes
+symptom_assistance,what medicine should I take for watery eyes
+symptom_assistance,I have puffy eyes
+symptom_assistance,I am having puffy eyes
+symptom_assistance,I have been having puffy eyes
+symptom_assistance,I have had puffy eyes for two days
+symptom_assistance,I have had puffy eyes since yesterday
+symptom_assistance,I think I have puffy eyes
+symptom_assistance,I am experiencing puffy eyes
+symptom_assistance,what should I do for puffy eyes
+symptom_assistance,how can I treat puffy eyes
+symptom_assistance,how can I get relief from puffy eyes
+symptom_assistance,home remedy for puffy eyes
+symptom_assistance,what medicine should I take for puffy eyes
+symptom_assistance,I have cracked lips
+symptom_assistance,I am having cracked lips
+symptom_assistance,I have been having cracked lips
+symptom_assistance,I have had cracked lips for two days
+symptom_assistance,I have had cracked lips since yesterday
+symptom_assistance,I think I have cracked lips
+symptom_assistance,I am experiencing cracked lips
+symptom_assistance,what should I do for cracked lips
+symptom_assistance,how can I treat cracked lips
+symptom_assistance,how can I get relief from cracked lips
+symptom_assistance,home remedy for cracked lips
+symptom_assistance,what medicine should I take for cracked lips
+symptom_assistance,I have tongue swelling
+symptom_assistance,I am having tongue swelling
+symptom_assistance,I have been having tongue swelling
+symptom_assistance,I have had tongue swelling for two days
+symptom_assistance,I have had tongue swelling since yesterday
+symptom_assistance,I think I have tongue swelling
+symptom_assistance,I am experiencing tongue swelling
+symptom_assistance,what should I do for tongue swelling
+symptom_assistance,how can I treat tongue swelling
+symptom_assistance,how can I get relief from tongue swelling
+symptom_assistance,home remedy for tongue swelling
+symptom_assistance,what medicine should I take for tongue swelling
+symptom_assistance,I have earache
+symptom_assistance,I am having earache
+symptom_assistance,I have been having earache
+symptom_assistance,I have had earache for two days
+symptom_assistance,I have had earache since yesterday
+symptom_assistance,I think I have earache
+symptom_assistance,I am experiencing earache
+symptom_assistance,what should I do for earache
+symptom_assistance,how can I treat earache
+symptom_assistance,how can I get relief from earache
+symptom_assistance,home remedy for earache
+symptom_assistance,what medicine should I take for earache
+symptom_assistance,I have toothache
+symptom_assistance,I am having toothache
+symptom_assistance,I have been having toothache
+symptom_assistance,I have had toothache for two days
+symptom_assistance,I have had toothache since yesterday
+symptom_assistance,I think I have toothache
+symptom_assistance,I am experiencing toothache
+symptom_assistance,what should I do for toothache
+symptom_assistance,how can I treat toothache
+symptom_assistance,how can I get relief from toothache
+symptom_assistance,home remedy for toothache
+symptom_assistance,what medicine should I take for toothache
+symptom_assistance,I have gum pain
+symptom_assistance,I am having gum pain
+symptom_assistance,I have been having gum pain
+symptom_assistance,I have had gum pain for two days
+symptom_assistance,I have had gum pain since yesterday
+symptom_assistance,I think I have gum pain
+symptom_assistance,I am experiencing gum pain
+symptom_assistance,what should I do for gum pain
+symptom_assistance,how can I treat gum pain
+symptom_assistance,how can I get relief from gum pain
+symptom_assistance,home remedy for gum pain
+symptom_assistance,what medicine should I take for gum pain
+symptom_assistance,I have jaw pain
+symptom_assistance,I am having jaw pain
+symptom_assistance,I have been having jaw pain
+symptom_assistance,I have had jaw pain for two days
+symptom_assistance,I have had jaw pain since yesterday
+symptom_assistance,I think I have jaw pain
+symptom_assistance,I am experiencing jaw pain
+symptom_assistance,what should I do for jaw pain
+symptom_assistance,how can I treat jaw pain
+symptom_assistance,how can I get relief from jaw pain
+symptom_assistance,home remedy for jaw pain
+symptom_assistance,what medicine should I take for jaw pain
+symptom_assistance,I have facial swelling
+symptom_assistance,I am having facial swelling
+symptom_assistance,I have been having facial swelling
+symptom_assistance,I have had facial swelling for two days
+symptom_assistance,I have had facial swelling since yesterday
+symptom_assistance,I think I have facial swelling
+symptom_assistance,I am experiencing facial swelling
+symptom_assistance,what should I do for facial swelling
+symptom_assistance,how can I treat facial swelling
+symptom_assistance,how can I get relief from facial swelling
+symptom_assistance,home remedy for facial swelling
+symptom_assistance,what medicine should I take for facial swelling
+disease_information,diabetes
+disease_information,what is diabetes
+disease_information,what causes diabetes
+disease_information,tell me about diabetes
+disease_information,how is diabetes treated
+disease_information,how is diabetes diagnosed
+disease_information,is diabetes contagious
+disease_information,is diabetes curable
+disease_information,how common is diabetes
+disease_information,what are the risk factors for diabetes
+disease_information,how long does diabetes last
+disease_information,anemia
+disease_information,what is anemia
+disease_information,what causes anemia
+disease_information,tell me about anemia
+disease_information,how is anemia treated
+disease_information,how is anemia diagnosed
+disease_information,is anemia contagious
+disease_information,is anemia curable
+disease_information,how common is anemia
+disease_information,what are the risk factors for anemia
+disease_information,how long does anemia last
+disease_information,asthma
+disease_information,what is asthma
+disease_information,what causes asthma
+disease_information,tell me about asthma
+disease_information,how is asthma treated
+disease_information,how is asthma diagnosed
+disease_information,is asthma contagious
+disease_information,is asthma curable
+disease_information,how common is asthma
+disease_information,what are the risk factors for asthma
+disease_information,how long does asthma last
+disease_information,migraine
+disease_information,what is migraine
+disease_information,what causes migraine
+disease_information,tell me about migraine
+disease_information,how is migraine treated
+disease_information,how is migraine diagnosed
+disease_information,is migraine contagious
+disease_information,is migraine curable
+disease_information,how common is migraine
+disease_information,what are the risk factors for migraine
+disease_information,how long does migraine last
+disease_information,malaria
+disease_information,what is malaria
+disease_information,what causes malaria
+disease_information,tell me about malaria
+disease_information,how is malaria treated
+disease_information,how is malaria diagnosed
+disease_information,is malaria contagious
+disease_information,is malaria curable
+disease_information,how common is malaria
+disease_information,what are the risk factors for malaria
+disease_information,how long does malaria last
+disease_information,typhoid
+disease_information,what is typhoid
+disease_information,what causes typhoid
+disease_information,tell me about typhoid
+disease_information,how is typhoid treated
+disease_information,how is typhoid diagnosed
+disease_information,is typhoid contagious
+disease_information,is typhoid curable
+disease_information,how common is typhoid
+disease_information,what are the risk factors for typhoid
+disease_information,how long does typhoid last
+disease_information,dengue
+disease_information,what is dengue
+disease_information,what causes dengue
+disease_information,tell me about dengue
+disease_information,how is dengue treated
+disease_information,how is dengue diagnosed
+disease_information,is dengue contagious
+disease_information,is dengue curable
+disease_information,how common is dengue
+disease_information,what are the risk factors for dengue
+disease_information,how long does dengue last
+disease_information,pneumonia
+disease_information,what is pneumonia
+disease_information,what causes pneumonia
+disease_information,tell me about pneumonia
+disease_information,how is pneumonia treated
+disease_information,how is pneumonia diagnosed
+disease_information,is pneumonia contagious
+disease_information,is pneumonia curable
+disease_information,how common is pneumonia
+disease_information,what are the risk factors for pneumonia
+disease_information,how long does pneumonia last
+disease_information,arthritis
+disease_information,what is arthritis
+disease_information,what causes arthritis
+disease_information,tell me about arthritis
+disease_information,how is arthritis treated
+disease_information,how is arthritis diagnosed
+disease_information,is arthritis contagious
+disease_information,is arthritis curable
+disease_information,how common is arthritis
+disease_information,what are the risk factors for arthritis
+disease_information,how long does arthritis last
+disease_information,allergy
+disease_information,what is allergy
+disease_information,what causes allergy
+disease_information,tell me about allergy
+disease_information,how is allergy treated
+disease_information,how is allergy diagnosed
+disease_information,is allergy contagious
+disease_information,is allergy curable
+disease_information,how common is allergy
+disease_information,what are the risk factors for allergy
+disease_information,how long does allergy last
+disease_information,flu
+disease_information,what is flu
+disease_information,what causes flu
+disease_information,tell me about flu
+disease_information,how is flu treated
+disease_information,how is flu diagnosed
+disease_information,is flu contagious
+disease_information,is flu curable
+disease_information,how common is flu
+disease_information,what are the risk factors for flu
+disease_information,how long does flu last
+disease_information,cold
+disease_information,what is cold
+disease_information,what causes cold
+disease_information,tell me about cold
+disease_information,how is cold treated
+disease_information,how is cold diagnosed
+disease_information,is cold contagious
+disease_information,is cold curable
+disease_information,how common is cold
+disease_information,what are the risk factors for cold
+disease_information,how long does cold last
+disease_information,gastritis
+disease_information,what is gastritis
+disease_information,what causes gastritis
+disease_information,tell me about gastritis
+disease_information,how is gastritis treated
+disease_information,how is gastritis diagnosed
+disease_information,is gastritis contagious
+disease_information,is gastritis curable
+disease_information,how common is gastritis
+disease_information,what are the risk factors for gastritis
+disease_information,how long does gastritis last
+disease_information,hypertension
+disease_information,what is hypertension
+disease_information,what causes hypertension
+disease_information,tell me about hypertension
+disease_information,how is hypertension treated
+disease_information,how is hypertension diagnosed
+disease_information,is hypertension contagious
+disease_information,is hypertension curable
+disease_information,how common is hypertension
+disease_information,what are the risk factors for hypertension
+disease_information,how long does hypertension last
+disease_information,hypotension
+disease_information,what is hypotension
+disease_information,what causes hypotension
+disease_information,tell me about hypotension
+disease_information,how is hypotension treated
+disease_information,how is hypotension diagnosed
+disease_information,is hypotension contagious
+disease_information,is hypotension curable
+disease_information,how common is hypotension
+disease_information,what are the risk factors for hypotension
+disease_information,how long does hypotension last
+disease_information,obesity
+disease_information,what is obesity
+disease_information,what causes obesity
+disease_information,tell me about obesity
+disease_information,how is obesity treated
+disease_information,how is obesity diagnosed
+disease_information,is obesity contagious
+disease_information,is obesity curable
+disease_information,how common is obesity
+disease_information,what are the risk factors for obesity
+disease_information,how long does obesity last
+disease_information,tuberculosis
+disease_information,what is tuberculosis
+disease_information,what causes tuberculosis
+disease_information,tell me about tuberculosis
+disease_information,how is tuberculosis treated
+disease_information,how is tuberculosis diagnosed
+disease_information,is tuberculosis contagious
+disease_information,is tuberculosis curable
+disease_information,how common is tuberculosis
+disease_information,what are the risk factors for tuberculosis
+disease_information,how long does tuberculosis last
+disease_information,jaundice
+disease_information,what is jaundice
+disease_information,what causes jaundice
+disease_information,tell me about jaundice
+disease_information,how is jaundice treated
+disease_information,how is jaundice diagnosed
+disease_information,is jaundice contagious
+disease_information,is jaundice curable
+disease_information,how common is jaundice
+disease_information,what are the risk factors for jaundice
+disease_information,how long does jaundice last
+disease_information,hepatitis
+disease_information,what is hepatitis
+disease_information,what causes hepatitis
+disease_information,tell me about hepatitis
+disease_information,how is hepatitis treated
+disease_information,how is hepatitis diagnosed
+disease_information,is hepatitis contagious
+disease_information,is hepatitis curable
+disease_information,how common is hepatitis
+disease_information,what are the risk factors for hepatitis
+disease_information,how long does hepatitis last
+disease_information,bronchitis
+disease_information,what is bronchitis
+disease_information,what causes bronchitis
+disease_information,tell me about bronchitis
+disease_information,how is bronchitis treated
+disease_information,how is bronchitis diagnosed
+disease_information,is bronchitis contagious
+disease_information,is bronchitis curable
+disease_information,how common is bronchitis
+disease_information,what are the risk factors for bronchitis
+disease_information,how long does bronchitis last
+disease_information,sinusitis
+disease_information,what is sinusitis
+disease_information,what causes sinusitis
+disease_information,tell me about sinusitis
+disease_information,how is sinusitis treated
+disease_information,how is sinusitis diagnosed
+disease_information,is sinusitis contagious
+disease_information,is sinusitis curable
+disease_information,how common is sinusitis
+disease_information,what are the risk factors for sinusitis
+disease_information,how long does sinusitis last
+disease_information,tonsillitis
+disease_information,what is tonsillitis
+disease_information,what causes tonsillitis
+disease_information,tell me about tonsillitis
+disease_information,how is tonsillitis treated
+disease_information,how is tonsillitis diagnosed
+disease_information,is tonsillitis contagious
+disease_information,is tonsillitis curable
+disease_information,how common is tonsillitis
+disease_information,what are the risk factors for tonsillitis
+disease_information,how long does tonsillitis last
+disease_information,appendicitis
+disease_information,what is appendicitis
+disease_information,what causes appendicitis
+disease_information,tell me about appendicitis
+disease_information,how is appendicitis treated
+disease_information,how is appendicitis diagnosed
+disease_information,is appendicitis contagious
+disease_information,is appendicitis curable
+disease_information,how common is appendicitis
+disease_information,what are the risk factors for appendicitis
+disease_information,how long does appendicitis last
+disease_information,kidney stones
+disease_information,what is kidney stones
+disease_information,what causes kidney stones
+disease_information,tell me about kidney stones
+disease_information,how is kidney stones treated
+disease_information,how is kidney stones diagnosed
+disease_information,is kidney stones contagious
+disease_information,is kidney stones curable
+disease_information,how common is kidney stones
+disease_information,what are the risk factors for kidney stones
+disease_information,how long does kidney stones last
+disease_information,urinary tract infection
+disease_information,what is urinary tract infection
+disease_information,what causes urinary tract infection
+disease_information,tell me about urinary tract infection
+disease_information,how is urinary tract infection treated
+disease_information,how is urinary tract infection diagnosed
+disease_information,is urinary tract infection contagious
+disease_information,is urinary tract infection curable
+disease_information,how common is urinary tract infection
+disease_information,what are the risk factors for urinary tract infection
+disease_information,how long does urinary tract infection last
+disease_information,gastroenteritis
+disease_information,what is gastroenteritis
+disease_information,what causes gastroenteritis
+disease_information,tell me about gastroenteritis
+disease_information,how is gastroenteritis treated
+disease_information,how is gastroenteritis diagnosed
+disease_information,is gastroenteritis contagious
+disease_information,is gastroenteritis curable
+disease_information,how common is gastroenteritis
+disease_information,what are the risk factors for gastroenteritis
+disease_information,how long does gastroenteritis last
+disease_information,food poisoning
+disease_information,what is food poisoning
+disease_information,what causes food poisoning
+disease_information,tell me about food poisoning
+disease_information,how is food poisoning treated
+disease_information,how is food poisoning diagnosed
+disease_information,is food poisoning contagious
+disease_information,is food poisoning curable
+disease_information,how common is food poisoning
+disease_information,what are the risk factors for food poisoning
+disease_information,how long does food poisoning last
+disease_information,chickenpox
+disease_information,what is chickenpox
+disease_information,what causes chickenpox
+disease_information,tell me about chickenpox
+disease_information,how is chickenpox treated
+disease_information,how is chickenpox diagnosed
+disease_information,is chickenpox contagious
+disease_information,is chickenpox curable
+disease_information,how common is chickenpox
+disease_information,what are the risk factors for chickenpox
+disease_information,how long does chickenpox last
+disease_information,measles
+disease_information,what is measles
+disease_information,what causes measles
+disease_information,tell me about measles
+disease_information,how is measles treated
+disease_information,how is measles diagnosed
+disease_information,is measles contagious
+disease_information,is measles curable
+disease_information,how common is measles
+disease_information,what are the risk factors for measles
+disease_information,how long does measles last
+disease_information,mumps
+disease_information,what is mumps
+disease_information,what causes mumps
+disease_information,tell me about mumps
+disease_information,how is mumps treated
+disease_information,how is mumps diagnosed
+disease_information,is mumps contagious
+disease_information,is mumps curable
+disease_information,how common is mumps
+disease_information,what are the risk factors for mumps
+disease_information,how long does mumps last
+disease_information,rubella
+disease_information,what is rubella
+disease_information,what causes rubella
+disease_information,tell me about rubella
+disease_information,how is rubella treated
+disease_information,how is rubella diagnosed
+disease_information,is rubella contagious
+disease_information,is rubella curable
+disease_information,how common is rubella
+disease_information,what are the risk factors for rubella
+disease_information,how long does rubella last
+disease_information,covid-19
+disease_information,what is covid-19
+disease_information,what causes covid-19
+disease_information,tell me about covid-19
+disease_information,how is covid-19 treated
+disease_information,how is covid-19 diagnosed
+disease_information,is covid-19 contagious
+disease_information,is covid-19 curable
+disease_information,how common is covid-19
+disease_information,what are the risk factors for covid-19
+disease_information,how long does covid-19 last
+disease_information,thyroid disorder
+disease_information,what is thyroid disorder
+disease_information,what causes thyroid disorder
+disease_information,tell me about thyroid disorder
+disease_information,how is thyroid disorder treated
+disease_information,how is thyroid disorder diagnosed
+disease_information,is thyroid disorder contagious
+disease_information,is thyroid disorder curable
+disease_information,how common is thyroid disorder
+disease_information,what are the risk factors for thyroid disorder
+disease_information,how long does thyroid disorder last
+disease_information,hypothyroidism
+disease_information,what is hypothyroidism
+disease_information,what causes hypothyroidism
+disease_information,tell me about hypothyroidism
+disease_information,how is hypothyroidism treated
+disease_information,how is hypothyroidism diagnosed
+disease_information,is hypothyroidism contagious
+disease_information,is hypothyroidism curable
+disease_information,how common is hypothyroidism
+disease_information,what are the risk factors for hypothyroidism
+disease_information,how long does hypothyroidism last
+disease_information,hyperthyroidism
+disease_information,what is hyperthyroidism
+disease_information,what causes hyperthyroidism
+disease_information,tell me about hyperthyroidism
+disease_information,how is hyperthyroidism treated
+disease_information,how is hyperthyroidism diagnosed
+disease_information,is hyperthyroidism contagious
+disease_information,is hyperthyroidism curable
+disease_information,how common is hyperthyroidism
+disease_information,what are the risk factors for hyperthyroidism
+disease_information,how long does hyperthyroidism last
+disease_information,osteoporosis
+disease_information,what is osteoporosis
+disease_information,what causes osteoporosis
+disease_information,tell me about osteoporosis
+disease_information,how is osteoporosis treated
+disease_information,how is osteoporosis diagnosed
+disease_information,is osteoporosis contagious
+disease_information,is osteoporosis curable
+disease_information,how common is osteoporosis
+disease_information,what are the risk factors for osteoporosis
+disease_information,how long does osteoporosis last
+disease_information,gout
+disease_information,what is gout
+disease_information,what causes gout
+disease_information,tell me about gout
+disease_information,how is gout treated
+disease_information,how is gout diagnosed
+disease_information,is gout contagious
+disease_information,is gout curable
+disease_information,how common is gout
+disease_information,what are the risk factors for gout
+disease_information,how long does gout last
+disease_information,eczema
+disease_information,what is eczema
+disease_information,what causes eczema
+disease_information,tell me about eczema
+disease_information,how is eczema treated
+disease_information,how is eczema diagnosed
+disease_information,is eczema contagious
+disease_information,is eczema curable
+disease_information,how common is eczema
+disease_information,what are the risk factors for eczema
+disease_information,how long does eczema last
+disease_information,psoriasis
+disease_information,what is psoriasis
+disease_information,what causes psoriasis
+disease_information,tell me about psoriasis
+disease_information,how is psoriasis treated
+disease_information,how is psoriasis diagnosed
+disease_information,is psoriasis contagious
+disease_information,is psoriasis curable
+disease_information,how common is psoriasis
+disease_information,what are the risk factors for psoriasis
+disease_information,how long does psoriasis last
+disease_information,acne
+disease_information,what is acne
+disease_information,what causes acne
+disease_information,tell me about acne
+disease_information,how is acne treated
+disease_information,how is acne diagnosed
+disease_information,is acne contagious
+disease_information,is acne curable
+disease_information,how common is acne
+disease_information,what are the risk factors for acne
+disease_information,how long does acne last
+disease_information,conjunctivitis
+disease_information,what is conjunctivitis
+disease_information,what causes conjunctivitis
+disease_information,tell me about conjunctivitis
+disease_information,how is conjunctivitis treated
+disease_information,how is conjunctivitis diagnosed
+disease_information,is conjunctivitis contagious
+disease_information,is conjunctivitis curable
+disease_information,how common is conjunctivitis
+disease_information,what are the risk factors for conjunctivitis
+disease_information,how long does conjunctivitis last
+disease_information,cataract
+disease_information,what is cataract
+disease_information,what causes cataract
+disease_information,tell me about cataract
+disease_information,how is cataract treated
+disease_information,how is cataract diagnosed
+disease_information,is cataract contagious
+disease_information,is cataract curable
+disease_information,how common is cataract
+disease_information,what are the risk factors for cataract
+disease_information,how long does cataract last
+disease_information,glaucoma
+disease_information,what is glaucoma
+disease_information,what causes glaucoma
+disease_information,tell me about glaucoma
+disease_information,how is glaucoma treated
+disease_information,how is glaucoma diagnosed
+disease_information,is glaucoma contagious
+disease_information,is glaucoma curable
+disease_information,how common is glaucoma
+disease_information,what are the risk factors for glaucoma
+disease_information,how long does glaucoma last
+disease_information,sinus infection
+disease_information,what is sinus infection
+disease_information,what causes sinus infection
+disease_information,tell me about sinus infection
+disease_information,how is sinus infection treated
+disease_information,how is sinus infection diagnosed
+disease_information,is sinus infection contagious
+disease_information,is sinus infection curable
+disease_information,how common is sinus infection
+disease_information,what are the risk factors for sinus infection
+disease_information,how long does sinus infection last
+disease_information,stomach ulcer
+disease_information,what is stomach ulcer
+disease_information,what causes stomach ulcer
+disease_information,tell me about stomach ulcer
+disease_information,how is stomach ulcer treated
+disease_information,how is stomach ulcer diagnosed
+disease_information,is stomach ulcer contagious
+disease_information,is stomach ulcer curable
+disease_information,how common is stomach ulcer
+disease_information,what are the risk factors for stomach ulcer
+disease_information,how long does stomach ulcer last
+disease_information,irritable bowel syndrome
+disease_information,what is irritable bowel syndrome
+disease_information,what causes irritable bowel syndrome
+disease_information,tell me about irritable bowel syndrome
+disease_information,how is irritable bowel syndrome treated
+disease_information,how is irritable bowel syndrome diagnosed
+disease_information,is irritable bowel syndrome contagious
+disease_information,is irritable bowel syndrome curable
+disease_information,how common is irritable bowel syndrome
+disease_information,what are the risk factors for irritable bowel syndrome
+disease_information,how long does irritable bowel syndrome last
+disease_information,celiac disease
+disease_information,what is celiac disease
+disease_information,what causes celiac disease
+disease_information,tell me about celiac disease
+disease_information,how is celiac disease treated
+disease_information,how is celiac disease diagnosed
+disease_information,is celiac disease contagious
+disease_information,is celiac disease curable
+disease_information,how common is celiac disease
+disease_information,what are the risk factors for celiac disease
+disease_information,how long does celiac disease last
+disease_information,lactose intolerance
+disease_information,what is lactose intolerance
+disease_information,what causes lactose intolerance
+disease_information,tell me about lactose intolerance
+disease_information,how is lactose intolerance treated
+disease_information,how is lactose intolerance diagnosed
+disease_information,is lactose intolerance contagious
+disease_information,is lactose intolerance curable
+disease_information,how common is lactose intolerance
+disease_information,what are the risk factors for lactose intolerance
+disease_information,how long does lactose intolerance last
+disease_information,vertigo
+disease_information,what is vertigo
+disease_information,what causes vertigo
+disease_information,tell me about vertigo
+disease_information,how is vertigo treated
+disease_information,how is vertigo diagnosed
+disease_information,is vertigo contagious
+disease_information,is vertigo curable
+disease_information,how common is vertigo
+disease_information,what are the risk factors for vertigo
+disease_information,how long does vertigo last
+disease_information,depression
+disease_information,what is depression
+disease_information,what causes depression
+disease_information,tell me about depression
+disease_information,how is depression treated
+disease_information,how is depression diagnosed
+disease_information,is depression contagious
+disease_information,is depression curable
+disease_information,how common is depression
+disease_information,what are the risk factors for depression
+disease_information,how long does depression last
+disease_information,anxiety disorder
+disease_information,what is anxiety disorder
+disease_information,what causes anxiety disorder
+disease_information,tell me about anxiety disorder
+disease_information,how is anxiety disorder treated
+disease_information,how is anxiety disorder diagnosed
+disease_information,is anxiety disorder contagious
+disease_information,is anxiety disorder curable
+disease_information,how common is anxiety disorder
+disease_information,what are the risk factors for anxiety disorder
+disease_information,how long does anxiety disorder last
+disease_information,chronic kidney disease
+disease_information,what is chronic kidney disease
+disease_information,what causes chronic kidney disease
+disease_information,tell me about chronic kidney disease
+disease_information,how is chronic kidney disease treated
+disease_information,how is chronic kidney disease diagnosed
+disease_information,is chronic kidney disease contagious
+disease_information,is chronic kidney disease curable
+disease_information,how common is chronic kidney disease
+disease_information,what are the risk factors for chronic kidney disease
+disease_information,how long does chronic kidney disease last
+disease_information,fatty liver disease
+disease_information,what is fatty liver disease
+disease_information,what causes fatty liver disease
+disease_information,tell me about fatty liver disease
+disease_information,how is fatty liver disease treated
+disease_information,how is fatty liver disease diagnosed
+disease_information,is fatty liver disease contagious
+disease_information,is fatty liver disease curable
+disease_information,how common is fatty liver disease
+disease_information,what are the risk factors for fatty liver disease
+disease_information,how long does fatty liver disease last
+disease_information,piles
+disease_information,what is piles
+disease_information,what causes piles
+disease_information,tell me about piles
+disease_information,how is piles treated
+disease_information,how is piles diagnosed
+disease_information,is piles contagious
+disease_information,is piles curable
+disease_information,how common is piles
+disease_information,what are the risk factors for piles
+disease_information,how long does piles last
+disease_information,hernia
+disease_information,what is hernia
+disease_information,what causes hernia
+disease_information,tell me about hernia
+disease_information,how is hernia treated
+disease_information,how is hernia diagnosed
+disease_information,is hernia contagious
+disease_information,is hernia curable
+disease_information,how common is hernia
+disease_information,what are the risk factors for hernia
+disease_information,how long does hernia last
+medicine_information,paracetamol
+medicine_information,what is paracetamol
+medicine_information,what is paracetamol used for
+medicine_information,what does paracetamol do
+medicine_information,side effects of paracetamol
+medicine_information,what are the side effects of paracetamol
+medicine_information,can I take paracetamol without a prescription
+medicine_information,is paracetamol safe during pregnancy
+medicine_information,how does paracetamol work
+medicine_information,ibuprofen
+medicine_information,what is ibuprofen
+medicine_information,what is ibuprofen used for
+medicine_information,what does ibuprofen do
+medicine_information,side effects of ibuprofen
+medicine_information,what are the side effects of ibuprofen
+medicine_information,can I take ibuprofen without a prescription
+medicine_information,is ibuprofen safe during pregnancy
+medicine_information,how does ibuprofen work
+medicine_information,cetirizine
+medicine_information,what is cetirizine
+medicine_information,what is cetirizine used for
+medicine_information,what does cetirizine do
+medicine_information,side effects of cetirizine
+medicine_information,what are the side effects of cetirizine
+medicine_information,can I take cetirizine without a prescription
+medicine_information,is cetirizine safe during pregnancy
+medicine_information,how does cetirizine work
+medicine_information,aspirin
+medicine_information,what is aspirin
+medicine_information,what is aspirin used for
+medicine_information,what does aspirin do
+medicine_information,side effects of aspirin
+medicine_information,what are the side effects of aspirin
+medicine_information,can I take aspirin without a prescription
+medicine_information,is aspirin safe during pregnancy
+medicine_information,how does aspirin work
+medicine_information,antibiotic
+medicine_information,what is antibiotic
+medicine_information,what is antibiotic used for
+medicine_information,what does antibiotic do
+medicine_information,side effects of antibiotic
+medicine_information,what are the side effects of antibiotic
+medicine_information,can I take antibiotic without a prescription
+medicine_information,is antibiotic safe during pregnancy
+medicine_information,how does antibiotic work
+medicine_information,antibiotics
+medicine_information,what is antibiotics
+medicine_information,what is antibiotics used for
+medicine_information,what does antibiotics do
+medicine_information,side effects of antibiotics
+medicine_information,what are the side effects of antibiotics
+medicine_information,can I take antibiotics without a prescription
+medicine_information,is antibiotics safe during pregnancy
+medicine_information,how does antibiotics work
+medicine_information,painkiller
+medicine_information,what is painkiller
+medicine_information,what is painkiller used for
+medicine_information,what does painkiller do
+medicine_information,side effects of painkiller
+medicine_information,what are the side effects of painkiller
+medicine_information,can I take painkiller without a prescription
+medicine_information,is painkiller safe during pregnancy
+medicine_information,how does painkiller work
+medicine_information,medicine
+medicine_information,what is medicine
+medicine_information,what is medicine used for
+medicine_information,what does medicine do
+medicine_information,side effects of medicine
+medicine_information,what are the side effects of medicine
+medicine_information,can I take medicine without a prescription
+medicine_information,is medicine safe during pregnancy
+medicine_information,how does medicine work
+medicine_information,tablet
+medicine_information,what is tablet
+medicine_information,what is tablet used for
+medicine_information,what does tablet do
+medicine_information,side effects of tablet
+medicine_information,what are the side effects of tablet
+medicine_information,can I take tablet without a prescription
+medicine_information,is tablet safe during pregnancy
+medicine_information,how does tablet work
+medicine_information,syrup
+medicine_information,what is syrup
+medicine_information,what is syrup used for
+medicine_information,what does syrup do
+medicine_information,side effects of syrup
+medicine_information,what are the side effects of syrup
+medicine_information,can I take syrup without a prescription
+medicine_information,is syrup safe during pregnancy
+medicine_information,how does syrup work
+medicine_information,antacid
+medicine_information,what is antacid
+medicine_information,what is antacid used for
+medicine_information,what does antacid do
+medicine_information,side effects of antacid
+medicine_information,what are the side effects of antacid
+medicine_information,can I take antacid without a prescription
+medicine_information,is antacid safe during pregnancy
+medicine_information,how does antacid work
+medicine_information,antihistamine
+medicine_information,what is antihistamine
+medicine_information,what is antihistamine used for
+medicine_information,what does antihistamine do
+medicine_information,side effects of antihistamine
+medicine_information,what are the side effects of antihistamine
+medicine_information,can I take antihistamine without a prescription
+medicine_information,is antihistamine safe during pregnancy
+medicine_information,how does antihistamine work
+medicine_information,cough syrup
+medicine_information,what is cough syrup
+medicine_information,what is cough syrup used for
+medicine_information,what does cough syrup do
+medicine_information,side effects of cough syrup
+medicine_information,what are the side effects of cough syrup
+medicine_information,can I take cough syrup without a prescription
+medicine_information,is cough syrup safe during pregnancy
+medicine_information,how does cough syrup work
+medicine_information,vitamin supplement
+medicine_information,what is vitamin supplement
+medicine_information,what is vitamin supplement used for
+medicine_information,what does vitamin supplement do
+medicine_information,side effects of vitamin supplement
+medicine_information,what are the side effects of vitamin supplement
+medicine_information,can I take vitamin supplement without a prescription
+medicine_information,is vitamin supplement safe during pregnancy
+medicine_information,how does vitamin supplement work
+medicine_information,iron supplement
+medicine_information,what is iron supplement
+medicine_information,what is iron supplement used for
+medicine_information,what does iron supplement do
+medicine_information,side effects of iron supplement
+medicine_information,what are the side effects of iron supplement
+medicine_information,can I take iron supplement without a prescription
+medicine_information,is iron supplement safe during pregnancy
+medicine_information,how does iron supplement work
+medicine_information,calcium supplement
+medicine_information,what is calcium supplement
+medicine_information,what is calcium supplement used for
+medicine_information,what does calcium supplement do
+medicine_information,side effects of calcium supplement
+medicine_information,what are the side effects of calcium supplement
+medicine_information,can I take calcium supplement without a prescription
+medicine_information,is calcium supplement safe during pregnancy
+medicine_information,how does calcium supplement work
+medicine_information,vitamin C
+medicine_information,what is vitamin C
+medicine_information,what is vitamin C used for
+medicine_information,what does vitamin C do
+medicine_information,side effects of vitamin C
+medicine_information,what are the side effects of vitamin C
+medicine_information,can I take vitamin C without a prescription
+medicine_information,is vitamin C safe during pregnancy
+medicine_information,how does vitamin C work
+medicine_information,vitamin D
+medicine_information,what is vitamin D
+medicine_information,what is vitamin D used for
+medicine_information,what does vitamin D do
+medicine_information,side effects of vitamin D
+medicine_information,what are the side effects of vitamin D
+medicine_information,can I take vitamin D without a prescription
+medicine_information,is vitamin D safe during pregnancy
+medicine_information,how does vitamin D work
+medicine_information,insulin
+medicine_information,what is insulin
+medicine_information,what is insulin used for
+medicine_information,what does insulin do
+medicine_information,side effects of insulin
+medicine_information,what are the side effects of insulin
+medicine_information,can I take insulin without a prescription
+medicine_information,is insulin safe during pregnancy
+medicine_information,how does insulin work
+medicine_information,metformin
+medicine_information,what is metformin
+medicine_information,what is metformin used for
+medicine_information,what does metformin do
+medicine_information,side effects of metformin
+medicine_information,what are the side effects of metformin
+medicine_information,can I take metformin without a prescription
+medicine_information,is metformin safe during pregnancy
+medicine_information,how does metformin work
+medicine_information,amoxicillin
+medicine_information,what is amoxicillin
+medicine_information,what is amoxicillin used for
+medicine_information,what does amoxicillin do
+medicine_information,side effects of amoxicillin
+medicine_information,what are the side effects of amoxicillin
+medicine_information,can I take amoxicillin without a prescription
+medicine_information,is amoxicillin safe during pregnancy
+medicine_information,how does amoxicillin work
+medicine_information,azithromycin
+medicine_information,what is azithromycin
+medicine_information,what is azithromycin used for
+medicine_information,what does azithromycin do
+medicine_information,side effects of azithromycin
+medicine_information,what are the side effects of azithromycin
+medicine_information,can I take azithromycin without a prescription
+medicine_information,is azithromycin safe during pregnancy
+medicine_information,how does azithromycin work
+medicine_information,omeprazole
+medicine_information,what is omeprazole
+medicine_information,what is omeprazole used for
+medicine_information,what does omeprazole do
+medicine_information,side effects of omeprazole
+medicine_information,what are the side effects of omeprazole
+medicine_information,can I take omeprazole without a prescription
+medicine_information,is omeprazole safe during pregnancy
+medicine_information,how does omeprazole work
+medicine_information,pantoprazole
+medicine_information,what is pantoprazole
+medicine_information,what is pantoprazole used for
+medicine_information,what does pantoprazole do
+medicine_information,side effects of pantoprazole
+medicine_information,what are the side effects of pantoprazole
+medicine_information,can I take pantoprazole without a prescription
+medicine_information,is pantoprazole safe during pregnancy
+medicine_information,how does pantoprazole work
+medicine_information,loratadine
+medicine_information,what is loratadine
+medicine_information,what is loratadine used for
+medicine_information,what does loratadine do
+medicine_information,side effects of loratadine
+medicine_information,what are the side effects of loratadine
+medicine_information,can I take loratadine without a prescription
+medicine_information,is loratadine safe during pregnancy
+medicine_information,how does loratadine work
+medicine_information,diclofenac
+medicine_information,what is diclofenac
+medicine_information,what is diclofenac used for
+medicine_information,what does diclofenac do
+medicine_information,side effects of diclofenac
+medicine_information,what are the side effects of diclofenac
+medicine_information,can I take diclofenac without a prescription
+medicine_information,is diclofenac safe during pregnancy
+medicine_information,how does diclofenac work
+medicine_information,naproxen
+medicine_information,what is naproxen
+medicine_information,what is naproxen used for
+medicine_information,what does naproxen do
+medicine_information,side effects of naproxen
+medicine_information,what are the side effects of naproxen
+medicine_information,can I take naproxen without a prescription
+medicine_information,is naproxen safe during pregnancy
+medicine_information,how does naproxen work
+medicine_information,multivitamin
+medicine_information,what is multivitamin
+medicine_information,what is multivitamin used for
+medicine_information,what does multivitamin do
+medicine_information,side effects of multivitamin
+medicine_information,what are the side effects of multivitamin
+medicine_information,can I take multivitamin without a prescription
+medicine_information,is multivitamin safe during pregnancy
+medicine_information,how does multivitamin work
+medicine_information,ORS solution
+medicine_information,what is ORS solution
+medicine_information,what is ORS solution used for
+medicine_information,what does ORS solution do
+medicine_information,side effects of ORS solution
+medicine_information,what are the side effects of ORS solution
+medicine_information,can I take ORS solution without a prescription
+medicine_information,is ORS solution safe during pregnancy
+medicine_information,how does ORS solution work
+medicine_information,antiseptic cream
+medicine_information,what is antiseptic cream
+medicine_information,what is antiseptic cream used for
+medicine_information,what does antiseptic cream do
+medicine_information,side effects of antiseptic cream
+medicine_information,what are the side effects of antiseptic cream
+medicine_information,can I take antiseptic cream without a prescription
+medicine_information,is antiseptic cream safe during pregnancy
+medicine_information,how does antiseptic cream work
+general_health,health
+general_health,healthy
+general_health,healthy lifestyle
+general_health,how can I stay healthy
+general_health,how can I improve my health
+general_health,what is a healthy lifestyle
+general_health,how can I sleep better
+general_health,how much sleep should I get
+general_health,how can I reduce stress
+general_health,how can I improve my sleep
+general_health,how can I improve my immunity
+general_health,how can I maintain good health
+general_health,how can I prevent illness
+general_health,how often should I exercise
+general_health,what are healthy habits
+general_health,how can I stay fit
+general_health,how can I improve my fitness
+general_health,how much water should I drink
+general_health,how can I improve my diet
+general_health,what foods are healthy
+general_health,how many steps should I walk daily
+general_health,how can I lower my cholesterol
+general_health,how can I improve my mental health
+general_health,how can I manage anxiety
+general_health,how can I boost my energy levels
+general_health,how can I improve my posture
+general_health,how can I take care of my eyes
+general_health,how can I take care of my skin
+general_health,how can I strengthen my bones
+general_health,how can I improve my digestion
+general_health,what is a normal body temperature
+general_health,what is a normal blood pressure
+general_health,what is a normal heart rate
+general_health,what is a healthy BMI
+general_health,how can I quit smoking
+general_health,how can I reduce alcohol intake
+nutrition,nutrition
+nutrition,healthy food
+nutrition,healthy foods
+nutrition,diet
+nutrition,what should I eat
+nutrition,what foods are good for health
+nutrition,what foods are rich in iron
+nutrition,foods rich in iron
+nutrition,foods for low hemoglobin
+nutrition,what should I eat for low hemoglobin
+nutrition,foods rich in vitamin C
+nutrition,foods rich in vitamin D
+nutrition,foods rich in calcium
+nutrition,foods rich in protein
+nutrition,what foods contain protein
+nutrition,how can I improve my nutrition
+nutrition,what is a balanced diet
+nutrition,how can I eat healthy
+nutrition,what should I eat during fever
+nutrition,what should I eat during illness
+nutrition,what foods should I avoid with diabetes
+nutrition,what foods should I avoid with high blood pressure
+nutrition,what foods help with digestion
+nutrition,what foods boost immunity
+nutrition,what should I eat for weight loss
+nutrition,what should I eat for weight gain
+nutrition,what foods are good for the heart
+nutrition,what is a good diet plan
+nutrition,how many calories should I eat daily
+nutrition,what foods help with anemia
+nutrition,what foods should I avoid during pregnancy
+nutrition,what foods help lower cholesterol
+prevention,prevention
+prevention,how can I prevent diabetes
+prevention,how can I prevent anemia
+prevention,how can I prevent asthma attacks
+prevention,how can I prevent infection
+prevention,how can I prevent flu
+prevention,how can I prevent dengue
+prevention,how can I prevent malaria
+prevention,how can I prevent illness
+prevention,how can I stay healthy and prevent disease
+prevention,how can I reduce the risk of diabetes
+prevention,how can I reduce the risk of high blood pressure
+prevention,how can I prevent dehydration
+prevention,how can I prevent food poisoning
+prevention,how can I protect myself from infections
+prevention,how can I maintain a healthy immune system
+prevention,how can I prevent heart disease
+prevention,how can I prevent obesity
+prevention,how can I prevent kidney stones
+prevention,how can I prevent the common cold
+prevention,how can I prevent covid-19
+prevention,how can I prevent food allergies
+prevention,how can I avoid catching the flu
+prevention,how can I prevent skin infections
+prevention,how can I prevent eye infections
+prevention,how can I prevent stomach infections
+emergency,severe chest pain
+emergency,I cannot breathe
+emergency,I cannot breathe properly
+emergency,I am having severe breathing difficulty
+emergency,I am unconscious
+emergency,someone is unconscious
+emergency,I am bleeding heavily
+emergency,I have severe bleeding
+emergency,I have a serious injury
+emergency,I was badly injured
+emergency,someone has collapsed
+emergency,I am having a medical emergency
+emergency,this is an emergency
+emergency,I need emergency medical help
+emergency,I have severe chest pain and difficulty breathing
+emergency,someone is having a seizure
+emergency,I think someone is having a heart attack
+emergency,I think someone is having a stroke
+emergency,someone is choking
+emergency,I need an ambulance
+emergency,severe allergic reaction
+emergency,difficulty waking someone up
+emergency,someone fainted and won't wake up
+emergency,severe burn injury
+emergency,suspected broken bone
+emergency,head injury with confusion
+emergency,poisoning emergency
+emergency,someone swallowed something dangerous
+emergency,severe abdominal pain and vomiting blood
+emergency,signs of a heart attack
+emergency,signs of a stroke
