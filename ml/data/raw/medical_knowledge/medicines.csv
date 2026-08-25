@@ -1,0 +1,5 @@
+symptom,aliases,question_type,response
+paracetamol,paracetamol|acetaminophen|calpol,symptoms,"Paracetamol, also called acetaminophen, is commonly used to relieve pain and reduce fever. It does not treat the underlying cause of every illness."
+paracetamol,paracetamol|acetaminophen|calpol,assistance,Use paracetamol only according to the product instructions or advice from a healthcare professional. Avoid taking multiple products containing paracetamol at the same time because excessive amounts can cause serious liver injury.
+ibuprofen,ibuprofen,symptoms,"Ibuprofen is a non-steroidal anti-inflammatory medicine commonly used for pain, inflammation, and fever. It may not be suitable for everyone."
+ibuprofen,ibuprofen,assistance,"Use ibuprofen according to the product instructions or professional medical advice. People with certain stomach, kidney, heart, or other health problems may need to avoid it or use it only under medical guidance."
