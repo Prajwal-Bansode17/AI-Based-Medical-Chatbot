@@ -42,6 +42,9 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ai_based_medical_chatbot.data.api.PredictionRequest
@@ -49,6 +52,11 @@ import com.example.ai_based_medical_chatbot.data.api.RetrofitClient
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
+
+// =============================================================
+// CHAT MESSAGE
+// =============================================================
 
 data class ChatMessage(
     val text: String,
@@ -58,6 +66,11 @@ data class ChatMessage(
     val similarity: Double = 0.0,
     val isError: Boolean = false
 )
+
+
+// =============================================================
+// CHATBOT SCREEN
+// =============================================================
 
 @Composable
 fun ChatbotScreen(
@@ -77,6 +90,7 @@ fun ChatbotScreen(
     }
 
     val scope = rememberCoroutineScope()
+
     val listState = rememberLazyListState()
 
 
@@ -90,7 +104,11 @@ fun ChatbotScreen(
 
             messages.add(
                 ChatMessage(
-                    text = "Hello! 👋\n\nI am MedAssist AI. How can I help you today?",
+                    text =
+                        "Hello! 👋\n\n" +
+                                "I am MedAssist AI. " +
+                                "How can I help you today?",
+
                     isUser = false
                 )
             )
@@ -110,7 +128,7 @@ fun ChatbotScreen(
         if (messages.isNotEmpty()) {
 
             listState.animateScrollToItem(
-                index = messages.size - 1
+                index = messages.lastIndex
             )
         }
     }
@@ -144,11 +162,12 @@ fun ChatbotScreen(
         )
 
         message = ""
+
         isTyping = true
 
 
         // -----------------------------------------------------
-        // API REQUEST
+        // API CALL
         // -----------------------------------------------------
 
         scope.launch(Dispatchers.IO) {
@@ -177,9 +196,15 @@ fun ChatbotScreen(
                         messages.add(
                             ChatMessage(
                                 text = result.answer,
+
                                 isUser = false,
-                                intent = result.intent,
-                                confidence = result.confidence,
+
+                                intent =
+                                    result.intent,
+
+                                confidence =
+                                    result.confidence,
+
                                 similarity =
                                     result.answer_similarity
                             )
@@ -187,19 +212,17 @@ fun ChatbotScreen(
 
                     } else {
 
-                        // -------------------------------------
-                        // HTTP ERROR
-                        // -------------------------------------
-
                         val errorMessage =
                             try {
 
-                                response.errorBody()
+                                response
+                                    .errorBody()
                                     ?.string()
-
                                     ?: "Unknown server error"
 
-                            } catch (e: Exception) {
+                            } catch (
+                                e: Exception
+                            ) {
 
                                 "Unable to read server error"
                             }
@@ -207,11 +230,15 @@ fun ChatbotScreen(
 
                         messages.add(
                             ChatMessage(
+
                                 text =
                                     "Server Error\n\n" +
-                                            "HTTP Code: ${response.code()}\n\n" +
+                                            "HTTP Code: " +
+                                            "${response.code()}\n\n" +
                                             errorMessage,
+
                                 isUser = false,
+
                                 isError = true
                             )
                         )
@@ -222,27 +249,20 @@ fun ChatbotScreen(
 
             } catch (e: Exception) {
 
-                // ------------------------------------------------
-                // ACTUAL EXCEPTION
-                // ------------------------------------------------
-
                 withContext(Dispatchers.Main) {
-
-                    val errorType =
-                        e.javaClass.simpleName
-
-                    val errorMessage =
-                        e.message
-                            ?: "No error message available"
-
 
                     messages.add(
                         ChatMessage(
+
                             text =
                                 "API Connection Error\n\n" +
-                                        "Type: $errorType\n\n" +
-                                        "Message:\n$errorMessage",
+                                        "Type: " +
+                                        "${e.javaClass.simpleName}\n\n" +
+                                        "Message:\n" +
+                                        "${e.message ?: "Unknown error"}",
+
                             isUser = false,
+
                             isError = true
                         )
                     )
@@ -255,7 +275,12 @@ fun ChatbotScreen(
 
 
     // =========================================================
-    // MAIN UI
+    // MAIN SCREEN
+    //
+    // IMPORTANT:
+    // NO imePadding() HERE.
+    //
+    // Keyboard padding is applied ONLY to bottom input bar.
     // =========================================================
 
     Column(
@@ -268,24 +293,32 @@ fun ChatbotScreen(
 
 
         // =====================================================
-        // TOP BAR
+        // HEADER
         // =====================================================
 
         Surface(
-            modifier = Modifier.fillMaxWidth(),
+            modifier =
+                Modifier.fillMaxWidth(),
+
             shadowElevation = 4.dp
         ) {
 
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(
-                        horizontal = 12.dp,
-                        vertical = 12.dp
-                    ),
+
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(
+                            horizontal = 12.dp,
+                            vertical = 10.dp
+                        ),
+
                 verticalAlignment =
                     Alignment.CenterVertically
             ) {
+
+
+                // BACK
 
                 IconButton(
                     onClick = onBack
@@ -294,31 +327,40 @@ fun ChatbotScreen(
                     Icon(
                         imageVector =
                             Icons.Default.ArrowBack,
+
                         contentDescription =
                             "Back"
                     )
                 }
 
 
-                // AI ICON
+                // AI CIRCLE
 
                 Box(
-                    modifier = Modifier
-                        .size(44.dp)
-                        .clip(CircleShape)
-                        .background(
-                            Color(0xFF1976D2)
-                        ),
+
+                    modifier =
+                        Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(
+                                Color(0xFF1976D2)
+                            ),
+
                     contentAlignment =
                         Alignment.Center
                 ) {
 
                     Text(
                         text = "AI",
-                        color = Color.White,
+
+                        color =
+                            Color.White,
+
                         fontWeight =
                             FontWeight.Bold,
-                        fontSize = 14.sp
+
+                        fontSize =
+                            14.sp
                     )
                 }
 
@@ -329,40 +371,57 @@ fun ChatbotScreen(
                 )
 
 
+                // TITLE
+
                 Column(
                     modifier =
                         Modifier.weight(1f)
                 ) {
 
                     Text(
-                        text = "MedAssist AI",
-                        fontSize = 19.sp,
+
+                        text =
+                            "MedAssist AI",
+
+                        fontSize =
+                            19.sp,
+
                         fontWeight =
                             FontWeight.Bold,
+
                         color =
                             Color(0xFF17202A)
                     )
 
 
                     Text(
+
                         text =
                             if (isTyping)
                                 "Thinking..."
                             else
                                 "Your intelligent health companion",
-                        fontSize = 12.sp,
+
+                        fontSize =
+                            12.sp,
+
                         color =
                             Color(0xFF667085)
                     )
                 }
 
 
+                // LOADING
+
                 if (isTyping) {
 
                     CircularProgressIndicator(
+
                         modifier =
-                            Modifier.size(24.dp),
-                        strokeWidth = 2.dp
+                            Modifier.size(23.dp),
+
+                        strokeWidth =
+                            2.dp
                     )
                 }
             }
@@ -373,76 +432,122 @@ fun ChatbotScreen(
         // CHAT AREA
         // =====================================================
 
-        LazyColumn(
-            state = listState,
-            modifier = Modifier
-                .weight(1f)
-                .fillMaxWidth()
-                .padding(
-                    horizontal = 12.dp
-                ),
-            verticalArrangement =
-                Arrangement.spacedBy(10.dp)
+        Box(
+
+            modifier =
+                Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
         ) {
 
-            item {
+            LazyColumn(
 
-                Spacer(
-                    modifier =
-                        Modifier.height(8.dp)
-                )
-            }
+                state =
+                    listState,
+
+                modifier =
+                    Modifier
+                        .fillMaxSize()
+                        .padding(
+                            horizontal = 12.dp
+                        ),
+
+                verticalArrangement =
+                    Arrangement.spacedBy(10.dp)
+            ) {
 
 
-            items(messages) { chatMessage ->
-
-                MessageBubble(
-                    message = chatMessage
-                )
-            }
-
-
-            if (isTyping) {
+                // TOP GAP
 
                 item {
 
-                    TypingIndicator()
+                    Spacer(
+                        modifier =
+                            Modifier.height(16.dp)
+                    )
                 }
-            }
 
 
-            item {
+                // CHAT MESSAGES
 
-                Spacer(
-                    modifier =
-                        Modifier.height(8.dp)
-                )
+                items(
+                    items = messages
+                ) { chatMessage ->
+
+                    MessageBubble(
+                        message =
+                            chatMessage
+                    )
+                }
+
+
+                // TYPING
+
+                if (isTyping) {
+
+                    item {
+
+                        TypingIndicator()
+                    }
+                }
+
+
+                // BOTTOM GAP
+
+                item {
+
+                    Spacer(
+                        modifier =
+                            Modifier.height(16.dp)
+                    )
+                }
             }
         }
 
 
         // =====================================================
-        // INPUT AREA
+        // INPUT BAR
+        //
+        // imePadding() ONLY HERE
+        //
+        // This is the important fix.
         // =====================================================
 
         Surface(
-            modifier = Modifier
-                .fillMaxWidth()
-                .imePadding()
-                .navigationBarsPadding(),
-            shadowElevation = 8.dp
+
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .imePadding()
+                    .navigationBarsPadding(),
+
+            shadowElevation =
+                8.dp
         ) {
 
             Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(10.dp),
+
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(
+                            horizontal = 12.dp,
+                            vertical = 8.dp
+                        ),
+
                 verticalAlignment =
-                    Alignment.CenterVertically
+                    Alignment.Bottom
             ) {
 
+
+                // =================================================
+                // TEXT FIELD
+                // =================================================
+
                 OutlinedTextField(
-                    value = message,
+
+                    value =
+                        message,
 
                     onValueChange = {
                         message = it
@@ -459,10 +564,29 @@ fun ChatbotScreen(
                         )
                     },
 
+                    minLines = 1,
+
                     maxLines = 4,
 
                     shape =
-                        RoundedCornerShape(22.dp)
+                        RoundedCornerShape(22.dp),
+
+                    keyboardOptions =
+                        KeyboardOptions(
+                            imeAction =
+                                ImeAction.Send
+                        ),
+
+                    keyboardActions =
+                        KeyboardActions(
+
+                            onSend = {
+
+                                sendMessage(
+                                    message
+                                )
+                            }
+                        )
                 )
 
 
@@ -472,36 +596,49 @@ fun ChatbotScreen(
                 )
 
 
+                // =================================================
+                // SEND BUTTON
+                // =================================================
+
                 IconButton(
+
                     onClick = {
 
-                        sendMessage(message)
+                        sendMessage(
+                            message
+                        )
                     },
 
                     enabled =
-                        message.trim().isNotEmpty()
+                        message
+                            .trim()
+                            .isNotEmpty()
                                 && !isTyping,
 
-                    modifier = Modifier
-                        .size(50.dp)
-                        .clip(CircleShape)
-                        .background(
+                    modifier =
+                        Modifier
+                            .size(50.dp)
+                            .clip(CircleShape)
+                            .background(
 
-                            if (
-                                message.trim().isNotEmpty()
-                                && !isTyping
-                            ) {
+                                if (
+                                    message
+                                        .trim()
+                                        .isNotEmpty()
+                                    && !isTyping
+                                ) {
 
-                                Color(0xFF1976D2)
+                                    Color(0xFF1976D2)
 
-                            } else {
+                                } else {
 
-                                Color(0xFFB0BEC5)
-                            }
-                        )
+                                    Color(0xFFB0BEC5)
+                                }
+                            )
                 ) {
 
                     Icon(
+
                         imageVector =
                             Icons.Default.Send,
 
@@ -528,6 +665,7 @@ fun MessageBubble(
 ) {
 
     Row(
+
         modifier =
             Modifier.fillMaxWidth(),
 
@@ -549,21 +687,30 @@ fun MessageBubble(
         if (!message.isUser) {
 
             Box(
-                modifier = Modifier
-                    .size(34.dp)
-                    .clip(CircleShape)
-                    .background(
-                        Color(0xFF1976D2)
-                    ),
+
+                modifier =
+                    Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(
+                            Color(0xFF1976D2)
+                        ),
 
                 contentAlignment =
                     Alignment.Center
             ) {
 
                 Text(
-                    text = "AI",
-                    color = Color.White,
-                    fontSize = 10.sp,
+
+                    text =
+                        "AI",
+
+                    color =
+                        Color.White,
+
+                    fontSize =
+                        10.sp,
+
                     fontWeight =
                         FontWeight.Bold
                 )
@@ -577,7 +724,12 @@ fun MessageBubble(
         }
 
 
+        // =====================================================
+        // MESSAGE BODY
+        // =====================================================
+
         Column(
+
             horizontalAlignment =
                 if (message.isUser)
                     Alignment.End
@@ -589,16 +741,16 @@ fun MessageBubble(
         ) {
 
 
-            // =================================================
-            // MESSAGE
-            // =================================================
-
             Surface(
 
                 shape =
                     RoundedCornerShape(
-                        topStart = 18.dp,
-                        topEnd = 18.dp,
+
+                        topStart =
+                            18.dp,
+
+                        topEnd =
+                            18.dp,
 
                         bottomStart =
                             if (message.isUser)
@@ -634,13 +786,18 @@ fun MessageBubble(
             ) {
 
                 Text(
+
                     text =
                         message.text,
 
                     modifier =
                         Modifier.padding(
-                            horizontal = 15.dp,
-                            vertical = 11.dp
+
+                            horizontal =
+                                15.dp,
+
+                            vertical =
+                                11.dp
                         ),
 
                     fontSize =
@@ -675,6 +832,7 @@ fun MessageBubble(
 
 
                 Text(
+
                     text =
                         "Intent: ${message.intent}  •  " +
                                 "Confidence: ${
@@ -712,18 +870,21 @@ fun MessageBubble(
 
 
             Box(
-                modifier = Modifier
-                    .size(34.dp)
-                    .clip(CircleShape)
-                    .background(
-                        Color(0xFFE3F2FD)
-                    ),
+
+                modifier =
+                    Modifier
+                        .size(34.dp)
+                        .clip(CircleShape)
+                        .background(
+                            Color(0xFFE3F2FD)
+                        ),
 
                 contentAlignment =
                     Alignment.Center
             ) {
 
                 Icon(
+
                     imageVector =
                         Icons.Default.Person,
 
@@ -750,6 +911,7 @@ fun MessageBubble(
 fun TypingIndicator() {
 
     Row(
+
         modifier =
             Modifier.fillMaxWidth(),
 
@@ -764,21 +926,30 @@ fun TypingIndicator() {
         // AI ICON
 
         Box(
-            modifier = Modifier
-                .size(34.dp)
-                .clip(CircleShape)
-                .background(
-                    Color(0xFF1976D2)
-                ),
+
+            modifier =
+                Modifier
+                    .size(34.dp)
+                    .clip(CircleShape)
+                    .background(
+                        Color(0xFF1976D2)
+                    ),
 
             contentAlignment =
                 Alignment.Center
         ) {
 
             Text(
-                text = "AI",
-                color = Color.White,
-                fontSize = 10.sp,
+
+                text =
+                    "AI",
+
+                color =
+                    Color.White,
+
+                fontSize =
+                    10.sp,
+
                 fontWeight =
                     FontWeight.Bold
             )
@@ -792,6 +963,7 @@ fun TypingIndicator() {
 
 
         Surface(
+
             shape =
                 RoundedCornerShape(18.dp),
 
@@ -803,10 +975,15 @@ fun TypingIndicator() {
         ) {
 
             Row(
+
                 modifier =
                     Modifier.padding(
-                        horizontal = 16.dp,
-                        vertical = 12.dp
+
+                        horizontal =
+                            16.dp,
+
+                        vertical =
+                            12.dp
                     ),
 
                 verticalAlignment =
@@ -814,6 +991,7 @@ fun TypingIndicator() {
             ) {
 
                 CircularProgressIndicator(
+
                     modifier =
                         Modifier.size(16.dp),
 
@@ -829,6 +1007,7 @@ fun TypingIndicator() {
 
 
                 Text(
+
                     text =
                         "Thinking...",
 
