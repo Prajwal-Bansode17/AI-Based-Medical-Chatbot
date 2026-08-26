@@ -1,0 +1,296 @@
+intent,question
+symptom_information,what does hair loss feel like
+symptom_information,signs of excessive sleepiness
+symptom_assistance,how can I treat hair loss
+symptom_assistance,I am having breathing problem
+symptom_information,how do I know if I have leg pain
+symptom_information,what are the signs of itching
+symptom_assistance,I think I have fatigue
+disease_information,is rubella curable
+symptom_information,what are symptoms of irritability
+symptom_information,how do I know if I have ear pain
+symptom_information,what are the symptoms of facial swelling
+symptom_assistance,how can I get relief from high temperature
+symptom_information,dry mouth
+disease_information,what are the risk factors for cold
+symptom_assistance,home remedy for excessive sleepiness
+disease_information,is cold curable
+disease_information,tell me about arthritis
+disease_information,what causes gastritis
+symptom_assistance,I am having bleeding gums
+symptom_assistance,I have morning stiffness
+disease_information,what are the risk factors for appendicitis
+disease_information,how is diabetes treated
+symptom_assistance,home remedy for eye pain
+symptom_assistance,I have been having high temperature
+medicine_information,what is aspirin used for
+symptom_assistance,I have been having watery eyes
+symptom_assistance,I have had puffy eyes for two days
+medicine_information,paracetamol
+medicine_information,what is omeprazole used for
+symptom_information,how do I know if I have swollen ankles
+symptom_assistance,I am having ringing in ears
+symptom_assistance,home remedy for confusion
+medicine_information,what is azithromycin
+symptom_information,what are the signs of cracked lips
+disease_information,what are the risk factors for food poisoning
+medicine_information,what does vitamin D do
+symptom_information,what are the symptoms of runny nose
+symptom_assistance,I have been having nausea
+symptom_information,signs of heartburn
+medicine_information,what are the side effects of calcium supplement
+disease_information,is typhoid contagious
+symptom_assistance,I have been having headache
+symptom_information,facial swelling
+disease_information,rubella
+nutrition,what foods contain protein
+symptom_information,is muscle pain serious
+disease_information,what causes food poisoning
+symptom_assistance,I have had irregular heartbeat for two days
+disease_information,cold
+symptom_assistance,what medicine should I take for abdominal pain
+symptom_assistance,I have been having night sweats
+medicine_information,what is medicine
+symptom_assistance,I have loss of appetite
+symptom_information,what are the symptoms of shortness of breath
+symptom_information,signs of muscle pain
+medicine_information,what are the side effects of metformin
+symptom_information,what does morning stiffness feel like
+disease_information,what are the risk factors for typhoid
+disease_information,what causes jaundice
+disease_information,what are the risk factors for irritable bowel syndrome
+symptom_assistance,what medicine should I take for breathing problem
+symptom_assistance,I have been having eye pain
+symptom_assistance,how can I treat puffy eyes
+symptom_assistance,what medicine should I take for rash
+medicine_information,what is diclofenac used for
+symptom_assistance,what should I do for fever
+symptom_assistance,I am having confusion
+symptom_assistance,I have had yellow eyes for two days
+symptom_assistance,home remedy for stomach pain
+symptom_assistance,what medicine should I take for weight loss
+symptom_assistance,I think I have jaw pain
+symptom_assistance,I have hair loss
+disease_information,tell me about kidney stones
+prevention,how can I prevent asthma attacks
+symptom_information,what are the symptoms of bloating
+symptom_assistance,I am having frequent urination
+disease_information,what are the risk factors for piles
+symptom_information,signs of hoarseness
+disease_information,is acne contagious
+nutrition,what is a good diet plan
+symptom_assistance,home remedy for shortness of breath
+symptom_information,excessive thirst
+symptom_assistance,I think I have yellow skin
+symptom_information,how do I know if I have low blood pressure
+symptom_information,is low hemoglobin serious
+symptom_information,what are the symptoms of nosebleeds
+symptom_assistance,I have had nausea since yesterday
+symptom_assistance,I am experiencing neck pain
+medicine_information,is loratadine safe during pregnancy
+symptom_assistance,how can I get relief from abdominal pain
+symptom_assistance,what medicine should I take for diarrhea
+disease_information,what causes hepatitis
+symptom_assistance,I have back pain
+symptom_assistance,home remedy for wet cough
+symptom_assistance,I am having hoarseness
+symptom_information,what are the signs of watery eyes
+symptom_information,what are the symptoms of night sweats
+symptom_information,signs of wheezing
+symptom_information,diarrhea
+disease_information,how long does gout last
+nutrition,healthy food
+symptom_assistance,how can I treat weakness
+disease_information,is measles curable
+disease_information,tell me about malaria
+symptom_assistance,I have had acid reflux since yesterday
+symptom_assistance,I think I have back pain
+symptom_information,yellow eyes
+symptom_assistance,how can I get relief from irritability
+symptom_assistance,I have breathing difficulty
+disease_information,liver disease
+symptom_assistance,I am experiencing yellow eyes
+symptom_information,what are the symptoms of headache
+symptom_information,what are the symptoms of joint pain
+medicine_information,side effects of paracetamol
+symptom_assistance,I am experiencing numbness
+symptom_assistance,home remedy for irritability
+symptom_information,what are the symptoms of low hemoglobin
+symptom_assistance,I have low hemoglobin
+symptom_information,what are the signs of headache
+symptom_assistance,I have dizziness
+symptom_assistance,what medicine should I take for bleeding gums
+medicine_information,how does vitamin C work
+symptom_information,what are the symptoms of low blood pressure
+disease_information,tell me about allergy
+symptom_assistance,home remedy for muscle cramps
+symptom_information,how do I know if I have chills
+symptom_assistance,home remedy for cold
+symptom_assistance,I have had mood swings since yesterday
+disease_information,what are the risk factors for urinary tract infection
+medicine_information,is aspirin safe during pregnancy
+medicine_information,what is multivitamin
+symptom_assistance,I have been having low hemoglobin
+disease_information,what causes fatty liver disease
+symptom_assistance,I have had insomnia since yesterday
+symptom_information,what are the symptoms of cold
+symptom_assistance,I think I have heartburn
+disease_information,tell me about lactose intolerance
+medicine_information,what is azithromycin used for
+symptom_assistance,how can I treat leg pain
+symptom_assistance,I have been having mood swings
+symptom_assistance,how can I treat dry mouth
+symptom_information,is chest pain serious
+symptom_assistance,I have had loss of smell since yesterday
+general_health,how can I take care of my skin
+disease_information,what is acne
+symptom_assistance,I have been having dizziness
+symptom_assistance,I have bloating
+symptom_assistance,home remedy for night sweats
+symptom_assistance,I have shortness of breath
+disease_information,tell me about sinus infection
+disease_information,is irritable bowel syndrome curable
+medicine_information,what is antibiotics
+symptom_information,what does difficulty swallowing feel like
+emergency,I have a serious injury
+emergency,I am unconscious
+medicine_information,what does ORS solution do
+symptom_assistance,I have been having chest tightness
+symptom_information,what are the signs of wet cough
+symptom_assistance,I think I have headache
+symptom_information,is toothache serious
+symptom_assistance,I am experiencing joint pain
+disease_information,osteoporosis
+disease_information,how is glaucoma treated
+symptom_assistance,I have nosebleeds
+symptom_assistance,I have been having jaw pain
+symptom_information,how do I know if I have hair loss
+medicine_information,what is painkiller
+nutrition,foods rich in vitamin C
+symptom_assistance,how can I treat ear pain
+symptom_information,swelling
+disease_information,what are the risk factors for hernia
+disease_information,how is gout diagnosed
+symptom_information,how do I know if I have chest pain
+symptom_assistance,home remedy for cold hands and feet
+medicine_information,antibiotics
+disease_information,is sinusitis contagious
+disease_information,how common is stomach ulcer
+symptom_assistance,I have been having gum pain
+symptom_assistance,I have had difficulty swallowing since yesterday
+disease_information,tell me about urinary tract infection
+disease_information,is bronchitis contagious
+symptom_information,how do I know if I have frequent urination
+symptom_information,what are the symptoms of watery eyes
+symptom_information,what are symptoms of acid reflux
+symptom_information,how do I know if I have bleeding gums
+symptom_assistance,home remedy for foot pain
+disease_information,jaundice
+symptom_assistance,I am experiencing watery eyes
+symptom_assistance,I am having bloating
+symptom_information,what are the signs of rash
+symptom_assistance,home remedy for low hemoglobin
+symptom_assistance,I am experiencing chills
+symptom_assistance,I think I have confusion
+symptom_assistance,I am experiencing dizziness
+symptom_assistance,home remedy for body pain
+symptom_information,what does tongue swelling feel like
+symptom_information,what are the symptoms of wheezing
+symptom_assistance,I have been having facial swelling
+symptom_assistance,what should I do for loss of appetite
+medicine_information,is azithromycin safe during pregnancy
+symptom_information,what does muscle pain feel like
+symptom_assistance,home remedy for chest tightness
+general_health,how much sleep should I get
+symptom_information,fatigue
+symptom_information,what are the signs of back pain
+disease_information,measles
+disease_information,how long does appendicitis last
+disease_information,what is chronic kidney disease
+symptom_assistance,how can I get relief from foot pain
+symptom_assistance,what should I do for morning stiffness
+disease_information,stomach ulcer
+symptom_assistance,what should I do for shortness of breath
+medicine_information,side effects of antibiotic
+symptom_assistance,how can I get relief from night sweats
+emergency,head injury with confusion
+symptom_assistance,what medicine should I take for wheezing
+medicine_information,what is insulin
+medicine_information,cough syrup
+disease_information,how common is mumps
+symptom_assistance,what should I do for foot pain
+medicine_information,what is antihistamine
+symptom_information,what does dark urine feel like
+disease_information,how long does chronic kidney disease last
+symptom_assistance,I have been having weakness
+symptom_assistance,how can I get relief from puffy eyes
+disease_information,how is stomach ulcer diagnosed
+symptom_assistance,how can I treat swollen ankles
+symptom_assistance,what medicine should I take for fatigue
+symptom_information,what does ear pain feel like
+disease_information,how common is cataract
+symptom_assistance,I am having loss of smell
+symptom_information,swollen joints
+symptom_information,what are the symptoms of tongue swelling
+emergency,I cannot breathe
+symptom_information,what are the signs of cold hands and feet
+symptom_information,what does chills feel like
+disease_information,tell me about pneumonia
+prevention,how can I reduce the risk of diabetes
+symptom_assistance,I have had chest pain for two days
+disease_information,is hypotension curable
+medicine_information,side effects of vitamin supplement
+symptom_information,is heartburn serious
+symptom_information,what are symptoms of toothache
+symptom_assistance,how can I get relief from excessive sleepiness
+symptom_information,what does blurred vision feel like
+symptom_information,what are the signs of earache
+disease_information,what is diabetes
+symptom_information,what are the symptoms of dry mouth
+symptom_information,signs of morning stiffness
+symptom_information,is ear pain serious
+symptom_information,what are the symptoms of muscle cramps
+symptom_assistance,what medicine should I take for foot pain
+symptom_assistance,I have been having neck pain
+symptom_information,what does heartburn feel like
+general_health,what foods are healthy
+symptom_assistance,how can I treat mouth ulcers
+general_health,how can I improve my digestion
+symptom_information,memory problems
+symptom_assistance,I have been having fatigue
+disease_information,is stomach ulcer curable
+symptom_assistance,what medicine should I take for high blood pressure
+disease_information,what is sinus infection
+symptom_assistance,what should I do for toothache
+medicine_information,how does antibiotics work
+symptom_information,how do I know if I have vomiting
+disease_information,is cataract curable
+symptom_assistance,I have foot pain
+symptom_information,what are the symptoms of nausea
+symptom_assistance,how can I treat cracked lips
+symptom_assistance,how can I treat stiff neck
+disease_information,what is appendicitis
+symptom_information,what are the symptoms of fatigue
+symptom_information,how do I know if I have sneezing
+symptom_information,what are the signs of acid reflux
+symptom_assistance,I have jaw pain
+disease_information,how long does eczema last
+disease_information,tell me about hepatitis
+symptom_assistance,I am having irritability
+symptom_information,what are symptoms of confusion
+symptom_assistance,what medicine should I take for muscle pain
+symptom_assistance,how can I treat anxiety
+medicine_information,how does syrup work
+disease_information,how is vertigo treated
+disease_information,how is dengue diagnosed
+symptom_assistance,what medicine should I take for anxiety
+disease_information,is typhoid curable
+symptom_assistance,I think I have low blood pressure
+symptom_assistance,I am experiencing nosebleeds
+symptom_assistance,I think I have wet cough
+symptom_information,what are the signs of yellow eyes
+symptom_assistance,how can I treat numbness
+disease_information,tell me about cataract
+symptom_information,signs of swollen ankles
+symptom_information,is chills serious
+disease_information,is hypotension contagious

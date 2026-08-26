@@ -6,6 +6,7 @@ import pandas as pd
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.linear_model import LogisticRegression
 from sklearn.pipeline import Pipeline
+from sklearn.model_selection import train_test_split
 from sklearn.metrics import (
     accuracy_score,
     classification_report,
@@ -15,6 +16,10 @@ from sklearn.metrics import (
 )
 
 
+# ============================================================
+# PATHS
+# ============================================================
+
 BASE_DIR = Path(__file__).resolve().parent
 
 DATA_FILE = (
@@ -22,6 +27,13 @@ DATA_FILE = (
     / "data"
     / "raw"
     / "medical_intents.csv"
+)
+
+SPLIT_DIR = (
+    BASE_DIR
+    / "data"
+    / "processed"
+    / "intent_split"
 )
 
 MODEL_DIR = (
@@ -34,6 +46,10 @@ MODEL_FILE = (
     / "medical_intent_model.joblib"
 )
 
+
+# ============================================================
+# LOAD DATA
+# ============================================================
 
 def load_data():
 
@@ -93,11 +109,20 @@ def load_data():
     ]
 
     df = df.drop_duplicates(
-        subset=["question"]
+        subset=["intent", "question"]
+    )
+
+    df.reset_index(
+        drop=True,
+        inplace=True
     )
 
     return df
 
+
+# ============================================================
+# BUILD MODEL
+# ============================================================
 
 def build_model():
 
@@ -125,23 +150,61 @@ def build_model():
     )
 
 
+# ============================================================
+# SAVE SPLITS
+# ============================================================
+
+def save_splits(
+    train_df,
+    validation_df,
+    test_df
+):
+
+    SPLIT_DIR.mkdir(
+        parents=True,
+        exist_ok=True
+    )
+
+    train_df.to_csv(
+        SPLIT_DIR / "train.csv",
+        index=False
+    )
+
+    validation_df.to_csv(
+        SPLIT_DIR / "validation.csv",
+        index=False
+    )
+
+    test_df.to_csv(
+        SPLIT_DIR / "test.csv",
+        index=False
+    )
+
+
+# ============================================================
+# MAIN
+# ============================================================
+
 def main():
 
-    print("=" * 60)
+    print("=" * 70)
     print(
-        "MEDASSIST AI - MEDICAL INTENT TRAINING"
+        "MEDASSIST AI - MEDICAL INTENT MODEL TRAINING"
     )
-    print("=" * 60)
+    print("=" * 70)
+
+    # --------------------------------------------------------
+    # LOAD
+    # --------------------------------------------------------
 
     df = load_data()
 
     print(
-        f"\nTotal medical examples: {len(df)}"
+        f"\nTotal examples: {len(df)}"
     )
 
     print(
-        f"Total medical intents: "
-        f"{df['intent'].nunique()}"
+        f"Total intents: {df['intent'].nunique()}"
     )
 
     print("\nIntent distribution:")
@@ -149,87 +212,174 @@ def main():
         df["intent"].value_counts()
     )
 
-    X = df["question"]
-    y = df["intent"]
+    # --------------------------------------------------------
+    # STRATIFIED SPLIT
+    # --------------------------------------------------------
+
+    train_df, temp_df = train_test_split(
+        df,
+        test_size=0.20,
+        stratify=df["intent"],
+        random_state=42,
+    )
+
+    validation_df, test_df = train_test_split(
+        temp_df,
+        test_size=0.50,
+        stratify=temp_df["intent"],
+        random_state=42,
+    )
+
+    print("\n" + "=" * 70)
+    print("DATASET SPLIT")
+    print("=" * 70)
+
+    print(
+        f"\nTrain      : {len(train_df)}"
+    )
+
+    print(
+        f"Validation : {len(validation_df)}"
+    )
+
+    print(
+        f"Test       : {len(test_df)}"
+    )
+
+    # --------------------------------------------------------
+    # SAVE SPLITS
+    # --------------------------------------------------------
+
+    save_splits(
+        train_df,
+        validation_df,
+        test_df
+    )
+
+    print(
+        "\nSplit files saved successfully."
+    )
+
+    # --------------------------------------------------------
+    # BUILD MODEL
+    # --------------------------------------------------------
 
     model = build_model()
 
     print(
-        "\nTraining medical model..."
+        "\nTraining model..."
     )
+
+    # --------------------------------------------------------
+    # TRAIN
+    # --------------------------------------------------------
 
     model.fit(
-        X,
-        y
+        train_df["question"],
+        train_df["intent"]
     )
 
     print(
-        "Medical model training completed."
+        "Model training completed."
     )
 
-    predictions = model.predict(
-        X
+    # --------------------------------------------------------
+    # VALIDATION
+    # --------------------------------------------------------
+
+    validation_predictions = model.predict(
+        validation_df["question"]
     )
 
-    accuracy = accuracy_score(
-        y,
-        predictions
+    validation_accuracy = accuracy_score(
+        validation_df["intent"],
+        validation_predictions
     )
 
-    precision = precision_score(
-        y,
-        predictions,
+    # --------------------------------------------------------
+    # TEST
+    # --------------------------------------------------------
+
+    test_predictions = model.predict(
+        test_df["question"]
+    )
+
+    test_accuracy = accuracy_score(
+        test_df["intent"],
+        test_predictions
+    )
+
+    test_precision = precision_score(
+        test_df["intent"],
+        test_predictions,
         average="weighted",
         zero_division=0,
     )
 
-    recall = recall_score(
-        y,
-        predictions,
+    test_recall = recall_score(
+        test_df["intent"],
+        test_predictions,
         average="weighted",
         zero_division=0,
     )
 
-    f1 = f1_score(
-        y,
-        predictions,
+    test_f1 = f1_score(
+        test_df["intent"],
+        test_predictions,
         average="weighted",
         zero_division=0,
     )
 
-    print("\n" + "=" * 60)
-    print("MEDICAL MODEL METRICS")
-    print("=" * 60)
+    # --------------------------------------------------------
+    # RESULTS
+    # --------------------------------------------------------
+
+    print("\n" + "=" * 70)
+    print("MODEL EVALUATION")
+    print("=" * 70)
 
     print(
-        f"\nAccuracy : {accuracy:.4f}"
+        f"\nValidation Accuracy : "
+        f"{validation_accuracy:.4f}"
     )
 
     print(
-        f"Precision: {precision:.4f}"
+        f"Test Accuracy       : "
+        f"{test_accuracy:.4f}"
     )
 
     print(
-        f"Recall   : {recall:.4f}"
+        f"Test Precision      : "
+        f"{test_precision:.4f}"
     )
 
     print(
-        f"F1 Score : {f1:.4f}"
+        f"Test Recall         : "
+        f"{test_recall:.4f}"
+    )
+
+    print(
+        f"Test F1 Score       : "
+        f"{test_f1:.4f}"
     )
 
     print(
         "\nClassification Report:"
     )
 
-    print("-" * 60)
+    print("-" * 70)
 
     print(
         classification_report(
-            y,
-            predictions,
+            test_df["intent"],
+            test_predictions,
             zero_division=0,
         )
     )
+
+    # --------------------------------------------------------
+    # SAVE FINAL MODEL
+    # --------------------------------------------------------
 
     MODEL_DIR.mkdir(
         parents=True,
@@ -241,11 +391,11 @@ def main():
         MODEL_FILE
     )
 
-    print("=" * 60)
+    print("=" * 70)
     print(
-        "MEDICAL MODEL SAVED SUCCESSFULLY"
+        "FINAL MEDICAL MODEL SAVED SUCCESSFULLY"
     )
-    print("=" * 60)
+    print("=" * 70)
 
     print(
         f"\nModel file:"
@@ -256,7 +406,7 @@ def main():
     )
 
     print(
-        "\nTraining completed successfully."
+        "\nTraining pipeline completed successfully."
     )
 
 
