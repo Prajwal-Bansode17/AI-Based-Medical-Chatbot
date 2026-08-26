@@ -2,6 +2,7 @@
 from pathlib import Path
 import re
 import sqlite3
+import json
 from datetime import datetime
 
 import joblib
@@ -372,8 +373,286 @@ def clear_medical_memory(
     conn.close()
 
 
+
+# ============================================================
+# CONVERSATION STATE
+# ============================================================
+
+def init_conversation_state_table():
+    conn = sqlite3.connect(CHAT_DB_FILE)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS conversation_state (
+            session_id TEXT PRIMARY KEY,
+            primary_symptom TEXT,
+            duration TEXT,
+            associated_symptoms TEXT,
+            severity TEXT,
+            step TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+
+def get_conversation_state(session_id):
+    conn = sqlite3.connect(CHAT_DB_FILE)
+    conn.row_factory = sqlite3.Row
+    row = conn.execute("""
+        SELECT session_id, primary_symptom, duration,
+               associated_symptoms, severity, step, updated_at
+        FROM conversation_state
+        WHERE session_id = ?
+    """, (session_id,)).fetchone()
+    conn.close()
+    if not row:
+        return None
+    state = dict(row)
+    try:
+        state["associated_symptoms"] = json.loads(
+            state.get("associated_symptoms") or "[]"
+        )
+    except Exception:
+        state["associated_symptoms"] = []
+    return state
+
+
+def save_conversation_state(session_id, primary_symptom,
+                            duration=None, associated_symptoms=None,
+                            severity=None, step="duration"):
+    associated_symptoms = associated_symptoms or []
+    conn = sqlite3.connect(CHAT_DB_FILE)
+    conn.execute("""
+        INSERT INTO conversation_state
+        (session_id, primary_symptom, duration, associated_symptoms,
+         severity, step, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(session_id) DO UPDATE SET
+            primary_symptom=excluded.primary_symptom,
+            duration=excluded.duration,
+            associated_symptoms=excluded.associated_symptoms,
+            severity=excluded.severity,
+            step=excluded.step,
+            updated_at=excluded.updated_at
+    """, (
+        session_id, primary_symptom or "", duration or "",
+        json.dumps(associated_symptoms), severity or "", step,
+        datetime.now().isoformat()
+    ))
+    conn.commit()
+    conn.close()
+
+
+def clear_conversation_state(session_id):
+    conn = sqlite3.connect(CHAT_DB_FILE)
+    conn.execute("DELETE FROM conversation_state WHERE session_id = ?",
+                 (session_id,))
+    conn.commit()
+    conn.close()
+
+
+def update_saved_symptom_duration(session_id, symptom, duration):
+    if not symptom or not duration:
+        return
+    conn = sqlite3.connect(CHAT_DB_FILE)
+    conn.execute("""
+        UPDATE medical_memory SET duration = ?
+        WHERE id = (
+            SELECT id FROM medical_memory
+            WHERE session_id = ? AND memory_type = 'symptom' AND name = ?
+            ORDER BY id DESC LIMIT 1
+        )
+    """, (duration, session_id, symptom))
+    conn.commit()
+    conn.close()
+
+
+def extract_severity(text):
+    query = normalize_text(text)
+    patterns = {
+        "severe": ["severe", "very severe", "extreme", "extremely severe",
+                   "worst", "unbearable", "intense"],
+        "moderate": ["moderate", "medium"],
+        "mild": ["mild", "slight", "little", "minor"]
+    }
+    for severity, values in patterns.items():
+        if any(value in query for value in values):
+            return severity
+    match = re.search(r"\b(10|[0-9])\s*(?:/\s*10)?\b", query)
+    if match:
+        score = int(match.group(1))
+        return "mild" if score <= 3 else "moderate" if score <= 6 else "severe"
+    return None
+
+
+def _conversation_response(session_id, text, answer, symptoms,
+                           confidence, intent="conversation"):
+    save_chat_message(session_id, "user", text, symptoms or [])
+    save_chat_message(session_id, "assistant", answer, symptoms or [])
+    return jsonify({
+        "status": "success", "session_id": session_id, "question": text,
+        "intent": intent, "confidence": round(confidence, 4),
+        "symptoms": symptoms or [],
+        "previous_symptoms": get_previous_symptoms(session_id),
+        "medical_query": True, "answer": answer,
+        "answer_similarity": 1.0, "source": "conversation_engine"
+    })
+
+
+def build_conversation_guidance(state):
+    symptoms = []
+    primary = state.get("primary_symptom")
+    if primary:
+        symptoms.append(primary)
+    for symptom in state.get("associated_symptoms") or []:
+        if symptom and symptom not in symptoms:
+            symptoms.append(symptom)
+
+    response = build_multi_symptom_response(symptoms, "assistance") if symptoms else None
+    if not response:
+        response = (
+            "Thanks for sharing those details. I can provide general medical "
+            "information, but I cannot diagnose a condition."
+        )
+    context = []
+    if state.get("duration"):
+        context.append(f"You reported these symptoms for about {state['duration']}.")
+    if state.get("severity"):
+        context.append(f"You described the severity as {state['severity']}.")
+    if context:
+        response += "\n\n" + " ".join(context)
+    response += (
+        "\n\nIf symptoms become severe, rapidly worsen, or you develop "
+        "difficulty breathing, severe chest pain, fainting, confusion, "
+        "or heavy bleeding, seek urgent medical care."
+    )
+    return response
+
+
+def handle_conversation_turn(session_id, text, symptoms, duration,
+                             confidence, final_intent):
+    state = get_conversation_state(session_id)
+    query = normalize_text(text)
+
+    if state:
+        step = state.get("step") or "duration"
+        primary = state.get("primary_symptom") or "symptom"
+        display_primary = primary.replace("_", " ")
+
+        if step == "duration":
+            if duration:
+                update_saved_symptom_duration(session_id, primary, duration)
+                state["duration"] = duration
+                save_conversation_state(
+                    session_id, primary, duration,
+                    state.get("associated_symptoms", []),
+                    state.get("severity"), "associated_symptoms"
+                )
+                return _conversation_response(
+                    session_id, text,
+                    f"Got it. You have had {display_primary} for about {duration}. "
+                    "Do you also have headache, cough, chills, body pain, vomiting, or dizziness?",
+                    [], confidence, "conversation_follow_up"
+                )
+            return _conversation_response(
+                session_id, text,
+                f"How long have you had the {display_primary}? For example, you can say '2 days' or 'since yesterday'.",
+                [], confidence, "conversation_follow_up"
+            )
+
+        if step == "associated_symptoms":
+            new_symptoms = [s for s in symptoms if s != primary]
+            if query in {"no", "nope", "none", "no other symptoms"}:
+                new_symptoms = []
+            for symptom in new_symptoms:
+                save_medical_memory(
+                    session_id, "symptom", symptom,
+                    duration=state.get("duration"), source_message=text
+                )
+            save_conversation_state(
+                session_id, primary, state.get("duration"), new_symptoms,
+                state.get("severity"), "severity"
+            )
+            return _conversation_response(
+                session_id, text,
+                f"Thanks. How would you describe the {display_primary} severity: mild, moderate, or severe?",
+                new_symptoms, confidence, "conversation_follow_up"
+            )
+
+        if step == "severity":
+            severity = extract_severity(text)
+            if not severity:
+                return _conversation_response(
+                    session_id, text,
+                    "How severe is it? You can say mild, moderate, severe, or give a pain score from 0 to 10.",
+                    [], confidence, "conversation_follow_up"
+                )
+            save_conversation_state(
+                session_id, primary, state.get("duration"),
+                state.get("associated_symptoms", []), severity, "red_flags"
+            )
+            return _conversation_response(
+                session_id, text,
+                "Thanks. Before I give general guidance, are you having difficulty breathing, severe chest pain, fainting, confusion, heavy bleeding, or another severe/emergency symptom?",
+                [], confidence, "conversation_safety_check"
+            )
+
+        if step == "red_flags":
+            emergency_phrases = [
+                "difficulty breathing", "cannot breathe", "cant breathe",
+                "severe chest pain", "fainting", "confusion", "heavy bleeding"
+            ]
+            yes = query in {"yes", "yeah", "yep"}
+            has_emergency = yes or any(p in query for p in emergency_phrases)
+            if has_emergency:
+                clear_conversation_state(session_id)
+                return _conversation_response(
+                    session_id, text,
+                    "Those symptoms can be signs of a medical emergency. Please seek urgent medical care now or contact your local emergency service. Do not rely on this chatbot for emergency care.",
+                    [], confidence, "emergency"
+                )
+            if query not in {"no", "nope", "none", "not really"}:
+                return _conversation_response(
+                    session_id, text,
+                    "Please answer yes or no. Are you having difficulty breathing, severe chest pain, fainting, confusion, heavy bleeding, or another severe/emergency symptom?",
+                    [], confidence, "conversation_safety_check"
+                )
+            answer = build_conversation_guidance(state)
+            clear_conversation_state(session_id)
+            return _conversation_response(
+                session_id, text, answer, [], confidence, "symptom_assistance"
+            )
+
+    if symptoms and final_intent == "symptom_assistance":
+        primary = symptoms[0]
+        other_symptoms = [s for s in symptoms if s != primary]
+        if duration:
+            step = "associated_symptoms"
+            answer = (
+                f"Okay, I understand you have {primary.replace('_', ' ')} and it has been present for about {duration}. "
+                "Do you also have headache, cough, chills, body pain, vomiting, or dizziness?"
+            )
+        else:
+            step = "duration"
+            answer = (
+                f"Okay, I understand you have {primary.replace('_', ' ')}. "
+                f"How long have you had the {primary.replace('_', ' ')}? For example, you can say '2 days' or 'since yesterday'."
+            )
+        save_structured_memories(session_id, text, symptoms, duration)
+        save_conversation_state(
+            session_id, primary, duration, other_symptoms,
+            extract_severity(text), step
+        )
+        return _conversation_response(
+            session_id, text, answer, symptoms, confidence, "conversation_start"
+        )
+
+    return None
+
+
 init_chat_database()
 init_medical_memory_table()
+init_conversation_state_table()
 
 
 # ============================================================
@@ -3238,8 +3517,125 @@ def predict():
 
 
         # ====================================================
-        # NORMALIZED QUERY
+        # EMERGENCY-FIRST SAFETY GATE
         # ====================================================
+        # Red-flag symptoms must be handled before the
+        # conversational question flow. This prevents the
+        # assistant from asking routine questions such as
+        # duration before giving urgent-care guidance.
+        emergency_text = normalize_text(text)
+
+        # normalize_text() can collapse phrases such as
+        # "chest pain" -> "chestpain". Keep both natural and
+        # normalized forms so red-flag detection is robust.
+        emergency_patterns = [
+            "severe chest pain",
+            "severe chestpain",
+            "crushing chest pain",
+            "crushing chestpain",
+            "pressure in my chest",
+            "pressure in my chest",
+            "chest pain and difficulty breathing",
+            "chestpain and difficulty breathing",
+            "chest pain with difficulty breathing",
+            "chestpain with difficulty breathing",
+            "difficulty breathing",
+            "difficultybreathing",
+            "cannot breathe",
+            "cannotbreathe",
+            "can't breathe",
+            "cant breathe",
+            "shortness of breath",
+            "shortnessofbreath",
+            "fainting",
+            "passed out",
+            "passedout",
+            "loss of consciousness",
+            "lossofconsciousness",
+            "severe bleeding",
+            "severebleeding",
+            "heavy bleeding",
+            "heavybleeding",
+            "coughing blood",
+            "coughingblood",
+            "vomiting blood",
+            "vomitingblood",
+            "blood in vomit",
+            "bloodinvomit",
+            "severe confusion",
+            "severeconfusion",
+            "sudden confusion",
+            "suddenconfusion",
+            "seizure",
+            "convulsion",
+            "blue lips",
+            "bluelips",
+            "stroke symptoms",
+            "strokesymptoms",
+            "face drooping",
+            "facedrooping",
+            "difficulty speaking",
+            "difficultyspeaking",
+            "sudden weakness on one side",
+            "suddenweaknessononeside"
+        ]
+
+        emergency_detected = any(
+            pattern in emergency_text
+            for pattern in emergency_patterns
+        )
+
+        if emergency_detected:
+            emergency_answer = (
+                "Your message includes a potentially serious emergency "
+                "symptom. Please seek urgent medical assessment now. "
+                "If the symptom is severe, sudden, worsening, or you "
+                "feel unsafe, contact your local emergency service or "
+                "go to the nearest emergency department. Do not rely "
+                "on this chatbot to determine the cause."
+            )
+
+            save_structured_memories(
+                session_id=session_id,
+                text=text,
+                symptoms=symptoms,
+                duration=duration
+            )
+
+            save_chat_message(
+                session_id,
+                "user",
+                text,
+                symptoms
+            )
+
+            save_chat_message(
+                session_id,
+                "assistant",
+                emergency_answer,
+                symptoms
+            )
+
+            return jsonify({
+                "status": "success",
+                "session_id": session_id,
+                "question": text,
+                "intent": "emergency",
+                "confidence": round(confidence, 4),
+                "symptoms": symptoms,
+                "previous_symptoms": previous_symptoms,
+                "duration": duration,
+                "measurements": measurements,
+                "medical_query": True,
+                "answer": emergency_answer,
+                "answer_similarity": 1.0,
+                "source": "emergency_safety_gate"
+            })
+
+
+        # ========================================================
+        # NORMALIZED QUERY
+        # ========================================================
 
         normalized_query = (
             normalize_text(
@@ -3527,6 +3923,34 @@ def predict():
 
 
         # ====================================================
+        # CONVERSATIONAL MEDICAL ENGINE
+        # ====================================================
+        # Run this BEFORE the legacy generic follow-up handler.
+        # This is important because replies such as "2 days" are
+        # generic follow-ups, but inside an active conversation they
+        # must advance the conversation state instead of returning
+        # the older generic follow-up message.
+
+        final_intent = determine_final_intent(
+            text,
+            model_prediction,
+            confidence
+        )
+
+        conversation_response = handle_conversation_turn(
+            session_id=session_id,
+            text=text,
+            symptoms=symptoms,
+            duration=duration,
+            confidence=confidence,
+            final_intent=final_intent
+        )
+
+        if conversation_response is not None:
+            return conversation_response
+
+
+        # ====================================================
         # FOLLOW-UP
         # ====================================================
 
@@ -3744,19 +4168,6 @@ def predict():
                 "source":
                     "structured_memory"
             })
-
-
-        # ====================================================
-        # INTENT
-        # ====================================================
-
-        final_intent = (
-            determine_final_intent(
-                text,
-                model_prediction,
-                confidence
-            )
-        )
 
 
         # ====================================================
