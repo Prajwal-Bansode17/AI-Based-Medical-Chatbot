@@ -274,8 +274,12 @@ fun ChatbotScreen(
                     // ALWAYS USE FRESH API ANSWER
                     // -------------------------------------------------
 
+                    // -------------------------------------------------
+// ALWAYS USE FRESH API ANSWER
+// -------------------------------------------------
+
                     val answer =
-                        result.answer.trim()
+                        result.answer?.trim().orEmpty()
 
                     val finalAnswer =
                         if (answer.isNotEmpty()) {

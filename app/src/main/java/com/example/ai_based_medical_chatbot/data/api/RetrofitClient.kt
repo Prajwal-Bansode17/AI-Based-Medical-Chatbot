@@ -4,8 +4,31 @@ import okhttp3.OkHttpClient
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
+import okhttp3.Interceptor
+import okhttp3.Response
 
 object RetrofitClient {
+
+    private class RetryInterceptor(
+        private val maxRetries: Int = 1
+    ) : Interceptor {
+        override fun intercept(chain: Interceptor.Chain): Response {
+            var attempt = 0
+            var lastException: Exception? = null
+
+            while (attempt <= maxRetries) {
+                try {
+                    return chain.proceed(chain.request())
+                } catch (e: Exception) {
+                    lastException = e
+                    if (attempt == maxRetries) throw e
+                    attempt++
+                }
+            }
+
+            throw lastException ?: IllegalStateException("Request failed")
+        }
+    }
 
     // =========================================================
     // RENDER CLOUD API
@@ -14,8 +37,7 @@ object RetrofitClient {
     // Laptop वर api.py चालू ठेवण्याची गरज नाही.
     // =========================================================
 
-    private const val BASE_URL =
-        "https://ai-based-medical-chatbot.onrender.com/"
+    private const val BASE_URL = "http://192.168.1.8:5000/"
 
 
     // =========================================================
@@ -24,6 +46,7 @@ object RetrofitClient {
 
     private val okHttpClient =
         OkHttpClient.Builder()
+            .addInterceptor(RetryInterceptor())
 
             // Time to establish connection
             .connectTimeout(
