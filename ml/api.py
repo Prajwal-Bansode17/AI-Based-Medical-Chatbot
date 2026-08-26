@@ -1743,76 +1743,58 @@ def build_multi_symptom_response(
 
 def extract_duration(text):
 
-    query = normalize_text(
-        text
-    )
+    query = normalize_text(text)
 
-    patterns = [
-
-        r"(\d+)\s*(day|days)",
-        r"(\d+)\s*(hour|hours)",
-        r"(\d+)\s*(week|weeks)",
-        r"(\d+)\s*(month|months)"
+    # --------------------------------------------------------
+    # Natural-language duration phrases
+    # --------------------------------------------------------
+    # These are especially important when the user reports the
+    # duration in the same message as the symptom, e.g.
+    # "I have fever since yesterday".
+    relative_phrases = [
+        (r"\bsince yesterday\b", "since yesterday"),
+        (r"\bsince today\b", "since today"),
+        (r"\bsince this morning\b", "since this morning"),
+        (r"\bsince this afternoon\b", "since this afternoon"),
+        (r"\bsince this evening\b", "since this evening"),
+        (r"\bsince last night\b", "since last night"),
+        (r"\bsince last evening\b", "since last evening"),
+        (r"\bsince last week\b", "since last week"),
+        (r"\bsince yesterday morning\b", "since yesterday morning"),
+        (r"\bsince yesterday evening\b", "since yesterday evening"),
+        (r"\bsince yesterday night\b", "since yesterday night"),
     ]
 
+    for pattern, value in relative_phrases:
+        if re.search(pattern, query):
+            return value
+
+    # "since 2 days ago", "for 2 days", "2 days"
+    patterns = [
+        r"(?:since|for)\s+(\d+)\s*(day|days|hour|hours|week|weeks|month|months)(?:\s+ago)?",
+        r"(\d+)\s*(day|days|hour|hours|week|weeks|month|months)",
+    ]
 
     for pattern in patterns:
-
-        match = re.search(
-            pattern,
-            query
-        )
+        match = re.search(pattern, query)
 
         if match:
-
-            number = match.group(
-                1
-            )
-
-            unit = match.group(
-                2
-            )
+            number = match.group(1)
+            unit = match.group(2)
 
             unit_map = {
-
-                "day":
-                    "day" if number == "1"
-                    else "days",
-
-                "days":
-                    "day" if number == "1"
-                    else "days",
-
-                "hour":
-                    "hour" if number == "1"
-                    else "hours",
-
-                "hours":
-                    "hour" if number == "1"
-                    else "hours",
-
-                "week":
-                    "week" if number == "1"
-                    else "weeks",
-
-                "weeks":
-                    "week" if number == "1"
-                    else "weeks",
-
-                "month":
-                    "month" if number == "1"
-                    else "months",
-
-                "months":
-                    "month" if number == "1"
-                    else "months"
+                "day": "day" if number == "1" else "days",
+                "days": "day" if number == "1" else "days",
+                "hour": "hour" if number == "1" else "hours",
+                "hours": "hour" if number == "1" else "hours",
+                "week": "week" if number == "1" else "weeks",
+                "weeks": "week" if number == "1" else "weeks",
+                "month": "month" if number == "1" else "months",
+                "months": "month" if number == "1" else "months",
             }
 
-            return (
-                f"{number} "
-                f"{unit_map.get(unit, unit)}"
-            )
-
+            prefix = "since " if re.search(r"\bsince\b", match.group(0)) else ""
+            return f"{prefix}{number} {unit_map.get(unit, unit)}".strip()
 
     return None
 
