@@ -290,6 +290,16 @@ Rules:
 - If information is insufficient, say so.
 - For severe or worsening symptoms, recommend medical care.
 - Never claim to replace a doctor.
+- Do not introduce yourself in normal answers.
+- Do not say "Hello", "Hi", "Namaste", "Namaskar", "I am MEDASSIST AI",
+  or repeat the assistant identity on every response.
+- Only greet when the conversation is explicitly starting and a greeting is requested.
+- Answer the user's current question directly.
+- For a follow-up question, stay focused on the symptom or condition from the
+  previous conversation unless the user clearly changes topic.
+- If the user asks what to do, what care to take, precautions, home care,
+  treatment, remedy, or relief, answer specifically for the active previous
+  symptom or condition when one exists.
 """
 
     prompt = f"""
@@ -303,6 +313,7 @@ Previous conversation:
 {conversation_context or "No previous conversation context available."}
 
 Answer clearly and naturally in {target_language}.
+Do not repeat any assistant greeting or self-introduction.
 """
 
     try:
@@ -426,6 +437,48 @@ def get_chat_history(
         dict(row)
         for row in reversed(rows)
     ]
+
+
+def build_conversation_context(
+    session_id,
+    limit=12
+):
+    """Build recent conversation context for Gemini follow-ups."""
+    history = get_chat_history(
+        session_id,
+        limit=limit
+    )
+
+    if not history:
+        return ""
+
+    lines = []
+
+    for item in history:
+        role = str(
+            item.get("role", "")
+        ).strip().lower()
+
+        message = str(
+            item.get("message", "")
+        ).strip()
+
+        if not message:
+            continue
+
+        prefix = (
+            "User"
+            if role == "user"
+            else "MEDASSIST AI"
+            if role == "assistant"
+            else role.title() or "Message"
+        )
+
+        lines.append(
+            f"{prefix}: {message}"
+        )
+
+    return "\n".join(lines)
 
 
 def get_previous_symptoms(
@@ -1297,6 +1350,20 @@ def is_followup_query(text):
         "worse",
         "better",
 
+        "what should i do",
+        "what can i do",
+        "what to do",
+        "what care",
+        "care should i take",
+        "what precautions",
+        "precautions",
+        "how should i care",
+        "how to take care",
+        "home care",
+        "treatment",
+        "remedy",
+        "relief",
+
         "it is",
         "its",
         "this",
@@ -1348,6 +1415,19 @@ def get_question_type(text):
         "i am feeling",
         "suffering from",
         "experiencing",
+        "what should i do",
+        "what can i do",
+        "what to do",
+        "what care",
+        "care should i take",
+        "what precautions",
+        "precautions",
+        "how should i care",
+        "how to take care",
+        "home care",
+        "treatment",
+        "remedy",
+        "relief",
         "mala",
         "majha",
         "maza",
@@ -3229,6 +3309,11 @@ def predict():
             )
         )
 
+        conversation_context = build_conversation_context(
+            session_id,
+            limit=12
+        )
+
 
         # ====================================================
         # MEDICAL QUERY
@@ -3491,15 +3576,55 @@ def predict():
             is_followup_query(text)
             and
             not symptoms
+            and
+            previous_symptoms
         ):
 
+            care_phrases = [
+                "what should i do",
+                "what can i do",
+                "what to do",
+                "what care",
+                "care should i take",
+                "what precautions",
+                "precautions",
+                "how should i care",
+                "how to take care",
+                "home care",
+                "treatment",
+                "remedy",
+                "relief"
+            ]
+
+            followup_context = ""
+
+            if any(
+                phrase in normalized_query
+                for phrase in care_phrases
+            ):
+                followup_context = (
+                    build_multi_symptom_response(
+                        previous_symptoms,
+                        "assistance"
+                    )
+                ) or ""
+
             followup_answer = (
-                build_followup_response(
-                    session_id,
-                    text
+                generate_gemini_medical_response(
+                    user_text=text,
+                    language=detected_language,
+                    medical_context=followup_context,
+                    conversation_context=conversation_context
                 )
             )
 
+            if not followup_answer:
+                followup_answer = (
+                    build_followup_response(
+                        session_id,
+                        text
+                    )
+                )
 
             if followup_answer:
 
@@ -3510,7 +3635,6 @@ def predict():
                     []
                 )
 
-
                 save_chat_message(
                     session_id,
                     "assistant",
@@ -3518,41 +3642,37 @@ def predict():
                     previous_symptoms
                 )
 
-
                 return jsonify({
 
-                    "status":
-                        "success",
+                    "status": "success",
 
-                    "session_id":
-                        session_id,
+                    "session_id": session_id,
 
-                    "question":
-                        text,
+                    "question": text,
 
-                    "intent":
-                        "follow_up",
+                    "intent": "follow_up",
 
-                    "confidence":
-                        round(
-                            confidence,
-                            4
-                        ),
+                    "confidence": round(
+                        confidence,
+                        4
+                    ),
 
-                    "symptoms":
+                    "symptoms": previous_symptoms,
+
+                    "previous_symptoms":
                         previous_symptoms,
 
-                    "medical_query":
-                        True,
+                    "medical_query": True,
 
-                    "answer":
-                        followup_answer,
+                    "answer": followup_answer,
 
-                    "answer_similarity":
-                        1.0,
+                    "answer_similarity": 1.0,
 
                     "source":
-                        "conversation_memory"
+                        "conversation_memory",
+
+                    "language":
+                        detected_language
                 })
 
 
@@ -3570,7 +3690,7 @@ def predict():
                 user_text=text,
                 language=detected_language,
                 medical_context="",
-                conversation_context=""
+                conversation_context=conversation_context
             )
 
             if gemini_answer:
@@ -3684,7 +3804,7 @@ def predict():
                         user_text=text,
                         language=detected_language,
                         medical_context=medical_answer,
-                        conversation_context=""
+                        conversation_context=conversation_context
                     )
                 )
 
@@ -3804,7 +3924,7 @@ def predict():
                     user_text=text,
                     language=detected_language,
                     medical_context=answer,
-                    conversation_context=""
+                    conversation_context=conversation_context
                 )
             )
 

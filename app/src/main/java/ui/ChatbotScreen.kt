@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -67,6 +68,7 @@ import com.example.ai_based_medical_chatbot.data.api.PredictionRequest
 import com.example.ai_based_medical_chatbot.data.api.RetrofitClient
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -194,6 +196,56 @@ fun ChatbotScreen(
 
     val listState =
         rememberLazyListState()
+
+    val topicScrollState =
+        rememberScrollState()
+
+    val popularTopics = listOf(
+        "🌡️ I have fever",
+        "🤢 I have vomiting",
+        "🦴 I have back pain",
+        "🤕 I have headache",
+        "🤧 I have cold",
+        "😷 I have cough",
+        "🫃 I have stomach pain",
+        "😴 I feel weak",
+        "💪 I have body pain",
+        "👄 I have sore throat",
+        "😵 I feel dizzy",
+        "🔥 I have acidity"
+    )
+
+    // =========================================================
+    // CONTINUOUS TOPIC SLIDER
+    // =========================================================
+
+    LaunchedEffect(Unit) {
+
+        while (true) {
+
+            delay(2200)
+
+            val maxScroll =
+                topicScrollState.maxValue
+
+            if (maxScroll > 0) {
+
+                val nextPosition =
+                    topicScrollState.value + 170
+
+                if (nextPosition >= maxScroll) {
+
+                    topicScrollState.scrollTo(0)
+
+                } else {
+
+                    topicScrollState.animateScrollTo(
+                        nextPosition
+                    )
+                }
+            }
+        }
+    }
 
 
     // =========================================================
@@ -521,7 +573,9 @@ fun ChatbotScreen(
         Surface(
 
             modifier =
-                Modifier.fillMaxWidth(),
+                Modifier
+                    .fillMaxWidth()
+                    .statusBarsPadding(),
 
             shadowElevation =
                 4.dp
@@ -533,8 +587,10 @@ fun ChatbotScreen(
                     Modifier
                         .fillMaxWidth()
                         .padding(
-                            horizontal = 16.dp,
-                            vertical = 12.dp
+                            start = 16.dp,
+                            end = 16.dp,
+                            top = 18.dp,
+                            bottom = 14.dp
                         ),
 
                 verticalAlignment =
@@ -672,6 +728,85 @@ fun ChatbotScreen(
 
 
         // =====================================================
+        // ALWAYS-VISIBLE POPULAR HEALTH TOPICS
+        // =====================================================
+
+        Surface(
+
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        horizontal = 12.dp,
+                        vertical = 8.dp
+                    ),
+
+            shape =
+                RoundedCornerShape(
+                    16.dp
+                ),
+
+            color = Color.White,
+
+            shadowElevation = 1.dp
+
+        ) {
+
+            Column(
+
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(
+                            horizontal = 10.dp,
+                            vertical = 9.dp
+                        )
+            ) {
+
+                Text(
+                    text = "Common health questions",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF667085)
+                )
+
+                Spacer(
+                    modifier = Modifier.height(7.dp)
+                )
+
+                Row(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(
+                                topicScrollState
+                            ),
+                    horizontalArrangement =
+                        Arrangement.spacedBy(8.dp)
+                ) {
+
+                    popularTopics.forEach { topic ->
+
+                        QuickPrompt(
+                            text = topic,
+                            onClick = {
+                                val query =
+                                    topic
+                                        .replace(
+                                            Regex("^[^A-Za-z]+"),
+                                            ""
+                                        )
+
+                                sendMessage(query)
+                            }
+                        )
+                    }
+                }
+            }
+        }
+
+
+        // =====================================================
         // CHAT AREA
         // =====================================================
 
@@ -699,100 +834,8 @@ fun ChatbotScreen(
 
                 Spacer(
                     modifier =
-                        Modifier.height(8.dp)
+                        Modifier.height(4.dp)
                 )
-            }
-
-
-            // =================================================
-            // QUICK PROMPTS
-            // =================================================
-
-            if (
-                messages.size == 1 &&
-                !isTyping
-            ) {
-
-                item {
-
-                    Column(
-
-                        modifier =
-                            Modifier.fillMaxWidth()
-                    ) {
-
-                        Text(
-
-                            text =
-                                "Try asking",
-
-                            fontSize =
-                                13.sp,
-
-                            fontWeight =
-                                FontWeight.SemiBold,
-
-                            color =
-                                Color(0xFF667085)
-                        )
-
-
-                        Spacer(
-                            modifier =
-                                Modifier.height(8.dp)
-                        )
-
-
-                        Row(
-
-                            modifier =
-                                Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(
-                                        rememberScrollState()
-                                    ),
-
-                            horizontalArrangement =
-                                Arrangement.spacedBy(
-                                    8.dp
-                                )
-                        ) {
-
-
-                            QuickPrompt(
-
-                                text =
-                                    "I have fever"
-                            ) {
-
-                                message =
-                                    "I have fever"
-                            }
-
-
-                            QuickPrompt(
-
-                                text =
-                                    "I have a headache"
-                            ) {
-
-                                message =
-                                    "I have a headache"
-                            }
-
-
-                            QuickPrompt(
-
-                                text =
-                                    "I feel weak"
-                            ) {
-
-                                message =
-                                    "I feel weak"
-                            }
-                        }
-                    }
-                }
             }
 
 
