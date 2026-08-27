@@ -378,6 +378,7 @@ def clear_medical_memory(
 # CONVERSATION STATE
 # ============================================================
 
+
 def init_conversation_state_table():
     conn = sqlite3.connect(CHAT_DB_FILE)
     conn.execute("""
@@ -388,9 +389,233 @@ def init_conversation_state_table():
             associated_symptoms TEXT,
             severity TEXT,
             step TEXT NOT NULL,
+            language TEXT DEFAULT 'en',
             updated_at TEXT NOT NULL
         )
     """)
+    columns = {row[1] for row in conn.execute(
+        "PRAGMA table_info(conversation_state)"
+    ).fetchall()}
+    if "language" not in columns:
+        conn.execute(
+            "ALTER TABLE conversation_state ADD COLUMN language TEXT DEFAULT 'en'"
+        )
+    conn.commit()
+    conn.close()
+
+
+def detect_language(text):
+    raw = str(text or "").strip().lower()
+    marathi_words = {
+        "मला","माझा","माझी","माझे","माझं","आहे","आहेत","ताप","पासून",
+        "दिवसांपासून","कालपासून","आजपासून","किती","दिवस","डोके",
+        "दुखत","खोकला","चक्कर","उलटी","जुलाब","कमजोरी","छातीत",
+        "श्वास","त्रास","नाही","हो","होय","जास्त","कमी","मध्यम"
+    }
+    hindi_words = {
+        "मुझे","मेरा","मेरी","मेरे","है","हैं","बुखार","से","दिन","कल",
+        "आज","कितने","सिर","दर्द","खांसी","चक्कर","उल्टी","दस्त",
+        "कमजोरी","सीने","सांस","मुश्किल","नहीं","हाँ","हां","ज्यादा",
+        "कम","मध्यम"
+    }
+    mr_score = sum(1 for word in marathi_words if word in raw)
+    hi_score = sum(1 for word in hindi_words if word in raw)
+    if any(p in raw for p in ["मला ताप","ताप आला","ताप आहे","कालपासून",
+                              "दिवसांपासून","मला डोके"]):
+        mr_score += 3
+    if any(p in raw for p in ["मुझे बुखार","बुखार है","कल से","सिर दर्द",
+                              "सीने में दर्द"]):
+        hi_score += 3
+    if mr_score == 0 and hi_score == 0:
+        return "en"
+    return "mr" if mr_score >= hi_score else "hi"
+
+
+DEVANAGARI_TO_ENGLISH = {
+    # ---------------- MARATHI ----------------
+    "मला ताप आला आहे": "i have fever",
+    "मला ताप आला": "i have fever",
+    "मला ताप आहे": "i have fever",
+    "ताप आला आहे": "fever",
+    "ताप आला": "fever",
+    "ताप आहे": "fever",
+    "ताप": "fever",
+
+    "मला खोकला आहे": "i have cough",
+    "खोकला": "cough",
+    "सर्दी": "cold",
+    "डोकेदुखी": "headache",
+    "डोके दुखत आहे": "headache",
+    "डोकं दुखत आहे": "headache",
+    "अंगदुखी": "body pain",
+    "अंग दुखत आहे": "body pain",
+    "पोटदुखी": "stomach pain",
+    "पोट दुखत आहे": "stomach pain",
+    "छातीत दुखत आहे": "chest pain",
+    "छातीत दुखणे": "chest pain",
+    "छातीत वेदना": "chest pain",
+    "श्वास घेण्यास त्रास": "difficulty breathing",
+    "श्वास घेता येत नाही": "cannot breathe",
+    "श्वास घेणे कठीण आहे": "difficulty breathing",
+    "चक्कर": "dizziness",
+    "उलटी": "vomiting",
+    "जुलाब": "diarrhea",
+    "अशक्तपणा": "weakness",
+    "कमजोरी": "weakness",
+    "थंडी वाजत आहे": "chills",
+    "थंडी वाजणे": "chills",
+    "घाम येत आहे": "sweating",
+
+    "मला": "i",
+    "माझा": "my",
+    "माझी": "my",
+    "माझे": "my",
+    "माझं": "my",
+    "आहेत": "have",
+    "आहे": "have",
+
+    # Marathi duration
+    "कालपासून": "since yesterday",
+    "काल पासून": "since yesterday",
+    "आजपासून": "since today",
+    "आज पासून": "since today",
+    "दोन दिवसांपासून": "for 2 days",
+    "दोन दिवसापासून": "for 2 days",
+    "दोन दिवस": "2 days",
+    "तीन दिवसांपासून": "for 3 days",
+    "तीन दिवस": "3 days",
+    "चार दिवस": "4 days",
+    "पाच दिवस": "5 days",
+    "एक दिवस": "1 day",
+    "किती दिवस": "how many days",
+
+    # Marathi answers/severity
+    "नाही": "no",
+    "नको": "no",
+    "होय": "yes",
+    "हो": "yes",
+    "सौम्य": "mild",
+    "मध्यम": "moderate",
+    "तीव्र": "severe",
+    "जास्त": "severe",
+    "कमी": "mild",
+
+    # ---------------- HINDI ----------------
+    "मुझे बुखार है": "i have fever",
+    "मुझे बुखार": "i have fever",
+    "बुखार है": "fever",
+    "बुखार": "fever",
+    "मुझे खांसी है": "i have cough",
+    "खांसी": "cough",
+    "जुकाम": "cold",
+    "सिर दर्द": "headache",
+    "सिरदर्द": "headache",
+    "बदन दर्द": "body pain",
+    "शरीर दर्द": "body pain",
+    "पेट दर्द": "stomach pain",
+    "सीने में तेज दर्द": "severe chest pain",
+    "सीने में दर्द": "chest pain",
+    "सांस लेने में दिक्कत": "difficulty breathing",
+    "सांस नहीं ले पा रहा": "cannot breathe",
+    "चक्कर": "dizziness",
+    "उल्टी": "vomiting",
+    "दस्त": "diarrhea",
+    "कमजोरी": "weakness",
+    "ठंड लग रही है": "chills",
+
+    "मुझे": "i",
+    "मेरा": "my",
+    "मेरी": "my",
+    "मेरे": "my",
+    "हैं": "have",
+    "है": "have",
+
+    # Hindi duration
+    "कल से": "since yesterday",
+    "आज से": "since today",
+    "दो दिनों से": "for 2 days",
+    "दो दिन से": "for 2 days",
+    "दो दिन": "2 days",
+    "तीन दिन": "3 days",
+    "चार दिन": "4 days",
+    "पांच दिन": "5 days",
+    "एक दिन": "1 day",
+    "कितने दिन": "how many days",
+
+    # Hindi answers/severity
+    "नहीं": "no",
+    "हाँ": "yes",
+    "हां": "yes",
+    "हल्का": "mild",
+    "हल्की": "mild",
+    "मध्यम": "moderate",
+    "बहुत तेज": "severe",
+    "तेज": "severe",
+}
+
+
+def translate_input_to_english(text):
+    """
+    Convert common Marathi/Hindi medical phrases to English for
+    the existing ML, symptom, duration and safety logic.
+
+    The original user message is never modified for chat display/history.
+    """
+
+    raw = str(text or "").strip()
+
+    if not raw:
+        return ""
+
+    # Longest phrases first so:
+    #   "मला ताप आला आहे" -> "i have fever"
+    # happens before smaller replacements such as "ताप".
+    for source, target in sorted(
+        DEVANAGARI_TO_ENGLISH.items(),
+        key=lambda item: len(item[0]),
+        reverse=True
+    ):
+        raw = raw.replace(source, f" {target} ")
+
+    # Collapse whitespace introduced by replacements.
+    raw = re.sub(r"\s+", " ", raw).strip()
+
+    return raw
+
+
+def _language_from_text_or_state(session_id, text):
+    detected = detect_language(text)
+    if detected != "en":
+        return detected
+    state = get_conversation_state(session_id)
+    if state and state.get("language"):
+        return state.get("language") or "en"
+    return "en"
+
+
+def save_conversation_state(session_id, primary_symptom,
+                             duration=None, associated_symptoms=None,
+                             severity=None, step="duration", language="en"):
+    associated_symptoms = associated_symptoms or []
+    conn = sqlite3.connect(CHAT_DB_FILE)
+    conn.execute("""
+        INSERT INTO conversation_state
+        (session_id, primary_symptom, duration, associated_symptoms,
+         severity, step, language, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(session_id) DO UPDATE SET
+            primary_symptom=excluded.primary_symptom,
+            duration=excluded.duration,
+            associated_symptoms=excluded.associated_symptoms,
+            severity=excluded.severity,
+            step=excluded.step,
+            language=excluded.language,
+            updated_at=excluded.updated_at
+    """, (
+        session_id, primary_symptom or "", duration or "",
+        json.dumps(associated_symptoms), severity or "", step,
+        language or "en", datetime.now().isoformat()
+    ))
     conn.commit()
     conn.close()
 
@@ -398,16 +623,25 @@ def init_conversation_state_table():
 def get_conversation_state(session_id):
     conn = sqlite3.connect(CHAT_DB_FILE)
     conn.row_factory = sqlite3.Row
-    row = conn.execute("""
-        SELECT session_id, primary_symptom, duration,
-               associated_symptoms, severity, step, updated_at
-        FROM conversation_state
-        WHERE session_id = ?
-    """, (session_id,)).fetchone()
+    columns = {
+        row[1] for row in conn.execute(
+            "PRAGMA table_info(conversation_state)"
+        ).fetchall()
+    }
+    language_column = ", language" if "language" in columns else ""
+    row = conn.execute(
+        f"""SELECT session_id, primary_symptom, duration,
+                   associated_symptoms, severity, step
+                   {language_column}, updated_at
+            FROM conversation_state
+            WHERE session_id = ?""",
+        (session_id,)
+    ).fetchone()
     conn.close()
     if not row:
         return None
     state = dict(row)
+    state.setdefault("language", "en")
     try:
         state["associated_symptoms"] = json.loads(
             state.get("associated_symptoms") or "[]"
@@ -415,32 +649,6 @@ def get_conversation_state(session_id):
     except Exception:
         state["associated_symptoms"] = []
     return state
-
-
-def save_conversation_state(session_id, primary_symptom,
-                            duration=None, associated_symptoms=None,
-                            severity=None, step="duration"):
-    associated_symptoms = associated_symptoms or []
-    conn = sqlite3.connect(CHAT_DB_FILE)
-    conn.execute("""
-        INSERT INTO conversation_state
-        (session_id, primary_symptom, duration, associated_symptoms,
-         severity, step, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(session_id) DO UPDATE SET
-            primary_symptom=excluded.primary_symptom,
-            duration=excluded.duration,
-            associated_symptoms=excluded.associated_symptoms,
-            severity=excluded.severity,
-            step=excluded.step,
-            updated_at=excluded.updated_at
-    """, (
-        session_id, primary_symptom or "", duration or "",
-        json.dumps(associated_symptoms), severity or "", step,
-        datetime.now().isoformat()
-    ))
-    conn.commit()
-    conn.close()
 
 
 def clear_conversation_state(session_id):
@@ -486,17 +694,175 @@ def extract_severity(text):
 
 
 def _conversation_response(session_id, text, answer, symptoms,
-                           confidence, intent="conversation"):
+                            confidence, intent="conversation"):
+    language = _language_from_text_or_state(session_id, text)
+    translated_answer = translate_conversation_response(answer, language)
     save_chat_message(session_id, "user", text, symptoms or [])
-    save_chat_message(session_id, "assistant", answer, symptoms or [])
+    save_chat_message(session_id, "assistant", translated_answer, symptoms or [])
     return jsonify({
         "status": "success", "session_id": session_id, "question": text,
         "intent": intent, "confidence": round(confidence, 4),
         "symptoms": symptoms or [],
         "previous_symptoms": get_previous_symptoms(session_id),
-        "medical_query": True, "answer": answer,
-        "answer_similarity": 1.0, "source": "conversation_engine"
+        "medical_query": True, "answer": translated_answer,
+        "answer_similarity": 1.0, "source": "conversation_engine",
+        "language": language
     })
+
+
+def translate_conversation_response(answer, language):
+    """Translate the deterministic conversation-engine responses.
+
+    The medical engine generates a small, known set of English templates.
+    Translating those templates as complete sentences is safer than replacing
+    individual English fragments, which can otherwise leave English words in
+    the final response.
+    """
+    if not answer or language == "en":
+        return answer
+
+    # ------------------------------------------------------------
+    # Duration / symptom extraction from the English engine output
+    # ------------------------------------------------------------
+    m = re.match(
+        r"^Okay, I understand you have (.+?)\. How long have you had the (.+?)\? "
+        r"For example, you can say '2 days' or 'since yesterday'\.?$",
+        answer.strip(),
+        re.IGNORECASE,
+    )
+    if m:
+        symptom = m.group(1).strip()
+        symptom_local = {
+            "fever": "ताप" if language == "mr" else "बुखार",
+            "headache": "डोकेदुखी" if language == "mr" else "सिरदर्द",
+            "cough": "खोकला" if language == "mr" else "खांसी",
+            "cold": "सर्दी" if language == "mr" else "जुकाम",
+            "body pain": "अंगदुखी" if language == "mr" else "बदन दर्द",
+            "stomach pain": "पोटदुखी" if language == "mr" else "पेट दर्द",
+            "chest pain": "छातीत दुखणे" if language == "mr" else "सीने में दर्द",
+        }.get(symptom.lower(), symptom)
+        if language == "mr":
+            return (
+                f"ठीक आहे, तुम्हाला {symptom_local} आहे. तुम्हाला हा {symptom_local} "
+                "किती दिवसांपासून आहे? उदाहरणार्थ, तुम्ही '2 दिवस' किंवा 'कालपासून' असे सांगू शकता."
+            )
+        return (
+            f"ठीक है, आपको {symptom_local} है। आपको यह {symptom_local} कितने समय से है? "
+            "उदाहरण के लिए, आप '2 दिन' या 'कल से' कह सकते हैं।"
+        )
+
+    m = re.match(
+        r"^Okay, I understand you have (.+?) and it has been present for about (.+?)\. "
+        r"Do you also have headache, cough, chills, body pain, vomiting, or dizziness\?$",
+        answer.strip(), re.IGNORECASE,
+    )
+    if m:
+        symptom = m.group(1).strip()
+        duration = m.group(2).strip()
+        symptom_local = {
+            "fever": "ताप" if language == "mr" else "बुखार",
+            "headache": "डोकेदुखी" if language == "mr" else "सिरदर्द",
+            "cough": "खोकला" if language == "mr" else "खांसी",
+            "chest pain": "छातीत दुखणे" if language == "mr" else "सीने में दर्द",
+        }.get(symptom.lower(), symptom)
+        if language == "mr":
+            return (
+                f"ठीक आहे, तुम्हाला {symptom_local} आहे आणि तो सुमारे {duration} पासून आहे. "
+                "तुम्हाला डोकेदुखी, खोकला, थंडी वाजणे, अंगदुखी, उलटी किंवा चक्कर यापैकी काही आहे का?"
+            )
+        return (
+            f"ठीक है, आपको {symptom_local} है और यह लगभग {duration} से है। "
+            "क्या आपको सिरदर्द, खांसी, ठंड लगना, बदन दर्द, उल्टी या चक्कर भी हैं?"
+        )
+
+    m = re.match(
+        r"^Got it\. You have had (.+?) for about (.+?)\. Do you also have headache, cough, chills, body pain, vomiting, or dizziness\?$",
+        answer.strip(), re.IGNORECASE,
+    )
+    if m:
+        symptom = m.group(1).strip()
+        duration = m.group(2).strip()
+        symptom_local = {
+            "fever": "ताप" if language == "mr" else "बुखार",
+            "headache": "डोकेदुखी" if language == "mr" else "सिरदर्द",
+            "cough": "खोकला" if language == "mr" else "खांसी",
+        }.get(symptom.lower(), symptom)
+        if language == "mr":
+            return (
+                f"समजले. तुम्हाला {symptom_local} सुमारे {duration} पासून आहे. "
+                "तुम्हाला डोकेदुखी, खोकला, थंडी वाजणे, अंगदुखी, उलटी किंवा चक्कर यापैकी काही आहे का?"
+            )
+        return (
+            f"समझ गया। आपको {symptom_local} लगभग {duration} से है। "
+            "क्या आपको सिरदर्द, खांसी, ठंड लगना, बदन दर्द, उल्टी या चक्कर भी हैं?"
+        )
+
+    m = re.match(
+        r"^Thanks\. How would you describe the (.+?) severity: mild, moderate, or severe\?$",
+        answer.strip(), re.IGNORECASE,
+    )
+    if m:
+        symptom = m.group(1).strip()
+        symptom_local = {
+            "fever": "तापाची" if language == "mr" else "बुखार की",
+            "headache": "डोकेदुखीची" if language == "mr" else "सिरदर्द की",
+            "chest pain": "छातीत दुखण्याची" if language == "mr" else "सीने के दर्द की",
+        }.get(symptom.lower(), symptom)
+        if language == "mr":
+            return f"धन्यवाद. तुमच्या {symptom_local} तीव्रतेचे वर्णन सौम्य, मध्यम किंवा तीव्र असे कसे कराल?"
+        return f"धन्यवाद। आपके {symptom_local} की गंभीरता हल्की, मध्यम या तेज कैसी है?"
+
+    exact = {
+        "How severe is it? You can say mild, moderate, severe, or give a pain score from 0 to 10.": {
+            "mr": "ते किती तीव्र आहे? तुम्ही सौम्य, मध्यम किंवा तीव्र असे सांगू शकता किंवा 0 ते 10 पैकी वेदना गुण देऊ शकता.",
+            "hi": "यह कितना गंभीर है? आप हल्का, मध्यम या तेज कह सकते हैं या 0 से 10 तक दर्द का स्कोर बता सकते हैं।",
+        },
+        "Thanks. Before I give general guidance, are you having difficulty breathing, severe chest pain, fainting, confusion, heavy bleeding, or another severe/emergency symptom?": {
+            "mr": "धन्यवाद. सामान्य मार्गदर्शन देण्यापूर्वी, तुम्हाला श्वास घेण्यास त्रास, तीव्र छातीत दुखणे, बेशुद्ध पडणे, गोंधळ, जास्त रक्तस्राव किंवा इतर गंभीर/आपत्कालीन लक्षण आहे का?",
+            "hi": "धन्यवाद। सामान्य जानकारी देने से पहले, क्या आपको सांस लेने में दिक्कत, तेज सीने में दर्द, बेहोशी, भ्रम, ज्यादा रक्तस्राव या कोई अन्य गंभीर/आपातकालीन लक्षण है?",
+        },
+        "Please answer yes or no.": {
+            "mr": "कृपया हो किंवा नाही असे उत्तर द्या.",
+            "hi": "कृपया हाँ या नहीं में उत्तर दें।",
+        },
+        "Those symptoms can be signs of a medical emergency. Please seek urgent medical care now or contact your local emergency service. Do not rely on this chatbot for emergency care.": {
+            "mr": "ही लक्षणे वैद्यकीय आपत्कालीन स्थितीची चिन्हे असू शकतात. कृपया तातडीने वैद्यकीय मदत घ्या किंवा स्थानिक आपत्कालीन सेवेशी संपर्क करा. आपत्कालीन उपचारांसाठी या चॅटबॉटवर अवलंबून राहू नका.",
+            "hi": "ये लक्षण चिकित्सकीय आपातकाल के संकेत हो सकते हैं। कृपया तुरंत चिकित्सा सहायता लें या स्थानीय आपातकालीन सेवा से संपर्क करें। आपातकालीन उपचार के लिए इस चैटबॉट पर निर्भर न रहें।",
+        },
+        "Your message includes a potentially serious emergency symptom. Please seek urgent medical assessment now. If the symptom is severe, sudden, worsening, or you feel unsafe, contact your local emergency service or go to the nearest emergency department. Do not rely on this chatbot to determine the cause.": {
+            "mr": "तुमच्या संदेशात संभाव्यतः गंभीर आपत्कालीन लक्षण आहे. कृपया आत्ताच तातडीची वैद्यकीय तपासणी करून घ्या. लक्षण गंभीर, अचानक किंवा वाढत असल्यास किंवा तुम्हाला असुरक्षित वाटत असल्यास स्थानिक आपत्कालीन सेवेशी संपर्क करा किंवा जवळच्या आपत्कालीन विभागात जा. कारण निश्चित करण्यासाठी या चॅटबॉटवर अवलंबून राहू नका.",
+            "hi": "आपके संदेश में संभावित रूप से गंभीर आपातकालीन लक्षण है। कृपया अभी तुरंत चिकित्सा जांच करवाएं। यदि लक्षण गंभीर, अचानक या बढ़ रहे हैं, या आपको असुरक्षित महसूस हो रहा है, तो स्थानीय आपातकालीन सेवा से संपर्क करें या नजदीकी आपातकालीन विभाग में जाएं। कारण जानने के लिए इस चैटबॉट पर निर्भर न रहें।",
+        },
+    }
+    if answer.strip() in exact:
+        return exact[answer.strip()].get(language, answer)
+
+    # Final safety net: never return a partially translated English
+    # conversation response for a detected Indian-language session.
+    if language == "mr":
+        return "कृपया तुमची लक्षणे आणि त्यांचा कालावधी सांगा. मी सामान्य वैद्यकीय मार्गदर्शन देऊ शकतो."
+    if language == "hi":
+        return "कृपया अपने लक्षण और उनकी अवधि बताएं। मैं सामान्य चिकित्सकीय जानकारी दे सकता हूँ।"
+    return answer
+
+
+def translate_general_response(answer, language):
+    if not answer or language == "en":
+        return answer
+    if language == "mr":
+        return (
+            "मी मुख्यतः वैद्यकीय आणि आरोग्याशी संबंधित प्रश्नांमध्ये मदत करू शकतो. "
+            "तुम्ही मला लक्षणे, आजार, सामान्य आरोग्यविषयक माहिती, औषधे किंवा "
+            "वैद्यकीय मदत कधी घ्यावी याबद्दल विचारू शकता."
+        )
+    if language == "hi":
+        return (
+            "मैं मुख्य रूप से चिकित्सा और स्वास्थ्य से जुड़े सवालों में मदद कर सकता हूँ। "
+            "आप मुझसे लक्षणों, बीमारियों, सामान्य स्वास्थ्य जानकारी, दवाओं या "
+            "चिकित्सकीय सहायता कब लेनी चाहिए, इसके बारे में पूछ सकते हैं।"
+        )
+    return answer
+
 
 
 def build_conversation_guidance(state):
@@ -529,12 +895,75 @@ def build_conversation_guidance(state):
     return response
 
 
+
+def translate_medical_response(answer, language):
+    """Localize common deterministic medical-knowledge phrases."""
+    if not answer or language == "en":
+        return answer
+
+    translations = {
+        "mr": [
+            ("Here is some general medical information.",
+             "ही काही सामान्य वैद्यकीय माहिती आहे."),
+            ("This information does not provide a diagnosis.",
+             "ही माहिती निदान देत नाही."),
+            ("Fever:", "ताप:"),
+            ("Common symptoms associated with fever can include increased body temperature, chills, sweating, headache, body aches, weakness, and tiredness.",
+             "तापासोबत शरीराचे तापमान वाढणे, थंडी वाजणे, घाम येणे, डोकेदुखी, अंगदुखी, अशक्तपणा आणि थकवा अशी सामान्य लक्षणे दिसू शकतात."),
+            ("The cause of fever can vary, so symptoms alone cannot confirm a specific disease.",
+             "तापाची कारणे वेगवेगळी असू शकतात, त्यामुळे केवळ लक्षणांवरून विशिष्ट आजार निश्चित करता येत नाही."),
+            ("Important:", "महत्त्वाचे:"),
+            ("If symptoms are severe, worsening, persistent, or you have an emergency symptom, seek urgent medical care.",
+             "लक्षणे गंभीर, वाढत जाणारी किंवा सतत राहणारी असतील किंवा आपत्कालीन लक्षण दिसत असेल तर तातडीने वैद्यकीय मदत घ्या."),
+        ],
+        "hi": [
+            ("Here is some general medical information.",
+             "यह कुछ सामान्य चिकित्सा जानकारी है।"),
+            ("This information does not provide a diagnosis.",
+             "यह जानकारी निदान प्रदान नहीं करती है।"),
+            ("Fever:", "बुखार:"),
+            ("Common symptoms associated with fever can include increased body temperature, chills, sweating, headache, body aches, weakness, and tiredness.",
+             "बुखार के साथ शरीर का तापमान बढ़ना, ठंड लगना, पसीना आना, सिरदर्द, बदन दर्द, कमजोरी और थकान जैसे सामान्य लक्षण हो सकते हैं।"),
+            ("The cause of fever can vary, so symptoms alone cannot confirm a specific disease.",
+             "बुखार के कारण अलग-अलग हो सकते हैं, इसलिए केवल लक्षणों के आधार पर किसी विशेष बीमारी की पुष्टि नहीं की जा सकती।"),
+            ("Important:", "महत्वपूर्ण:"),
+            ("If symptoms are severe, worsening, persistent, or you have an emergency symptom, seek urgent medical care.",
+             "यदि लक्षण गंभीर, बढ़ते हुए या लगातार बने रहें, या कोई आपातकालीन लक्षण हो, तो तुरंत चिकित्सा सहायता लें।"),
+        ],
+    }
+
+    result = answer
+    for source, target in translations.get(language, []):
+        result = result.replace(source, target)
+    return result
+
+
 def handle_conversation_turn(session_id, text, symptoms, duration,
                              confidence, final_intent):
     state = get_conversation_state(session_id)
-    query = normalize_text(text)
+    detected_language = detect_language(text)
+    language = (
+        detected_language
+        if detected_language != "en"
+        else (state.get("language") if state else "en")
+    ) or "en"
+    analysis_text = (
+        translate_input_to_english(text)
+        if language in {"mr", "hi"}
+        else text
+    )
+    query = normalize_text(analysis_text)
 
     if state:
+        if language != state.get("language"):
+            save_conversation_state(
+                session_id, state.get("primary_symptom") or "symptom",
+                state.get("duration"), state.get("associated_symptoms", []),
+                state.get("severity"), state.get("step") or "duration",
+                language
+            )
+            state["language"] = language
+
         step = state.get("step") or "duration"
         primary = state.get("primary_symptom") or "symptom"
         display_primary = primary.replace("_", " ")
@@ -546,7 +975,7 @@ def handle_conversation_turn(session_id, text, symptoms, duration,
                 save_conversation_state(
                     session_id, primary, duration,
                     state.get("associated_symptoms", []),
-                    state.get("severity"), "associated_symptoms"
+                    state.get("severity"), "associated_symptoms", language
                 )
                 return _conversation_response(
                     session_id, text,
@@ -562,7 +991,7 @@ def handle_conversation_turn(session_id, text, symptoms, duration,
 
         if step == "associated_symptoms":
             new_symptoms = [s for s in symptoms if s != primary]
-            if query in {"no", "nope", "none", "no other symptoms"}:
+            if query in {"no", "nope", "none", "no other symptoms", "not really", "nothing else"}:
                 new_symptoms = []
             for symptom in new_symptoms:
                 save_medical_memory(
@@ -571,7 +1000,7 @@ def handle_conversation_turn(session_id, text, symptoms, duration,
                 )
             save_conversation_state(
                 session_id, primary, state.get("duration"), new_symptoms,
-                state.get("severity"), "severity"
+                state.get("severity"), "severity", language
             )
             return _conversation_response(
                 session_id, text,
@@ -580,7 +1009,7 @@ def handle_conversation_turn(session_id, text, symptoms, duration,
             )
 
         if step == "severity":
-            severity = extract_severity(text)
+            severity = extract_severity(analysis_text)
             if not severity:
                 return _conversation_response(
                     session_id, text,
@@ -589,7 +1018,8 @@ def handle_conversation_turn(session_id, text, symptoms, duration,
                 )
             save_conversation_state(
                 session_id, primary, state.get("duration"),
-                state.get("associated_symptoms", []), severity, "red_flags"
+                state.get("associated_symptoms", []), severity,
+                "red_flags", language
             )
             return _conversation_response(
                 session_id, text,
@@ -600,7 +1030,9 @@ def handle_conversation_turn(session_id, text, symptoms, duration,
         if step == "red_flags":
             emergency_phrases = [
                 "difficulty breathing", "cannot breathe", "cant breathe",
-                "severe chest pain", "fainting", "confusion", "heavy bleeding"
+                "severe chest pain", "fainting", "confusion", "heavy bleeding",
+                "shortness of breath", "coughing blood", "vomiting blood",
+                "seizure", "blue lips"
             ]
             yes = query in {"yes", "yeah", "yep"}
             has_emergency = yes or any(p in query for p in emergency_phrases)
@@ -626,6 +1058,8 @@ def handle_conversation_turn(session_id, text, symptoms, duration,
     if symptoms and final_intent == "symptom_assistance":
         primary = symptoms[0]
         other_symptoms = [s for s in symptoms if s != primary]
+        language = detected_language if detected_language != "en" else "en"
+
         if duration:
             step = "associated_symptoms"
             answer = (
@@ -641,7 +1075,7 @@ def handle_conversation_turn(session_id, text, symptoms, duration,
         save_structured_memories(session_id, text, symptoms, duration)
         save_conversation_state(
             session_id, primary, duration, other_symptoms,
-            extract_severity(text), step
+            extract_severity(analysis_text), step, language
         )
         return _conversation_response(
             session_id, text, answer, symptoms, confidence, "conversation_start"
@@ -3374,6 +3808,18 @@ def predict():
 
     text = text.strip()
 
+    # ========================================================
+    # LANGUAGE + INTERNAL MEDICAL ANALYSIS TEXT
+    # ========================================================
+    # Keep the user's original text for display/storage, but use an
+    # English-normalized representation for the existing ML/NLP pipeline.
+    detected_language = detect_language(text)
+    analysis_text = (
+        translate_input_to_english(text)
+        if detected_language in {"mr", "hi"}
+        else text
+    )
+
 
     if not text:
 
@@ -3415,7 +3861,7 @@ def predict():
         # ====================================================
 
         model_prediction = model.predict(
-            [text]
+            [analysis_text]
         )[0]
 
 
@@ -3440,7 +3886,7 @@ def predict():
 
                 probabilities = (
                     model.predict_proba(
-                        [text]
+                        [analysis_text]
                     )[0]
                 )
 
@@ -3462,16 +3908,16 @@ def predict():
         # ====================================================
 
         symptoms = extract_symptoms(
-            text
+            analysis_text
         )
 
         duration = extract_duration(
-            text
+            analysis_text
         )
 
         measurements = (
             extract_medical_measurements(
-                text
+                analysis_text
             )
         )
 
@@ -3493,7 +3939,7 @@ def predict():
 
         medical_query = (
             is_medical_query(
-                text
+                analysis_text
             )
         )
 
@@ -3505,7 +3951,7 @@ def predict():
         # conversational question flow. This prevents the
         # assistant from asking routine questions such as
         # duration before giving urgent-care guidance.
-        emergency_text = normalize_text(text)
+        emergency_text = normalize_text(analysis_text)
 
         # normalize_text() can collapse phrases such as
         # "chest pain" -> "chestpain". Keep both natural and
@@ -3576,6 +4022,9 @@ def predict():
                 "go to the nearest emergency department. Do not rely "
                 "on this chatbot to determine the cause."
             )
+            emergency_answer = translate_conversation_response(
+                emergency_answer, detected_language
+            )
 
             save_structured_memories(
                 session_id=session_id,
@@ -3611,7 +4060,8 @@ def predict():
                 "medical_query": True,
                 "answer": emergency_answer,
                 "answer_similarity": 1.0,
-                "source": "emergency_safety_gate"
+                "source": "emergency_safety_gate",
+                "language": detected_language
             })
 
 
@@ -3621,7 +4071,7 @@ def predict():
 
         normalized_query = (
             normalize_text(
-                text
+                analysis_text
             )
         )
 
@@ -4012,7 +4462,10 @@ def predict():
         if not medical_query:
 
             answer = general_fallback(
-                text
+                analysis_text
+            )
+            answer = translate_general_response(
+                answer, detected_language
             )
 
 
@@ -4065,7 +4518,8 @@ def predict():
                     1.0,
 
                 "source":
-                    "general_fallback"
+                    "general_fallback",
+                "language": detected_language
             })
 
 
@@ -4156,10 +4610,10 @@ def predict():
         # DIRECT MEDICAL TOPIC RESPONSE
         # ====================================================
 
-        medical_topics = extract_medical_topics(text)
+        medical_topics = extract_medical_topics(analysis_text)
 
         if medical_topics:
-            topic_question_type = get_question_type(text)
+            topic_question_type = get_question_type(analysis_text)
 
             topic_answer = get_topic_knowledge_response(
                 medical_topics,
@@ -4212,7 +4666,7 @@ def predict():
 
             question_type = (
                 get_question_type(
-                    text
+                    analysis_text
                 )
             )
 
@@ -4287,7 +4741,10 @@ def predict():
                         True,
 
                     "answer":
-                        medical_answer,
+                        translate_medical_response(
+                            medical_answer,
+                            detected_language
+                        ),
 
                     "answer_similarity":
                         1.0,
@@ -4303,7 +4760,7 @@ def predict():
 
         mediq_result = (
             retrieve_mediq_answer(
-                text,
+                analysis_text,
                 final_intent
             )
         )
@@ -4311,10 +4768,11 @@ def predict():
 
         if mediq_result is not None:
 
-            answer = (
+            answer = translate_medical_response(
                 mediq_result[
                     "answer"
-                ]
+                ],
+                detected_language
             )
 
 

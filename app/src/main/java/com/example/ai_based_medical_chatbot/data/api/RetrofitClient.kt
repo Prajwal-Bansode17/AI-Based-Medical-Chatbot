@@ -31,10 +31,13 @@ object RetrofitClient {
     }
 
     // =========================================================
-    // RENDER CLOUD API
     // =========================================================
-    // Flask API is deployed on Render.
-    // Laptop वर api.py चालू ठेवण्याची गरज नाही.
+    // LOCAL FLASK API
+    // =========================================================
+    // The Flask backend is running on the development laptop.
+    // Android phone and laptop must be connected to the same Wi-Fi.
+    // Current laptop IPv4: 192.168.1.8
+    // Flask API: http://192.168.1.8:5000/
     // =========================================================
 
     private const val BASE_URL = "http://192.168.1.8:5000/"
