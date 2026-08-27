@@ -1,8 +1,13 @@
 package ui
 
+
 import android.content.Context
 import android.util.Log
+
+import androidx.compose.material.icons.filled.Delete
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,18 +24,25 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Person
-import androidx.compose.material.icons.filled.Send
+import androidx.compose.material.icons.automirrored.filled.Send
+
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -39,120 +51,205 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+
 import com.example.ai_based_medical_chatbot.data.api.PredictionRequest
 import com.example.ai_based_medical_chatbot.data.api.RetrofitClient
+
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+
 import java.security.MessageDigest
 
+
+// =============================================================
+// CHAT MESSAGE
+// =============================================================
+
 data class ChatMessage(
+
     val text: String,
+
     val isUser: Boolean,
+
     val intent: String = "",
+
     val confidence: Double = 0.0,
+
     val similarity: Double = 0.0,
+
     val isError: Boolean = false
 )
 
+
+// =============================================================
+// CHATBOT SCREEN
+// =============================================================
+
 @Composable
 fun ChatbotScreen(
-    userEmail: String = "",
-    onBack: () -> Unit = {}
+
+    initialSessionId: String? = null,
+
+    initialLanguage: String? = null,
+
+    onBack: () -> Unit
+
 ) {
 
-    val context = LocalContext.current
+    val context =
+        LocalContext.current
+
+    val keyboardController =
+        LocalSoftwareKeyboardController.current
+
 
     // =========================================================
-    // STABLE SESSION ID
+    // SESSION
     // =========================================================
 
-    val sessionId = remember(userEmail) {
+    val sessionId =
+        remember {
 
-        if (userEmail.isNotBlank()) {
+            if (
+                !initialSessionId
+                    .isNullOrBlank()
+            ) {
 
-            "user_" + sha256(
-                userEmail.trim().lowercase()
-            )
+                initialSessionId.trim()
 
-        } else {
+            } else {
 
-            val preferences =
-                context.getSharedPreferences(
-                    "medassist_preferences",
-                    Context.MODE_PRIVATE
-                )
-
-            preferences.getString(
-                "session_id",
-                null
-            ) ?: run {
-
-                val newSession =
-                    "android_" + System.currentTimeMillis()
-
-                preferences.edit()
-                    .putString(
-                        "session_id",
-                        newSession
+                val preferences =
+                    context.getSharedPreferences(
+                        "medassist_preferences",
+                        Context.MODE_PRIVATE
                     )
-                    .apply()
 
-                newSession
+                preferences.getString(
+                    "session_id",
+                    null
+                ) ?: run {
+
+                    val newSession =
+                        "android_" +
+                                System.currentTimeMillis()
+
+                    preferences.edit()
+                        .putString(
+                            "session_id",
+                            newSession
+                        )
+                        .apply()
+
+                    newSession
+                }
             }
         }
-    }
+
 
     // =========================================================
     // STATE
     // =========================================================
 
     var message by remember {
+
         mutableStateOf("")
     }
 
+
     var isTyping by remember {
+
         mutableStateOf(false)
     }
 
+
+    var showClearDialog by remember {
+
+        mutableStateOf(false)
+    }
+
+
     val messages =
         remember {
+
             mutableStateListOf<ChatMessage>()
         }
+
 
     val scope =
         rememberCoroutineScope()
 
+
     val listState =
         rememberLazyListState()
 
+
     // =========================================================
-    // WELCOME
+    // ONE-TIME WELCOME
     // =========================================================
 
     LaunchedEffect(Unit) {
 
-        if (messages.isEmpty()) {
+        val preferences =
+            context.getSharedPreferences(
+                "medassist_preferences",
+                Context.MODE_PRIVATE
+            )
+
+
+        val welcomeShown =
+            preferences.getBoolean(
+                "welcome_message_shown",
+                false
+            )
+
+
+        if (
+            !welcomeShown &&
+            messages.isEmpty()
+        ) {
 
             messages.add(
+
                 ChatMessage(
+
                     text =
                         "Hello! 👋\n\n" +
-                                "I am MedAssist AI. " +
+                                "I’m MedAssist AI, " +
+                                "your intelligent health assistant.\n\n" +
+                                "You can ask me about:\n" +
+                                "• Symptoms and general health\n" +
+                                "• Diseases and conditions\n" +
+                                "• Medicines and precautions\n" +
+                                "• When medical attention may be needed\n\n" +
                                 "How can I help you today?",
+
                     isUser = false
                 )
             )
+
+
+            preferences.edit()
+                .putBoolean(
+                    "welcome_message_shown",
+                    true
+                )
+                .apply()
         }
     }
+
 
     // =========================================================
     // AUTO SCROLL
@@ -163,13 +260,16 @@ fun ChatbotScreen(
         isTyping
     ) {
 
-        if (messages.isNotEmpty()) {
+        if (
+            messages.isNotEmpty()
+        ) {
 
             listState.animateScrollToItem(
                 messages.lastIndex
             )
         }
     }
+
 
     // =========================================================
     // SEND MESSAGE
@@ -182,44 +282,66 @@ fun ChatbotScreen(
         val cleanText =
             text.trim()
 
+
         if (
             cleanText.isEmpty() ||
             isTyping
         ) {
+
             return
         }
 
-        // -----------------------------------------------------
+
+        // =====================================================
         // USER MESSAGE
-        // -----------------------------------------------------
+        // =====================================================
 
         messages.add(
+
             ChatMessage(
-                text = cleanText,
-                isUser = true
+
+                text =
+                    cleanText,
+
+                isUser =
+                    true
             )
         )
 
+
         message = ""
+
+
+        // =====================================================
+        // HIDE KEYBOARD
+        // =====================================================
+
+        keyboardController?.hide()
+
 
         isTyping = true
 
-        // -----------------------------------------------------
+
+        // =====================================================
         // API REQUEST
-        // -----------------------------------------------------
+        // =====================================================
 
         scope.launch {
 
             try {
 
                 val response =
-                    withContext(Dispatchers.IO) {
+
+                    withContext(
+                        Dispatchers.IO
+                    ) {
 
                         RetrofitClient
                             .apiService
                             .predict(
 
                                 PredictionRequest(
+
                                     sessionId =
                                         sessionId,
 
@@ -228,6 +350,7 @@ fun ChatbotScreen(
                                 )
                             )
                     }
+
 
                 // =================================================
                 // API SUCCESS
@@ -241,58 +364,61 @@ fun ChatbotScreen(
                     val result =
                         response.body()!!
 
-                    // -------------------------------------------------
-                    // DEBUG LOG
-                    // -------------------------------------------------
 
                     Log.d(
                         "MEDASSIST_API",
                         "QUESTION = ${result.question}"
                     )
 
+
                     Log.d(
                         "MEDASSIST_API",
                         "ANSWER = ${result.answer}"
                     )
 
-                    Log.d(
-                        "MEDASSIST_API",
-                        "MEASUREMENTS = ${result.measurements}"
-                    )
 
                     Log.d(
                         "MEDASSIST_API",
                         "SOURCE = ${result.source}"
                     )
 
+
                     Log.d(
                         "MEDASSIST_API",
                         "SESSION_ID = $sessionId"
                     )
 
-                    // -------------------------------------------------
-                    // ALWAYS USE FRESH API ANSWER
-                    // -------------------------------------------------
-
-                    // -------------------------------------------------
-// ALWAYS USE FRESH API ANSWER
-// -------------------------------------------------
 
                     val answer =
-                        result.answer?.trim().orEmpty()
+                        result.answer
+                            ?.trim()
+                            .orEmpty()
+
 
                     val finalAnswer =
-                        if (answer.isNotEmpty()) {
+
+                        if (
+                            answer.isNotEmpty()
+                        ) {
 
                             fixMeasurementFormatting(
-                                answer = answer,
-                                measurements = result.measurements
+
+                                answer =
+                                    answer,
+
+                                measurements =
+                                    result.measurements
                             )
 
                         } else {
 
-                            "Sorry, I could not generate an answer."
+                            "I’m sorry, I could not generate a response right now."
                         }
+
+
+                    // =================================================
+                    // AI MESSAGE
+                    // =================================================
 
                     messages.add(
 
@@ -317,41 +443,17 @@ fun ChatbotScreen(
 
                 } else {
 
-                    // =================================================
-                    // SERVER ERROR
-                    // =================================================
-
-                    val errorBody =
-
-                        try {
-
-                            response.errorBody()
-                                ?.string()
-
-                        } catch (
-                            _: Exception
-                        ) {
-
-                            null
-                        }
-
-                    Log.e(
-                        "MEDASSIST_API",
-                        "HTTP ERROR ${response.code()} : $errorBody"
-                    )
+                    // =============================================
+                    // API ERROR
+                    // =============================================
 
                     messages.add(
 
                         ChatMessage(
 
                             text =
-                                "Server Error\n\n" +
-                                        "HTTP Code: " +
-                                        "${response.code()}\n\n" +
-                                        (
-                                                errorBody
-                                                    ?: "Unable to process your request."
-                                                ),
+                                "Sorry, I’m having trouble connecting to the medical AI service. " +
+                                        "Please check your internet connection and try again.",
 
                             isUser =
                                 false,
@@ -366,29 +468,20 @@ fun ChatbotScreen(
                 e: Exception
             ) {
 
-                // =================================================
-                // CONNECTION ERROR
-                // =================================================
-
                 Log.e(
                     "MEDASSIST_API",
-                    "Connection error",
+                    "API ERROR",
                     e
                 )
+
 
                 messages.add(
 
                     ChatMessage(
 
                         text =
-                            "API Connection Error\n\n" +
-                                    "Type: " +
-                                    "${e.javaClass.simpleName}\n\n" +
-                                    "Message:\n" +
-                                    (
-                                            e.message
-                                                ?: "Unable to connect to the medical server."
-                                            ),
+                            "Unable to connect to MedAssist AI right now.\n\n" +
+                                    "Please make sure the server is running and try again.",
 
                         isUser =
                             false,
@@ -405,6 +498,7 @@ fun ChatbotScreen(
         }
     }
 
+
     // =========================================================
     // MAIN UI
     // =========================================================
@@ -418,6 +512,7 @@ fun ChatbotScreen(
                     Color(0xFFF7F9FC)
                 )
     ) {
+
 
         // =====================================================
         // TOP BAR
@@ -438,7 +533,7 @@ fun ChatbotScreen(
                     Modifier
                         .fillMaxWidth()
                         .padding(
-                            horizontal = 12.dp,
+                            horizontal = 16.dp,
                             vertical = 12.dp
                         ),
 
@@ -446,24 +541,16 @@ fun ChatbotScreen(
                     Alignment.CenterVertically
             ) {
 
-                IconButton(
-                    onClick = onBack
-                ) {
 
-                    Icon(
-                        imageVector =
-                            Icons.Default.ArrowBack,
-
-                        contentDescription =
-                            "Back"
-                    )
-                }
+                // =================================================
+                // AI LOGO
+                // =================================================
 
                 Box(
 
                     modifier =
                         Modifier
-                            .size(44.dp)
+                            .size(42.dp)
                             .clip(CircleShape)
                             .background(
                                 Color(0xFF1976D2)
@@ -474,7 +561,9 @@ fun ChatbotScreen(
                 ) {
 
                     Text(
-                        text = "AI",
+
+                        text =
+                            "AI",
 
                         color =
                             Color.White,
@@ -483,21 +572,29 @@ fun ChatbotScreen(
                             FontWeight.Bold,
 
                         fontSize =
-                            14.sp
+                            13.sp
                     )
                 }
+
 
                 Spacer(
                     modifier =
                         Modifier.width(12.dp)
                 )
 
+
+                // =================================================
+                // TITLE
+                // =================================================
+
                 Column(
+
                     modifier =
                         Modifier.weight(1f)
                 ) {
 
                     Text(
+
                         text =
                             "MedAssist AI",
 
@@ -511,10 +608,12 @@ fun ChatbotScreen(
                             Color(0xFF17202A)
                     )
 
+
                     Text(
+
                         text =
                             if (isTyping)
-                                "Thinking..."
+                                "MedAssist is thinking…"
                             else
                                 "Your intelligent health companion",
 
@@ -525,6 +624,37 @@ fun ChatbotScreen(
                             Color(0xFF667085)
                     )
                 }
+
+
+                // =================================================
+                // CLEAR CHAT
+                // =================================================
+
+                IconButton(
+
+                    onClick = {
+
+                        if (
+                            messages.size > 1
+                        ) {
+
+                            showClearDialog = true
+                        }
+                    }
+                ) {
+
+                    Icon(
+                        imageVector = Icons.Default.Delete,
+                        contentDescription = "Clear chat",
+                        tint = Color(0xFF667085)
+                    )
+
+                }
+
+
+                // =================================================
+                // TYPING INDICATOR
+                // =================================================
 
                 if (isTyping) {
 
@@ -539,6 +669,7 @@ fun ChatbotScreen(
                 }
             }
         }
+
 
         // =====================================================
         // CHAT AREA
@@ -558,8 +689,11 @@ fun ChatbotScreen(
                     ),
 
             verticalArrangement =
-                Arrangement.spacedBy(10.dp)
+                Arrangement.spacedBy(
+                    10.dp
+                )
         ) {
+
 
             item {
 
@@ -569,15 +703,122 @@ fun ChatbotScreen(
                 )
             }
 
+
+            // =================================================
+            // QUICK PROMPTS
+            // =================================================
+
+            if (
+                messages.size == 1 &&
+                !isTyping
+            ) {
+
+                item {
+
+                    Column(
+
+                        modifier =
+                            Modifier.fillMaxWidth()
+                    ) {
+
+                        Text(
+
+                            text =
+                                "Try asking",
+
+                            fontSize =
+                                13.sp,
+
+                            fontWeight =
+                                FontWeight.SemiBold,
+
+                            color =
+                                Color(0xFF667085)
+                        )
+
+
+                        Spacer(
+                            modifier =
+                                Modifier.height(8.dp)
+                        )
+
+
+                        Row(
+
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(
+                                        rememberScrollState()
+                                    ),
+
+                            horizontalArrangement =
+                                Arrangement.spacedBy(
+                                    8.dp
+                                )
+                        ) {
+
+
+                            QuickPrompt(
+
+                                text =
+                                    "I have fever"
+                            ) {
+
+                                message =
+                                    "I have fever"
+                            }
+
+
+                            QuickPrompt(
+
+                                text =
+                                    "I have a headache"
+                            ) {
+
+                                message =
+                                    "I have a headache"
+                            }
+
+
+                            QuickPrompt(
+
+                                text =
+                                    "I feel weak"
+                            ) {
+
+                                message =
+                                    "I feel weak"
+                            }
+                        }
+                    }
+                }
+            }
+
+
+            // =================================================
+            // MESSAGES
+            // =================================================
+
             items(
-                items = messages
-            ) { chatMessage ->
+
+                items =
+                    messages
+            ) {
+
+                    chatMessage ->
 
                 MessageBubble(
+
                     message =
                         chatMessage
                 )
             }
+
+
+            // =================================================
+            // TYPING
+            // =================================================
 
             if (isTyping) {
 
@@ -587,6 +828,7 @@ fun ChatbotScreen(
                 }
             }
 
+
             item {
 
                 Spacer(
@@ -595,6 +837,7 @@ fun ChatbotScreen(
                 )
             }
         }
+
 
         // =====================================================
         // INPUT AREA
@@ -623,12 +866,18 @@ fun ChatbotScreen(
                     Alignment.CenterVertically
             ) {
 
+
+                // =================================================
+                // TEXT FIELD
+                // =================================================
+
                 OutlinedTextField(
 
                     value =
                         message,
 
                     onValueChange = {
+
                         message = it
                     },
 
@@ -638,25 +887,54 @@ fun ChatbotScreen(
                     placeholder = {
 
                         Text(
-                            "Ask a medical question..."
+                            "Ask MedAssist anything..."
                         )
                     },
+
+                    keyboardOptions =
+                        KeyboardOptions(
+                            imeAction =
+                                ImeAction.Send
+                        ),
+
+                    keyboardActions =
+                        KeyboardActions(
+
+                            onSend = {
+
+                                sendMessage(
+                                    message
+                                )
+                            }
+                        ),
 
                     maxLines =
                         4,
 
                     shape =
-                        RoundedCornerShape(22.dp)
+                        RoundedCornerShape(
+                            22.dp
+                        )
                 )
+
 
                 Spacer(
                     modifier =
                         Modifier.width(8.dp)
                 )
 
+
+                // =================================================
+                // SEND BUTTON
+                // =================================================
+
                 val canSend =
-                    message.trim().isNotEmpty() &&
+
+                    message
+                        .trim()
+                        .isNotEmpty() &&
                             !isTyping
+
 
                 IconButton(
 
@@ -678,18 +956,22 @@ fun ChatbotScreen(
 
                                 if (canSend)
 
-                                    Color(0xFF1976D2)
+                                    Color(
+                                        0xFF1976D2
+                                    )
 
                                 else
 
-                                    Color(0xFFB0BEC5)
+                                    Color(
+                                        0xFFB0BEC5
+                                    )
                             )
                 ) {
 
                     Icon(
 
                         imageVector =
-                            Icons.Default.Send,
+                            Icons.AutoMirrored.Filled.Send,
 
                         contentDescription =
                             "Send",
@@ -701,58 +983,289 @@ fun ChatbotScreen(
             }
         }
     }
+
+
+    // =========================================================
+    // CLEAR CHAT DIALOG
+    // =========================================================
+
+    if (
+        showClearDialog
+    ) {
+
+        AlertDialog(
+
+            onDismissRequest = {
+
+                showClearDialog =
+                    false
+            },
+
+            title = {
+
+                Text(
+                    "Clear conversation?"
+                )
+            },
+
+            text = {
+
+                Text(
+                    "This will clear the current conversation from the screen."
+                )
+            },
+
+            confirmButton = {
+
+                Button(
+
+                    onClick = {
+
+                        messages.clear()
+
+
+                        context
+                            .getSharedPreferences(
+                                "medassist_preferences",
+                                Context.MODE_PRIVATE
+                            )
+                            .edit()
+                            .putBoolean(
+                                "welcome_message_shown",
+                                false
+                            )
+                            .apply()
+
+
+                        showClearDialog =
+                            false
+
+
+                        messages.add(
+
+                            ChatMessage(
+
+                                text =
+                                    "Hello! 👋\n\n" +
+                                            "I’m MedAssist AI, " +
+                                            "your intelligent health assistant.\n\n" +
+                                            "How can I help you today?",
+
+                                isUser =
+                                    false
+                            )
+                        )
+
+
+                        context
+                            .getSharedPreferences(
+                                "medassist_preferences",
+                                Context.MODE_PRIVATE
+                            )
+                            .edit()
+                            .putBoolean(
+                                "welcome_message_shown",
+                                true
+                            )
+                            .apply()
+                    }
+                ) {
+
+                    Text(
+                        "Clear"
+                    )
+                }
+            },
+
+            dismissButton = {
+
+                TextButton(
+
+                    onClick = {
+
+                        showClearDialog =
+                            false
+                    }
+                ) {
+
+                    Text(
+                        "Cancel"
+                    )
+                }
+            }
+        )
+    }
 }
 
+
+// =============================================================
+// QUICK PROMPT
+// =============================================================
+
+@Composable
+fun QuickPrompt(
+
+    text: String,
+
+    onClick: () -> Unit
+) {
+
+    Surface(
+
+        modifier =
+            Modifier.clickable {
+                onClick()
+            },
+
+        shape =
+            RoundedCornerShape(
+                18.dp
+            ),
+
+        color =
+            Color.White,
+
+        shadowElevation =
+            1.dp
+    ) {
+
+        Text(
+
+            text =
+                text,
+
+            modifier =
+                Modifier.padding(
+                    horizontal = 14.dp,
+                    vertical = 9.dp
+                ),
+
+            fontSize =
+                12.sp,
+
+            color =
+                Color(0xFF1976D2)
+        )
+    }
+}
 // =============================================================
 // FIX MEDICAL MEASUREMENT DISPLAY
 // =============================================================
 
 private fun fixMeasurementFormatting(
+
     answer: String,
-    measurements: List<com.example.ai_based_medical_chatbot.data.api.Measurement>
+
+    measurements:
+    List<com.example.ai_based_medical_chatbot.data.api.Measurement>
+
 ): String {
 
-    var fixedAnswer = answer
+    var fixedAnswer =
+        answer
 
-    for (measurement in measurements) {
 
-        val name = measurement.name.trim()
-        val value = measurement.value.trim()
-        val unit = measurement.unit.trim()
+    for (
+    measurement
+    in measurements
+    ) {
 
-        if (name.isBlank() || value.isBlank()) {
+        val name =
+            measurement.name.trim()
+
+        val value =
+            measurement.value.trim()
+
+        val unit =
+            measurement.unit.trim()
+
+
+        if (
+            name.isBlank() ||
+            value.isBlank()
+        ) {
+
             continue
         }
 
-        if (!value.contains(".")) {
+
+        /*
+         * Avoid changing values which are already
+         * correctly formatted.
+         */
+
+        if (
+            !value.contains(".")
+        ) {
+
             continue
         }
 
-        val escapedName = Regex.escape(name.replace("_", " "))
+
+        val escapedName =
+            Regex.escape(
+                name.replace(
+                    "_",
+                    " "
+                )
+            )
+
+
         val unitPart =
-            if (unit.isNotBlank()) {
-                "\\s*" + Regex.escape(unit)
+
+            if (
+                unit.isNotBlank()
+            ) {
+
+                "\\s*" +
+                        Regex.escape(
+                            unit
+                        )
+
             } else {
+
                 ""
             }
 
-        val pattern = Regex(
-            "(?i)(\\b$escapedName\\b\\s*[:=]?\\s*)\\d+(?:\\.\\d+)?$unitPart"
-        )
 
-        fixedAnswer = pattern.replace(fixedAnswer) { match ->
-            val prefix = match.groupValues[1]
+        val pattern =
+            Regex(
 
-            if (unit.isNotBlank()) {
-                "$prefix$value $unit"
-            } else {
-                "$prefix$value"
+                "(?i)" +
+                        "(\\b" +
+                        escapedName +
+                        "\\b\\s*[:=]?\\s*)" +
+                        "\\d+(?:\\.\\d+)?" +
+                        unitPart
+            )
+
+
+        fixedAnswer =
+            pattern.replace(
+                fixedAnswer
+            ) { match ->
+
+                val prefix =
+                    match.groupValues[1]
+
+
+                if (
+                    unit.isNotBlank()
+                ) {
+
+                    "$prefix$value $unit"
+
+                } else {
+
+                    "$prefix$value"
+                }
             }
-        }
     }
+
 
     return fixedAnswer
 }
+
 
 // =============================================================
 // MESSAGE BUBBLE
@@ -760,7 +1273,9 @@ private fun fixMeasurementFormatting(
 
 @Composable
 fun MessageBubble(
+
     message: ChatMessage
+
 ) {
 
     Row(
@@ -769,25 +1284,53 @@ fun MessageBubble(
             Modifier.fillMaxWidth(),
 
         horizontalArrangement =
-            if (message.isUser)
+
+            if (
+                message.isUser
+            )
+
                 Arrangement.End
+
             else
+
                 Arrangement.Start,
 
         verticalAlignment =
             Alignment.Bottom
     ) {
 
-        if (!message.isUser) {
+
+        // =====================================================
+        // AI ICON
+        // =====================================================
+
+        if (
+            !message.isUser
+        ) {
 
             Box(
 
                 modifier =
                     Modifier
                         .size(34.dp)
-                        .clip(CircleShape)
+                        .clip(
+                            CircleShape
+                        )
                         .background(
-                            Color(0xFF1976D2)
+
+                            if (
+                                message.isError
+                            )
+
+                                Color(
+                                    0xFFD32F2F
+                                )
+
+                            else
+
+                                Color(
+                                    0xFF1976D2
+                                )
                         ),
 
                 contentAlignment =
@@ -810,186 +1353,469 @@ fun MessageBubble(
                 )
             }
 
+
             Spacer(
+
                 modifier =
-                    Modifier.width(7.dp)
+                    Modifier.width(
+                        7.dp
+                    )
             )
         }
 
+
+        // =====================================================
+        // MESSAGE COLUMN
+        // =====================================================
+
         Column(
 
-            horizontalAlignment =
-                if (message.isUser)
-                    Alignment.End
-                else
-                    Alignment.Start,
-
             modifier =
-                Modifier.fillMaxWidth(0.86f)
+                Modifier.fillMaxWidth(
+                    0.86f
+                ),
+
+            horizontalAlignment =
+
+                if (
+                    message.isUser
+                )
+
+                    Alignment.End
+
+                else
+
+                    Alignment.Start
         ) {
+
 
             Surface(
 
                 shape =
-                    RoundedCornerShape(
 
-                        topStart =
-                            18.dp,
+                    if (
+                        message.isUser
+                    )
 
-                        topEnd =
-                            18.dp,
+                        RoundedCornerShape(
+                            topStart = 20.dp,
+                            topEnd = 20.dp,
+                            bottomStart = 20.dp,
+                            bottomEnd = 5.dp
+                        )
 
-                        bottomStart =
-                            if (message.isUser)
-                                18.dp
-                            else
-                                4.dp,
+                    else
 
-                        bottomEnd =
-                            if (message.isUser)
-                                4.dp
-                            else
-                                18.dp
-                    ),
+                        RoundedCornerShape(
+                            topStart = 5.dp,
+                            topEnd = 20.dp,
+                            bottomStart = 20.dp,
+                            bottomEnd = 20.dp
+                        ),
 
                 color =
 
                     when {
 
                         message.isError ->
-                            Color(0xFFFFEBEE)
+
+                            Color(
+                                0xFFFFEBEE
+                            )
 
                         message.isUser ->
-                            Color(0xFF1976D2)
+
+                            Color(
+                                0xFF1976D2
+                            )
 
                         else ->
+
                             Color.White
                     },
 
                 shadowElevation =
 
-                    if (message.isUser)
-                        0.dp
-                    else
-                        2.dp
+                    if (
+                        message.isUser
+                    )
 
+                        0.dp
+
+                    else
+
+                        1.dp
             ) {
 
-                Text(
-
-                    text =
-                        message.text,
+                Column(
 
                     modifier =
                         Modifier.padding(
+                            horizontal = 14.dp,
+                            vertical = 11.dp
+                        )
+                ) {
 
-                            horizontal =
-                                15.dp,
+                    // =================================================
+                    // FORMATTED MESSAGE
+                    // =================================================
 
-                            vertical =
-                                11.dp
-                        ),
+                    FormattedMessageText(
 
-                    fontSize =
-                        15.sp,
+                        text =
+                            message.text,
 
-                    lineHeight =
-                        21.sp,
-
-                    color =
-
-                        if (message.isUser)
-
-                            Color.White
-
-                        else
-
-                            Color(0xFF1F2937)
-                )
+                        isUser =
+                            message.isUser
+                    )
+                }
             }
 
-            // =================================================
-            // AI DETAILS
-            // =================================================
+
+            // =====================================================
+            // AI RESPONSE META
+            // =====================================================
 
             if (
                 !message.isUser &&
-                message.intent.isNotBlank() &&
                 !message.isError
+            ) {
+
+                Row(
+
+                    modifier =
+                        Modifier.padding(
+                            start = 4.dp,
+                            top = 4.dp
+                        ),
+
+                    horizontalArrangement =
+                        Arrangement.spacedBy(
+                            8.dp
+                        )
+                ) {
+
+                    if (
+                        message.intent.isNotBlank()
+                    ) {
+
+                        Text(
+
+                            text =
+                                message.intent
+                                    .replace(
+                                        "_",
+                                        " "
+                                    )
+                                    .replaceFirstChar {
+                                        it.uppercase()
+                                    },
+
+                            fontSize =
+                                9.sp,
+
+                            color =
+                                Color(
+                                    0xFF98A2B3
+                                )
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+
+// =============================================================
+// FORMATTED MESSAGE
+// =============================================================
+
+@Composable
+private fun FormattedMessageText(
+
+    text: String,
+
+    isUser: Boolean
+
+) {
+
+    val textColor =
+
+        if (
+            isUser
+        )
+
+            Color.White
+
+        else
+
+            Color(
+                0xFF344054
+            )
+
+
+    val lines =
+        text
+            .replace(
+                "\r\n",
+                "\n"
+            )
+            .split(
+                "\n"
+            )
+
+
+    Column(
+
+        verticalArrangement =
+            Arrangement.spacedBy(
+                5.dp
+            )
+    ) {
+
+        lines.forEach { rawLine ->
+
+            val line =
+                rawLine.trimEnd()
+
+
+            // =================================================
+            // EMPTY LINE
+            // =================================================
+
+            if (
+                line.isBlank()
             ) {
 
                 Spacer(
                     modifier =
-                        Modifier.height(4.dp)
+                        Modifier.height(
+                            2.dp
+                        )
                 )
+
+                return@forEach
+            }
+
+
+            // =================================================
+            // BULLET
+            // =================================================
+
+            val isBullet =
+
+                line.startsWith(
+                    "•"
+                ) ||
+
+                        line.startsWith(
+                            "- "
+                        ) ||
+
+                        line.startsWith(
+                            "* "
+                        )
+
+
+            if (
+                isBullet
+            ) {
+
+                val bulletText =
+
+                    when {
+
+                        line.startsWith(
+                            "•"
+                        ) ->
+
+                            line.removePrefix(
+                                "•"
+                            ).trim()
+
+                        else ->
+
+                            line.substring(
+                                2
+                            ).trim()
+                    }
+
+
+                Row(
+
+                    modifier =
+                        Modifier.fillMaxWidth(),
+
+                    verticalAlignment =
+                        Alignment.Top
+                ) {
+
+                    Text(
+
+                        text =
+                            "•",
+
+                        fontSize =
+                            14.sp,
+
+                        fontWeight =
+                            FontWeight.Bold,
+
+                        color =
+                            textColor
+                    )
+
+
+                    Spacer(
+
+                        modifier =
+                            Modifier.width(
+                                7.dp
+                            )
+                    )
+
+
+                    Text(
+
+                        text =
+                            cleanMarkdown(
+                                bulletText
+                            ),
+
+                        fontSize =
+                            14.sp,
+
+                        lineHeight =
+                            20.sp,
+
+                        color =
+                            textColor,
+
+                        modifier =
+                            Modifier.weight(
+                                1f
+                            )
+                    )
+                }
+
+            } else {
+
+
+                // =================================================
+                // HEADING / NORMAL TEXT
+                // =================================================
+
+                val cleaned =
+                    cleanMarkdown(
+                        line
+                    )
+
+
+                val isHeading =
+
+                    line.startsWith(
+                        "###"
+                    ) ||
+
+                            line.startsWith(
+                                "##"
+                            ) ||
+
+                            line.startsWith(
+                                "# "
+                            ) ||
+
+                            line.endsWith(
+                                ":"
+                            ) &&
+                            line.length < 80
+
 
                 Text(
 
                     text =
-                        "Intent: ${message.intent}  •  " +
-                                "Confidence: ${
-                                    formatPercent(
-                                        message.confidence
-                                    )
-                                }%",
+                        cleaned,
 
                     fontSize =
-                        10.sp,
+
+                        if (
+                            isHeading
+                        )
+
+                            15.sp
+
+                        else
+
+                            14.sp,
+
+                    lineHeight =
+                        21.sp,
+
+                    fontWeight =
+
+                        if (
+                            isHeading
+                        )
+
+                            FontWeight.SemiBold
+
+                        else
+
+                            FontWeight.Normal,
 
                     color =
-                        Color(0xFF7A869A),
-
-                    modifier =
-                        Modifier.padding(
-                            start = 6.dp
-                        )
-                )
-            }
-        }
-
-        // =====================================================
-        // USER ICON
-        // =====================================================
-
-        if (message.isUser) {
-
-            Spacer(
-                modifier =
-                    Modifier.width(7.dp)
-            )
-
-            Box(
-
-                modifier =
-                    Modifier
-                        .size(34.dp)
-                        .clip(CircleShape)
-                        .background(
-                            Color(0xFFE3F2FD)
-                        ),
-
-                contentAlignment =
-                    Alignment.Center
-            ) {
-
-                Icon(
-
-                    imageVector =
-                        Icons.Default.Person,
-
-                    contentDescription =
-                        "User",
-
-                    tint =
-                        Color(0xFF1976D2),
-
-                    modifier =
-                        Modifier.size(19.dp)
+                        textColor
                 )
             }
         }
     }
 }
+
+
+// =============================================================
+// CLEAN MARKDOWN
+// =============================================================
+
+private fun cleanMarkdown(
+    text: String
+): String {
+
+    return text
+
+        // Bold
+        .replace(
+            Regex(
+                "\\*\\*(.*?)\\*\\*"
+            ),
+            "$1"
+        )
+
+        // Italic
+        .replace(
+            Regex(
+                "(?<!\\*)\\*(.*?)\\*(?!\\*)"
+            ),
+            "$1"
+        )
+
+        // Markdown headings
+        .replace(
+            Regex(
+                "^#{1,6}\\s*"
+            ),
+            ""
+        )
+
+        // Inline code
+        .replace(
+            "`",
+            ""
+        )
+
+        .trim()
+}
+
 
 // =============================================================
 // TYPING INDICATOR
@@ -1003,11 +1829,8 @@ fun TypingIndicator() {
         modifier =
             Modifier.fillMaxWidth(),
 
-        horizontalArrangement =
-            Arrangement.Start,
-
         verticalAlignment =
-            Alignment.CenterVertically
+            Alignment.Bottom
     ) {
 
         Box(
@@ -1015,9 +1838,13 @@ fun TypingIndicator() {
             modifier =
                 Modifier
                     .size(34.dp)
-                    .clip(CircleShape)
+                    .clip(
+                        CircleShape
+                    )
                     .background(
-                        Color(0xFF1976D2)
+                        Color(
+                            0xFF1976D2
+                        )
                     ),
 
             contentAlignment =
@@ -1040,102 +1867,110 @@ fun TypingIndicator() {
             )
         }
 
+
         Spacer(
+
             modifier =
-                Modifier.width(7.dp)
+                Modifier.width(
+                    7.dp
+                )
         )
+
 
         Surface(
 
             shape =
-                RoundedCornerShape(18.dp),
+                RoundedCornerShape(
+                    18.dp
+                ),
 
             color =
                 Color.White,
 
             shadowElevation =
-                2.dp
+                1.dp
         ) {
 
             Row(
 
                 modifier =
                     Modifier.padding(
+                        horizontal = 16.dp,
+                        vertical = 12.dp
+                    ),
 
-                        horizontal =
-                            16.dp,
-
-                        vertical =
-                            12.dp
+                horizontalArrangement =
+                    Arrangement.spacedBy(
+                        5.dp
                     ),
 
                 verticalAlignment =
                     Alignment.CenterVertically
             ) {
 
-                CircularProgressIndicator(
+                TypingDot()
 
-                    modifier =
-                        Modifier.size(16.dp),
+                TypingDot()
 
-                    strokeWidth =
-                        2.dp
-                )
-
-                Spacer(
-                    modifier =
-                        Modifier.width(8.dp)
-                )
-
-                Text(
-
-                    text =
-                        "Thinking...",
-
-                    fontSize =
-                        13.sp,
-
-                    color =
-                        Color(0xFF667085)
-                )
+                TypingDot()
             }
         }
     }
 }
 
+
 // =============================================================
-// SHA-256
+// TYPING DOT
+// =============================================================
+
+@Composable
+private fun TypingDot() {
+
+    Box(
+
+        modifier =
+            Modifier
+                .size(6.dp)
+                .clip(
+                    CircleShape
+                )
+                .background(
+                    Color(
+                        0xFF98A2B3
+                    )
+                )
+    )
+}
+
+
+// =============================================================
+// SHA-256 HELPER
 // =============================================================
 
 private fun sha256(
     value: String
 ): String {
 
+    val digest =
+        MessageDigest.getInstance(
+            "SHA-256"
+        )
+
+
     val bytes =
-        MessageDigest
-            .getInstance("SHA-256")
-            .digest(
-                value.toByteArray(
-                    Charsets.UTF_8
-                )
+        digest.digest(
+            value.toByteArray(
+                Charsets.UTF_8
             )
+        )
 
-    return bytes.joinToString("") {
-        "%02x".format(it)
+
+    return bytes.joinToString(
+        ""
+    ) {
+
+        "%02x".format(
+            it
+        )
     }
-}
-
-// =============================================================
-// FORMAT PERCENT
-// =============================================================
-
-private fun formatPercent(
-    value: Double
-): String {
-
-    return String.format(
-        java.util.Locale.US,
-        "%.1f",
-        value * 100
-    )
 }
