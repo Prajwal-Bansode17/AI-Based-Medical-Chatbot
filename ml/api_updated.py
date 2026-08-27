@@ -7,8 +7,6 @@ import joblib
 import pandas as pd
 
 from flask import Flask, jsonify, request
-import os
-from google import genai
 
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -80,247 +78,6 @@ DATA_FILE = find_mediq_dataset()
 # ============================================================
 
 app = Flask(__name__)
-
-
-# ============================================================
-# MULTILINGUAL LANGUAGE HELPERS
-# ============================================================
-
-def detect_language(text):
-
-    if not text:
-        return "en"
-
-    text = str(text)
-
-    devanagari = sum(
-        1
-        for ch in text
-        if "\u0900" <= ch <= "\u097F"
-    )
-
-    if devanagari == 0:
-        return "en"
-
-    lower = text.lower()
-
-    marathi_markers = [
-        "\u092e\u0932\u093e",
-        "\u092e\u093e\u091d\u093e",
-        "\u092e\u093e\u091d\u0940",
-        "\u092e\u094d\u0939\u0923\u091c\u0947",
-        "\u0906\u0938\u0947",
-        "\u0906\u0938\u0947\u0939\u0940",
-        "\u0915\u093e\u092f",
-        "\u0915\u0936\u0940",
-        "\u0915\u0936\u093e",
-        "\u0915\u093f\u0924\u0940",
-        "\u0924\u093e\u092a",
-        "\u0906\u093c\u0939\u0947",
-        "\u0906\u093b\u0939\u0947"
-    ]
-
-    marathi_score = sum(
-        1
-        for marker in marathi_markers
-        if marker in text
-    )
-
-    hindi_markers = [
-        "\u092e\u0941\u091d\u0947",
-        "\u092e\u0947\u0930\u093e",
-        "\u092e\u0947\u0930\u0940",
-        "\u0915\u094d\u092f\u093e",
-        "\u0915\u0948\u0938\u093e",
-        "\u0915\u0948\u0938\u0947",
-        "\u0915\u093f\u0924\u0928\u0947",
-        "\u0939\u0948",
-        "\u0939\u0942\u0901"
-    ]
-
-    hindi_score = sum(
-        1
-        for marker in hindi_markers
-        if marker in text
-    )
-
-    if marathi_score >= hindi_score:
-        return "mr"
-
-    return "hi"
-
-
-def translate_input_to_english(text):
-
-    if not text:
-        return text
-
-    # Common Marathi medical phrases.
-    replacements = {
-        "\u092e\u0932\u093e \u0924\u093e\u092a \u0906\u0932\u093e \u0906\u0939\u0947":
-            "I have fever",
-
-        "\u092e\u0932\u093e \u0924\u093e\u092a \u0906\u0939\u0947":
-            "I have fever",
-
-        "\u092e\u0932\u093e \u0918\u093e\u0936\u0940 \u0916\u0935\u0916\u0935\u0924 \u0906\u0939\u0947":
-            "I have sore throat",
-
-        "\u092e\u093e\u091d\u0947 \u0921\u094b\u0915\u0947 \u0926\u0941\u0916\u0924 \u0906\u0939\u0947":
-            "I have headache",
-
-        "\u092e\u093e\u091d\u0947 \u092a\u094b\u091f \u0926\u0941\u0916\u0924 \u0906\u0939\u0947":
-            "I have stomach pain",
-
-        "\u092e\u0932\u093e \u0916\u094b\u0915\u0932\u093e \u092f\u0947\u0924 \u0906\u0939\u0947":
-            "I have cough",
-
-        "\u092e\u0932\u093e \u0938\u0930\u094d\u0926\u0940 \u091d\u093e\u0932\u0940 \u0906\u0939\u0947":
-            "I have cold"
-    }
-
-    clean = str(text).strip()
-
-    if clean in replacements:
-        return replacements[clean]
-
-    # Hindi common phrases.
-    hindi_replacements = {
-        "\u092e\u0941\u091d\u0947 \u092c\u0941\u0916\u093e\u0930 \u0939\u0948":
-            "I have fever",
-
-        "\u092e\u0941\u091d\u0947 \u0938\u093f\u0930\u0926\u0930\u094d\u0926 \u0939\u0948":
-            "I have headache",
-
-        "\u092e\u0941\u091d\u0947 \u092a\u0947\u091f \u092e\u0947\u0902 \u0926\u0930\u094d\u0926 \u0939\u0948":
-            "I have stomach pain",
-
-        "\u092e\u0941\u091d\u0947 \u0916\u093e\u0902\u0938\u0940 \u0939\u0948":
-            "I have cough",
-
-        "\u092e\u0941\u091d\u0947 \u091c\u0941\u0915\u093e\u092e \u0939\u0948":
-            "I have cold"
-    }
-
-    if clean in hindi_replacements:
-        return hindi_replacements[clean]
-
-    # Preserve English input.
-    return clean
-
-
-def translate_general_response(answer, language):
-
-    if language == "en":
-        return answer
-
-    if language == "mr":
-        return (
-            "\u092e\u0940 \u0926\u093f\u0932\u0947\u0932\u094d\u092f\u093e \u092e\u093e\u0939\u093f\u0924\u0940\u0928\u0942\u0928 "
-            "\u0938\u093e\u092e\u093e\u0928\u094d\u092f \u092e\u093e\u0939\u093f\u0924\u0940 \u0926\u0947\u0924 \u0906\u0939\u0947. "
-            + str(answer)
-        )
-
-    if language == "hi":
-        return (
-            "\u092e\u0948\u0902 \u0926\u0940 \u0917\u0908 \u091c\u093e\u0928\u0915\u093e\u0930\u0940 \u0915\u0947 \u0906\u0927\u093e\u0930 \u092a\u0930 "
-            "\u0938\u093e\u092e\u093e\u0928\u094d\u092f \u091c\u093e\u0928\u0915\u093e\u0930\u0940 \u0926\u0947 \u0930\u0939\u093e \u0939\u0942\u0901. "
-            + str(answer)
-        )
-
-    return answer
-
-
-
-# ============================================================
-# GEMINI AI
-# ============================================================
-
-GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-
-GEMINI_MODEL = "gemini-3.6-flash"
-
-gemini_client = None
-
-if GEMINI_API_KEY:
-    try:
-        gemini_client = genai.Client(
-            api_key=GEMINI_API_KEY
-        )
-        print("Gemini AI : Connected")
-    except Exception as e:
-        print("Gemini AI : Connection failed:", e)
-else:
-    print("Gemini AI : API key not configured")
-
-
-def generate_gemini_medical_response(
-    user_text,
-    language="en",
-    medical_context="",
-    conversation_context=""
-):
-
-    if gemini_client is None:
-        return None
-
-    language_names = {
-        "en": "English",
-        "mr": "Marathi",
-        "hi": "Hindi"
-    }
-
-    target_language = language_names.get(
-        language,
-        "English"
-    )
-
-    system_instruction = f"""
-You are MEDASSIST AI, a medical information assistant.
-
-Always respond in {target_language}.
-
-Rules:
-- Always use the user's requested/preferred language.
-- Do not switch to English unless requested.
-- Do not diagnose.
-- Give general medical information.
-- Do not invent medical facts.
-- Use supplied medical context when available.
-- If information is insufficient, say so.
-- For severe or worsening symptoms, recommend medical care.
-- Never claim to replace a doctor.
-"""
-
-    prompt = f"""
-User question:
-{user_text}
-
-Medical context:
-{medical_context or "No specific medical context available."}
-
-Previous conversation:
-{conversation_context or "No previous conversation context available."}
-
-Answer clearly and naturally in {target_language}.
-"""
-
-    try:
-        response = gemini_client.models.generate_content(
-            model=GEMINI_MODEL,
-            contents=system_instruction + "\n\n" + prompt
-        )
-
-        answer = getattr(response, "text", None)
-
-        if answer:
-            return answer.strip()
-
-    except Exception as e:
-        print("Gemini generation error:", e)
-
-    return None
-
 
 
 # ============================================================
@@ -3088,22 +2845,6 @@ def predict():
 
     text = text.strip()
 
-    # ========================================================
-    # MULTILINGUAL ANALYSIS
-    # ========================================================
-    # Keep original text for UI/storage.
-    # Convert Marathi/Hindi to English internally so the
-    # existing ML/NLP/MEDIQ pipeline can understand it.
-
-    detected_language = detect_language(text)
-
-    analysis_text = (
-        translate_input_to_english(text)
-        if detected_language in {"mr", "hi"}
-        else text
-    )
-
-
 
     if not text:
 
@@ -3145,7 +2886,7 @@ def predict():
         # ====================================================
 
         model_prediction = model.predict(
-            [analysis_text]
+            [text]
         )[0]
 
 
@@ -3170,7 +2911,7 @@ def predict():
 
                 probabilities = (
                     model.predict_proba(
-                        [analysis_text]
+                        [text]
                     )[0]
                 )
 
@@ -3188,33 +2929,20 @@ def predict():
 
 
         # ====================================================
-        # FINAL INTENT
-        # ====================================================
-
-        final_intent = (
-            determine_final_intent(
-                analysis_text,
-                model_prediction,
-                confidence
-            )
-        )
-
-
-        # ====================================================
         # CURRENT DATA
         # ====================================================
 
         symptoms = extract_symptoms(
-            analysis_text
+            text
         )
 
         duration = extract_duration(
-            analysis_text
+            text
         )
 
         measurements = (
             extract_medical_measurements(
-                analysis_text
+                text
             )
         )
 
@@ -3236,7 +2964,7 @@ def predict():
 
         medical_query = (
             is_medical_query(
-                analysis_text
+                text
             )
         )
 
@@ -3557,94 +3285,163 @@ def predict():
 
 
         # ====================================================
-        # ====================================================
         # GENERAL QUERY
         # ====================================================
 
         if not medical_query:
 
-            # Gemini gets a chance to answer general health
-            # questions before the static fallback.
-
-            gemini_answer = generate_gemini_medical_response(
-                user_text=text,
-                language=detected_language,
-                medical_context="",
-                conversation_context=""
-            )
-
-            if gemini_answer:
-
-                save_chat_message(
-                    session_id,
-                    "user",
-                    text,
-                    symptoms
-                )
-
-                save_chat_message(
-                    session_id,
-                    "assistant",
-                    gemini_answer,
-                    symptoms
-                )
-
-                return jsonify({
-                    "status": "success",
-                    "session_id": session_id,
-                    "question": text,
-                    "intent": "general",
-                    "confidence": round(
-                        confidence,
-                        4
-                    ),
-                    "symptoms": symptoms,
-                    "medical_query": False,
-                    "answer": gemini_answer,
-                    "answer_similarity": 1.0,
-                    "source": "gemini",
-                    "language": detected_language
-                })
-
             answer = general_fallback(
-                analysis_text
+                text
             )
 
-            answer = translate_general_response(
-                answer,
-                detected_language
-            )
 
             save_chat_message(
                 session_id,
                 "user",
                 text,
-                symptoms
+                []
             )
+
 
             save_chat_message(
                 session_id,
                 "assistant",
                 answer,
-                symptoms
+                []
             )
 
+
             return jsonify({
-                "status": "success",
-                "session_id": session_id,
-                "question": text,
-                "intent": "general",
-                "confidence": round(
-                    confidence,
-                    4
-                ),
-                "symptoms": symptoms,
-                "medical_query": False,
-                "answer": answer,
-                "answer_similarity": 1.0,
-                "source": "general_fallback",
-                "language": detected_language
+
+                "status":
+                    "success",
+
+                "session_id":
+                    session_id,
+
+                "question":
+                    text,
+
+                "intent":
+                    "general",
+
+                "confidence":
+                    round(
+                        confidence,
+                        4
+                    ),
+
+                "symptoms":
+                    [],
+
+                "medical_query":
+                    False,
+
+                "answer":
+                    answer,
+
+                "answer_similarity":
+                    1.0,
+
+                "source":
+                    "general_fallback"
             })
+
+
+        # ====================================================
+        # MEASUREMENT ONLY
+        # ====================================================
+
+        if measurements and not symptoms:
+
+            measurement_answer = (
+                build_measurement_response(
+                    measurements
+                )
+            )
+
+
+            save_structured_memories(
+                session_id=session_id,
+                text=text,
+                symptoms=[],
+                duration=duration
+            )
+
+
+            save_chat_message(
+                session_id,
+                "user",
+                text,
+                []
+            )
+
+
+            save_chat_message(
+                session_id,
+                "assistant",
+                measurement_answer,
+                []
+            )
+
+
+            return jsonify({
+
+                "status":
+                    "success",
+
+                "session_id":
+                    session_id,
+
+                "question":
+                    text,
+
+                "intent":
+                    "measurement_report",
+
+                "confidence":
+                    round(
+                        confidence,
+                        4
+                    ),
+
+                "symptoms":
+                    [],
+
+                "previous_symptoms":
+                    previous_symptoms,
+
+                "duration":
+                    duration,
+
+                "measurements":
+                    measurements,
+
+                "medical_query":
+                    True,
+
+                "answer":
+                    measurement_answer,
+
+                "answer_similarity":
+                    1.0,
+
+                "source":
+                    "structured_memory"
+            })
+
+
+        # ====================================================
+        # INTENT
+        # ====================================================
+
+        final_intent = (
+            determine_final_intent(
+                text,
+                model_prediction,
+                confidence
+            )
+        )
 
 
         # ====================================================
@@ -3659,6 +3456,7 @@ def predict():
                 )
             )
 
+
             medical_answer = (
                 build_multi_symptom_response(
                     symptoms,
@@ -3666,40 +3464,8 @@ def predict():
                 )
             )
 
-            # ------------------------------------------------
-            # GEMINI MEDICAL RESPONSE
-            # ------------------------------------------------
-            # The existing medical knowledge answer is supplied
-            # to Gemini as factual context.
-            # Gemini only rewrites/explains it naturally in the
-            # user's language.
-            # ------------------------------------------------
-
-            gemini_medical_answer = None
 
             if medical_answer:
-
-                gemini_medical_answer = (
-                    generate_gemini_medical_response(
-                        user_text=text,
-                        language=detected_language,
-                        medical_context=medical_answer,
-                        conversation_context=""
-                    )
-                )
-
-            # ------------------------------------------------
-            # Prefer Gemini when available.
-            # Otherwise preserve existing medical response.
-            # ------------------------------------------------
-
-            final_answer = (
-                gemini_medical_answer
-                if gemini_medical_answer
-                else medical_answer
-            )
-
-            if final_answer:
 
                 save_chat_message(
                     session_id,
@@ -3708,6 +3474,7 @@ def predict():
                     symptoms
                 )
 
+
                 save_structured_memories(
                     session_id=session_id,
                     text=text,
@@ -3715,12 +3482,14 @@ def predict():
                     duration=duration
                 )
 
+
                 save_chat_message(
                     session_id,
                     "assistant",
-                    final_answer,
+                    medical_answer,
                     symptoms
                 )
+
 
                 return jsonify({
 
@@ -3758,20 +3527,13 @@ def predict():
                         True,
 
                     "answer":
-                        final_answer,
+                        medical_answer,
 
                     "answer_similarity":
                         1.0,
 
                     "source":
-                        (
-                            "gemini"
-                            if gemini_medical_answer
-                            else "medical_knowledge"
-                        ),
-
-                    "language":
-                        detected_language
+                        "medical_knowledge"
                 })
 
 
@@ -3781,8 +3543,8 @@ def predict():
 
         mediq_result = (
             retrieve_mediq_answer(
-                analysis_text,
-                model_prediction
+                text,
+                final_intent
             )
         )
 
@@ -3794,22 +3556,6 @@ def predict():
                     "answer"
                 ]
             )
-
-            # Let Gemini explain the retrieved MEDIQ answer
-            # in the user's language while keeping MEDIQ as
-            # the factual source.
-
-            gemini_mediq_answer = (
-                generate_gemini_medical_response(
-                    user_text=text,
-                    language=detected_language,
-                    medical_context=answer,
-                    conversation_context=""
-                )
-            )
-
-            if gemini_mediq_answer:
-                answer = gemini_mediq_answer
 
 
             save_structured_memories(
@@ -3880,14 +3626,7 @@ def predict():
                     ],
 
                 "source":
-                    (
-                        "gemini"
-                        if gemini_mediq_answer
-                        else "mediq"
-                    ),
-
-                "language":
-                    detected_language
+                    "mediq"
             })
 
 
