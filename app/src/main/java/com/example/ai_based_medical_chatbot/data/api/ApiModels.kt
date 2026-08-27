@@ -47,6 +47,9 @@ data class PredictionResponse(
     @SerializedName("source")
     val source: String = "",
 
+    @SerializedName("language")
+    val language: String = "",
+
     @SerializedName("measurements")
     val measurements: List<Measurement> = emptyList()
 )

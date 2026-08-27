@@ -1,14 +1,14 @@
-
 from pathlib import Path
 import re
 import sqlite3
-import json
 from datetime import datetime
 
 import joblib
 import pandas as pd
 
 from flask import Flask, jsonify, request
+import os
+from google import genai
 
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
@@ -26,11 +26,11 @@ MODEL_FILE = (
     / "medical_intent_model.joblib"
 )
 
-MEDICAL_KNOWLEDGE_DIR = (
+MEDICAL_KNOWLEDGE_FILE = (
     BASE_DIR
     / "data"
     / "raw"
-    / "medical_knowledge"
+    / "medical_knowledge.csv"
 )
 
 CHAT_DB_FILE = (
@@ -80,6 +80,247 @@ DATA_FILE = find_mediq_dataset()
 # ============================================================
 
 app = Flask(__name__)
+
+
+# ============================================================
+# MULTILINGUAL LANGUAGE HELPERS
+# ============================================================
+
+def detect_language(text):
+
+    if not text:
+        return "en"
+
+    text = str(text)
+
+    devanagari = sum(
+        1
+        for ch in text
+        if "\u0900" <= ch <= "\u097F"
+    )
+
+    if devanagari == 0:
+        return "en"
+
+    lower = text.lower()
+
+    marathi_markers = [
+        "\u092e\u0932\u093e",
+        "\u092e\u093e\u091d\u093e",
+        "\u092e\u093e\u091d\u0940",
+        "\u092e\u094d\u0939\u0923\u091c\u0947",
+        "\u0906\u0938\u0947",
+        "\u0906\u0938\u0947\u0939\u0940",
+        "\u0915\u093e\u092f",
+        "\u0915\u0936\u0940",
+        "\u0915\u0936\u093e",
+        "\u0915\u093f\u0924\u0940",
+        "\u0924\u093e\u092a",
+        "\u0906\u093c\u0939\u0947",
+        "\u0906\u093b\u0939\u0947"
+    ]
+
+    marathi_score = sum(
+        1
+        for marker in marathi_markers
+        if marker in text
+    )
+
+    hindi_markers = [
+        "\u092e\u0941\u091d\u0947",
+        "\u092e\u0947\u0930\u093e",
+        "\u092e\u0947\u0930\u0940",
+        "\u0915\u094d\u092f\u093e",
+        "\u0915\u0948\u0938\u093e",
+        "\u0915\u0948\u0938\u0947",
+        "\u0915\u093f\u0924\u0928\u0947",
+        "\u0939\u0948",
+        "\u0939\u0942\u0901"
+    ]
+
+    hindi_score = sum(
+        1
+        for marker in hindi_markers
+        if marker in text
+    )
+
+    if marathi_score >= hindi_score:
+        return "mr"
+
+    return "hi"
+
+
+def translate_input_to_english(text):
+
+    if not text:
+        return text
+
+    # Common Marathi medical phrases.
+    replacements = {
+        "\u092e\u0932\u093e \u0924\u093e\u092a \u0906\u0932\u093e \u0906\u0939\u0947":
+            "I have fever",
+
+        "\u092e\u0932\u093e \u0924\u093e\u092a \u0906\u0939\u0947":
+            "I have fever",
+
+        "\u092e\u0932\u093e \u0918\u093e\u0936\u0940 \u0916\u0935\u0916\u0935\u0924 \u0906\u0939\u0947":
+            "I have sore throat",
+
+        "\u092e\u093e\u091d\u0947 \u0921\u094b\u0915\u0947 \u0926\u0941\u0916\u0924 \u0906\u0939\u0947":
+            "I have headache",
+
+        "\u092e\u093e\u091d\u0947 \u092a\u094b\u091f \u0926\u0941\u0916\u0924 \u0906\u0939\u0947":
+            "I have stomach pain",
+
+        "\u092e\u0932\u093e \u0916\u094b\u0915\u0932\u093e \u092f\u0947\u0924 \u0906\u0939\u0947":
+            "I have cough",
+
+        "\u092e\u0932\u093e \u0938\u0930\u094d\u0926\u0940 \u091d\u093e\u0932\u0940 \u0906\u0939\u0947":
+            "I have cold"
+    }
+
+    clean = str(text).strip()
+
+    if clean in replacements:
+        return replacements[clean]
+
+    # Hindi common phrases.
+    hindi_replacements = {
+        "\u092e\u0941\u091d\u0947 \u092c\u0941\u0916\u093e\u0930 \u0939\u0948":
+            "I have fever",
+
+        "\u092e\u0941\u091d\u0947 \u0938\u093f\u0930\u0926\u0930\u094d\u0926 \u0939\u0948":
+            "I have headache",
+
+        "\u092e\u0941\u091d\u0947 \u092a\u0947\u091f \u092e\u0947\u0902 \u0926\u0930\u094d\u0926 \u0939\u0948":
+            "I have stomach pain",
+
+        "\u092e\u0941\u091d\u0947 \u0916\u093e\u0902\u0938\u0940 \u0939\u0948":
+            "I have cough",
+
+        "\u092e\u0941\u091d\u0947 \u091c\u0941\u0915\u093e\u092e \u0939\u0948":
+            "I have cold"
+    }
+
+    if clean in hindi_replacements:
+        return hindi_replacements[clean]
+
+    # Preserve English input.
+    return clean
+
+
+def translate_general_response(answer, language):
+
+    if language == "en":
+        return answer
+
+    if language == "mr":
+        return (
+            "\u092e\u0940 \u0926\u093f\u0932\u0947\u0932\u094d\u092f\u093e \u092e\u093e\u0939\u093f\u0924\u0940\u0928\u0942\u0928 "
+            "\u0938\u093e\u092e\u093e\u0928\u094d\u092f \u092e\u093e\u0939\u093f\u0924\u0940 \u0926\u0947\u0924 \u0906\u0939\u0947. "
+            + str(answer)
+        )
+
+    if language == "hi":
+        return (
+            "\u092e\u0948\u0902 \u0926\u0940 \u0917\u0908 \u091c\u093e\u0928\u0915\u093e\u0930\u0940 \u0915\u0947 \u0906\u0927\u093e\u0930 \u092a\u0930 "
+            "\u0938\u093e\u092e\u093e\u0928\u094d\u092f \u091c\u093e\u0928\u0915\u093e\u0930\u0940 \u0926\u0947 \u0930\u0939\u093e \u0939\u0942\u0901. "
+            + str(answer)
+        )
+
+    return answer
+
+
+
+# ============================================================
+# GEMINI AI
+# ============================================================
+
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
+GEMINI_MODEL = "gemini-3.6-flash"
+
+gemini_client = None
+
+if GEMINI_API_KEY:
+    try:
+        gemini_client = genai.Client(
+            api_key=GEMINI_API_KEY
+        )
+        print("Gemini AI : Connected")
+    except Exception as e:
+        print("Gemini AI : Connection failed:", e)
+else:
+    print("Gemini AI : API key not configured")
+
+
+def generate_gemini_medical_response(
+    user_text,
+    language="en",
+    medical_context="",
+    conversation_context=""
+):
+
+    if gemini_client is None:
+        return None
+
+    language_names = {
+        "en": "English",
+        "mr": "Marathi",
+        "hi": "Hindi"
+    }
+
+    target_language = language_names.get(
+        language,
+        "English"
+    )
+
+    system_instruction = f"""
+You are MEDASSIST AI, a medical information assistant.
+
+Always respond in {target_language}.
+
+Rules:
+- Always use the user's requested/preferred language.
+- Do not switch to English unless requested.
+- Do not diagnose.
+- Give general medical information.
+- Do not invent medical facts.
+- Use supplied medical context when available.
+- If information is insufficient, say so.
+- For severe or worsening symptoms, recommend medical care.
+- Never claim to replace a doctor.
+"""
+
+    prompt = f"""
+User question:
+{user_text}
+
+Medical context:
+{medical_context or "No specific medical context available."}
+
+Previous conversation:
+{conversation_context or "No previous conversation context available."}
+
+Answer clearly and naturally in {target_language}.
+"""
+
+    try:
+        response = gemini_client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=system_instruction + "\n\n" + prompt
+        )
+
+        answer = getattr(response, "text", None)
+
+        if answer:
+            return answer.strip()
+
+    except Exception as e:
+        print("Gemini generation error:", e)
+
+    return None
+
 
 
 # ============================================================
@@ -181,11 +422,9 @@ def get_chat_history(
 
     conn.close()
 
-    # Return newest records first because callers use the first matching
-    # measurement as the latest value.
     return [
         dict(row)
-        for row in rows
+        for row in reversed(rows)
     ]
 
 
@@ -346,11 +585,9 @@ def get_medical_memory(
 
     conn.close()
 
-    # Return newest records first.  This is important because
-    # memory recall must use the latest value reported by the user.
     return [
         dict(row)
-        for row in rows
+        for row in reversed(rows)
     ]
 
 
@@ -373,720 +610,8 @@ def clear_medical_memory(
     conn.close()
 
 
-
-# ============================================================
-# CONVERSATION STATE
-# ============================================================
-
-
-def init_conversation_state_table():
-    conn = sqlite3.connect(CHAT_DB_FILE)
-    conn.execute("""
-        CREATE TABLE IF NOT EXISTS conversation_state (
-            session_id TEXT PRIMARY KEY,
-            primary_symptom TEXT,
-            duration TEXT,
-            associated_symptoms TEXT,
-            severity TEXT,
-            step TEXT NOT NULL,
-            language TEXT DEFAULT 'en',
-            updated_at TEXT NOT NULL
-        )
-    """)
-    columns = {row[1] for row in conn.execute(
-        "PRAGMA table_info(conversation_state)"
-    ).fetchall()}
-    if "language" not in columns:
-        conn.execute(
-            "ALTER TABLE conversation_state ADD COLUMN language TEXT DEFAULT 'en'"
-        )
-    conn.commit()
-    conn.close()
-
-
-def detect_language(text):
-    raw = str(text or "").strip().lower()
-    marathi_words = {
-        "मला","माझा","माझी","माझे","माझं","आहे","आहेत","ताप","पासून",
-        "दिवसांपासून","कालपासून","आजपासून","किती","दिवस","डोके",
-        "दुखत","खोकला","चक्कर","उलटी","जुलाब","कमजोरी","छातीत",
-        "श्वास","त्रास","नाही","हो","होय","जास्त","कमी","मध्यम"
-    }
-    hindi_words = {
-        "मुझे","मेरा","मेरी","मेरे","है","हैं","बुखार","से","दिन","कल",
-        "आज","कितने","सिर","दर्द","खांसी","चक्कर","उल्टी","दस्त",
-        "कमजोरी","सीने","सांस","मुश्किल","नहीं","हाँ","हां","ज्यादा",
-        "कम","मध्यम"
-    }
-    mr_score = sum(1 for word in marathi_words if word in raw)
-    hi_score = sum(1 for word in hindi_words if word in raw)
-    if any(p in raw for p in ["मला ताप","ताप आला","ताप आहे","कालपासून",
-                              "दिवसांपासून","मला डोके"]):
-        mr_score += 3
-    if any(p in raw for p in ["मुझे बुखार","बुखार है","कल से","सिर दर्द",
-                              "सीने में दर्द"]):
-        hi_score += 3
-    if mr_score == 0 and hi_score == 0:
-        return "en"
-    return "mr" if mr_score >= hi_score else "hi"
-
-
-DEVANAGARI_TO_ENGLISH = {
-    # ---------------- MARATHI ----------------
-    "मला ताप आला आहे": "i have fever",
-    "मला ताप आला": "i have fever",
-    "मला ताप आहे": "i have fever",
-    "ताप आला आहे": "fever",
-    "ताप आला": "fever",
-    "ताप आहे": "fever",
-    "ताप": "fever",
-
-    "मला खोकला आहे": "i have cough",
-    "खोकला": "cough",
-    "सर्दी": "cold",
-    "डोकेदुखी": "headache",
-    "डोके दुखत आहे": "headache",
-    "डोकं दुखत आहे": "headache",
-    "अंगदुखी": "body pain",
-    "अंग दुखत आहे": "body pain",
-    "पोटदुखी": "stomach pain",
-    "पोट दुखत आहे": "stomach pain",
-    "छातीत दुखत आहे": "chest pain",
-    "छातीत दुखणे": "chest pain",
-    "छातीत वेदना": "chest pain",
-    "श्वास घेण्यास त्रास": "difficulty breathing",
-    "श्वास घेता येत नाही": "cannot breathe",
-    "श्वास घेणे कठीण आहे": "difficulty breathing",
-    "चक्कर": "dizziness",
-    "उलटी": "vomiting",
-    "जुलाब": "diarrhea",
-    "अशक्तपणा": "weakness",
-    "कमजोरी": "weakness",
-    "थंडी वाजत आहे": "chills",
-    "थंडी वाजणे": "chills",
-    "घाम येत आहे": "sweating",
-
-    "मला": "i",
-    "माझा": "my",
-    "माझी": "my",
-    "माझे": "my",
-    "माझं": "my",
-    "आहेत": "have",
-    "आहे": "have",
-
-    # Marathi duration
-    "कालपासून": "since yesterday",
-    "काल पासून": "since yesterday",
-    "आजपासून": "since today",
-    "आज पासून": "since today",
-    "दोन दिवसांपासून": "for 2 days",
-    "दोन दिवसापासून": "for 2 days",
-    "दोन दिवस": "2 days",
-    "तीन दिवसांपासून": "for 3 days",
-    "तीन दिवस": "3 days",
-    "चार दिवस": "4 days",
-    "पाच दिवस": "5 days",
-    "एक दिवस": "1 day",
-    "किती दिवस": "how many days",
-
-    # Marathi answers/severity
-    "नाही": "no",
-    "नको": "no",
-    "होय": "yes",
-    "हो": "yes",
-    "सौम्य": "mild",
-    "मध्यम": "moderate",
-    "तीव्र": "severe",
-    "जास्त": "severe",
-    "कमी": "mild",
-
-    # ---------------- HINDI ----------------
-    "मुझे बुखार है": "i have fever",
-    "मुझे बुखार": "i have fever",
-    "बुखार है": "fever",
-    "बुखार": "fever",
-    "मुझे खांसी है": "i have cough",
-    "खांसी": "cough",
-    "जुकाम": "cold",
-    "सिर दर्द": "headache",
-    "सिरदर्द": "headache",
-    "बदन दर्द": "body pain",
-    "शरीर दर्द": "body pain",
-    "पेट दर्द": "stomach pain",
-    "सीने में तेज दर्द": "severe chest pain",
-    "सीने में दर्द": "chest pain",
-    "सांस लेने में दिक्कत": "difficulty breathing",
-    "सांस नहीं ले पा रहा": "cannot breathe",
-    "चक्कर": "dizziness",
-    "उल्टी": "vomiting",
-    "दस्त": "diarrhea",
-    "कमजोरी": "weakness",
-    "ठंड लग रही है": "chills",
-
-    "मुझे": "i",
-    "मेरा": "my",
-    "मेरी": "my",
-    "मेरे": "my",
-    "हैं": "have",
-    "है": "have",
-
-    # Hindi duration
-    "कल से": "since yesterday",
-    "आज से": "since today",
-    "दो दिनों से": "for 2 days",
-    "दो दिन से": "for 2 days",
-    "दो दिन": "2 days",
-    "तीन दिन": "3 days",
-    "चार दिन": "4 days",
-    "पांच दिन": "5 days",
-    "एक दिन": "1 day",
-    "कितने दिन": "how many days",
-
-    # Hindi answers/severity
-    "नहीं": "no",
-    "हाँ": "yes",
-    "हां": "yes",
-    "हल्का": "mild",
-    "हल्की": "mild",
-    "मध्यम": "moderate",
-    "बहुत तेज": "severe",
-    "तेज": "severe",
-}
-
-
-def translate_input_to_english(text):
-    """
-    Convert common Marathi/Hindi medical phrases to English for
-    the existing ML, symptom, duration and safety logic.
-
-    The original user message is never modified for chat display/history.
-    """
-
-    raw = str(text or "").strip()
-
-    if not raw:
-        return ""
-
-    # Longest phrases first so:
-    #   "मला ताप आला आहे" -> "i have fever"
-    # happens before smaller replacements such as "ताप".
-    for source, target in sorted(
-        DEVANAGARI_TO_ENGLISH.items(),
-        key=lambda item: len(item[0]),
-        reverse=True
-    ):
-        raw = raw.replace(source, f" {target} ")
-
-    # Collapse whitespace introduced by replacements.
-    raw = re.sub(r"\s+", " ", raw).strip()
-
-    return raw
-
-
-def _language_from_text_or_state(session_id, text):
-    detected = detect_language(text)
-    if detected != "en":
-        return detected
-    state = get_conversation_state(session_id)
-    if state and state.get("language"):
-        return state.get("language") or "en"
-    return "en"
-
-
-def save_conversation_state(session_id, primary_symptom,
-                             duration=None, associated_symptoms=None,
-                             severity=None, step="duration", language="en"):
-    associated_symptoms = associated_symptoms or []
-    conn = sqlite3.connect(CHAT_DB_FILE)
-    conn.execute("""
-        INSERT INTO conversation_state
-        (session_id, primary_symptom, duration, associated_symptoms,
-         severity, step, language, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(session_id) DO UPDATE SET
-            primary_symptom=excluded.primary_symptom,
-            duration=excluded.duration,
-            associated_symptoms=excluded.associated_symptoms,
-            severity=excluded.severity,
-            step=excluded.step,
-            language=excluded.language,
-            updated_at=excluded.updated_at
-    """, (
-        session_id, primary_symptom or "", duration or "",
-        json.dumps(associated_symptoms), severity or "", step,
-        language or "en", datetime.now().isoformat()
-    ))
-    conn.commit()
-    conn.close()
-
-
-def get_conversation_state(session_id):
-    conn = sqlite3.connect(CHAT_DB_FILE)
-    conn.row_factory = sqlite3.Row
-    columns = {
-        row[1] for row in conn.execute(
-            "PRAGMA table_info(conversation_state)"
-        ).fetchall()
-    }
-    language_column = ", language" if "language" in columns else ""
-    row = conn.execute(
-        f"""SELECT session_id, primary_symptom, duration,
-                   associated_symptoms, severity, step
-                   {language_column}, updated_at
-            FROM conversation_state
-            WHERE session_id = ?""",
-        (session_id,)
-    ).fetchone()
-    conn.close()
-    if not row:
-        return None
-    state = dict(row)
-    state.setdefault("language", "en")
-    try:
-        state["associated_symptoms"] = json.loads(
-            state.get("associated_symptoms") or "[]"
-        )
-    except Exception:
-        state["associated_symptoms"] = []
-    return state
-
-
-def clear_conversation_state(session_id):
-    conn = sqlite3.connect(CHAT_DB_FILE)
-    conn.execute("DELETE FROM conversation_state WHERE session_id = ?",
-                 (session_id,))
-    conn.commit()
-    conn.close()
-
-
-def update_saved_symptom_duration(session_id, symptom, duration):
-    if not symptom or not duration:
-        return
-    conn = sqlite3.connect(CHAT_DB_FILE)
-    conn.execute("""
-        UPDATE medical_memory SET duration = ?
-        WHERE id = (
-            SELECT id FROM medical_memory
-            WHERE session_id = ? AND memory_type = 'symptom' AND name = ?
-            ORDER BY id DESC LIMIT 1
-        )
-    """, (duration, session_id, symptom))
-    conn.commit()
-    conn.close()
-
-
-def extract_severity(text):
-    query = normalize_text(text)
-    patterns = {
-        "severe": ["severe", "very severe", "extreme", "extremely severe",
-                   "worst", "unbearable", "intense"],
-        "moderate": ["moderate", "medium"],
-        "mild": ["mild", "slight", "little", "minor"]
-    }
-    for severity, values in patterns.items():
-        if any(value in query for value in values):
-            return severity
-    match = re.search(r"\b(10|[0-9])\s*(?:/\s*10)?\b", query)
-    if match:
-        score = int(match.group(1))
-        return "mild" if score <= 3 else "moderate" if score <= 6 else "severe"
-    return None
-
-
-def _conversation_response(session_id, text, answer, symptoms,
-                            confidence, intent="conversation"):
-    language = _language_from_text_or_state(session_id, text)
-    translated_answer = translate_conversation_response(answer, language)
-    save_chat_message(session_id, "user", text, symptoms or [])
-    save_chat_message(session_id, "assistant", translated_answer, symptoms or [])
-    return jsonify({
-        "status": "success", "session_id": session_id, "question": text,
-        "intent": intent, "confidence": round(confidence, 4),
-        "symptoms": symptoms or [],
-        "previous_symptoms": get_previous_symptoms(session_id),
-        "medical_query": True, "answer": translated_answer,
-        "answer_similarity": 1.0, "source": "conversation_engine",
-        "language": language
-    })
-
-
-def translate_conversation_response(answer, language):
-    """Translate the deterministic conversation-engine responses.
-
-    The medical engine generates a small, known set of English templates.
-    Translating those templates as complete sentences is safer than replacing
-    individual English fragments, which can otherwise leave English words in
-    the final response.
-    """
-    if not answer or language == "en":
-        return answer
-
-    # ------------------------------------------------------------
-    # Duration / symptom extraction from the English engine output
-    # ------------------------------------------------------------
-    m = re.match(
-        r"^Okay, I understand you have (.+?)\. How long have you had the (.+?)\? "
-        r"For example, you can say '2 days' or 'since yesterday'\.?$",
-        answer.strip(),
-        re.IGNORECASE,
-    )
-    if m:
-        symptom = m.group(1).strip()
-        symptom_local = {
-            "fever": "ताप" if language == "mr" else "बुखार",
-            "headache": "डोकेदुखी" if language == "mr" else "सिरदर्द",
-            "cough": "खोकला" if language == "mr" else "खांसी",
-            "cold": "सर्दी" if language == "mr" else "जुकाम",
-            "body pain": "अंगदुखी" if language == "mr" else "बदन दर्द",
-            "stomach pain": "पोटदुखी" if language == "mr" else "पेट दर्द",
-            "chest pain": "छातीत दुखणे" if language == "mr" else "सीने में दर्द",
-        }.get(symptom.lower(), symptom)
-        if language == "mr":
-            return (
-                f"ठीक आहे, तुम्हाला {symptom_local} आहे. तुम्हाला हा {symptom_local} "
-                "किती दिवसांपासून आहे? उदाहरणार्थ, तुम्ही '2 दिवस' किंवा 'कालपासून' असे सांगू शकता."
-            )
-        return (
-            f"ठीक है, आपको {symptom_local} है। आपको यह {symptom_local} कितने समय से है? "
-            "उदाहरण के लिए, आप '2 दिन' या 'कल से' कह सकते हैं।"
-        )
-
-    m = re.match(
-        r"^Okay, I understand you have (.+?) and it has been present for about (.+?)\. "
-        r"Do you also have headache, cough, chills, body pain, vomiting, or dizziness\?$",
-        answer.strip(), re.IGNORECASE,
-    )
-    if m:
-        symptom = m.group(1).strip()
-        duration = m.group(2).strip()
-        symptom_local = {
-            "fever": "ताप" if language == "mr" else "बुखार",
-            "headache": "डोकेदुखी" if language == "mr" else "सिरदर्द",
-            "cough": "खोकला" if language == "mr" else "खांसी",
-            "chest pain": "छातीत दुखणे" if language == "mr" else "सीने में दर्द",
-        }.get(symptom.lower(), symptom)
-        if language == "mr":
-            return (
-                f"ठीक आहे, तुम्हाला {symptom_local} आहे आणि तो सुमारे {duration} पासून आहे. "
-                "तुम्हाला डोकेदुखी, खोकला, थंडी वाजणे, अंगदुखी, उलटी किंवा चक्कर यापैकी काही आहे का?"
-            )
-        return (
-            f"ठीक है, आपको {symptom_local} है और यह लगभग {duration} से है। "
-            "क्या आपको सिरदर्द, खांसी, ठंड लगना, बदन दर्द, उल्टी या चक्कर भी हैं?"
-        )
-
-    m = re.match(
-        r"^Got it\. You have had (.+?) for about (.+?)\. Do you also have headache, cough, chills, body pain, vomiting, or dizziness\?$",
-        answer.strip(), re.IGNORECASE,
-    )
-    if m:
-        symptom = m.group(1).strip()
-        duration = m.group(2).strip()
-        symptom_local = {
-            "fever": "ताप" if language == "mr" else "बुखार",
-            "headache": "डोकेदुखी" if language == "mr" else "सिरदर्द",
-            "cough": "खोकला" if language == "mr" else "खांसी",
-        }.get(symptom.lower(), symptom)
-        if language == "mr":
-            return (
-                f"समजले. तुम्हाला {symptom_local} सुमारे {duration} पासून आहे. "
-                "तुम्हाला डोकेदुखी, खोकला, थंडी वाजणे, अंगदुखी, उलटी किंवा चक्कर यापैकी काही आहे का?"
-            )
-        return (
-            f"समझ गया। आपको {symptom_local} लगभग {duration} से है। "
-            "क्या आपको सिरदर्द, खांसी, ठंड लगना, बदन दर्द, उल्टी या चक्कर भी हैं?"
-        )
-
-    m = re.match(
-        r"^Thanks\. How would you describe the (.+?) severity: mild, moderate, or severe\?$",
-        answer.strip(), re.IGNORECASE,
-    )
-    if m:
-        symptom = m.group(1).strip()
-        symptom_local = {
-            "fever": "तापाची" if language == "mr" else "बुखार की",
-            "headache": "डोकेदुखीची" if language == "mr" else "सिरदर्द की",
-            "chest pain": "छातीत दुखण्याची" if language == "mr" else "सीने के दर्द की",
-        }.get(symptom.lower(), symptom)
-        if language == "mr":
-            return f"धन्यवाद. तुमच्या {symptom_local} तीव्रतेचे वर्णन सौम्य, मध्यम किंवा तीव्र असे कसे कराल?"
-        return f"धन्यवाद। आपके {symptom_local} की गंभीरता हल्की, मध्यम या तेज कैसी है?"
-
-    exact = {
-        "How severe is it? You can say mild, moderate, severe, or give a pain score from 0 to 10.": {
-            "mr": "ते किती तीव्र आहे? तुम्ही सौम्य, मध्यम किंवा तीव्र असे सांगू शकता किंवा 0 ते 10 पैकी वेदना गुण देऊ शकता.",
-            "hi": "यह कितना गंभीर है? आप हल्का, मध्यम या तेज कह सकते हैं या 0 से 10 तक दर्द का स्कोर बता सकते हैं।",
-        },
-        "Thanks. Before I give general guidance, are you having difficulty breathing, severe chest pain, fainting, confusion, heavy bleeding, or another severe/emergency symptom?": {
-            "mr": "धन्यवाद. सामान्य मार्गदर्शन देण्यापूर्वी, तुम्हाला श्वास घेण्यास त्रास, तीव्र छातीत दुखणे, बेशुद्ध पडणे, गोंधळ, जास्त रक्तस्राव किंवा इतर गंभीर/आपत्कालीन लक्षण आहे का?",
-            "hi": "धन्यवाद। सामान्य जानकारी देने से पहले, क्या आपको सांस लेने में दिक्कत, तेज सीने में दर्द, बेहोशी, भ्रम, ज्यादा रक्तस्राव या कोई अन्य गंभीर/आपातकालीन लक्षण है?",
-        },
-        "Please answer yes or no.": {
-            "mr": "कृपया हो किंवा नाही असे उत्तर द्या.",
-            "hi": "कृपया हाँ या नहीं में उत्तर दें।",
-        },
-        "Those symptoms can be signs of a medical emergency. Please seek urgent medical care now or contact your local emergency service. Do not rely on this chatbot for emergency care.": {
-            "mr": "ही लक्षणे वैद्यकीय आपत्कालीन स्थितीची चिन्हे असू शकतात. कृपया तातडीने वैद्यकीय मदत घ्या किंवा स्थानिक आपत्कालीन सेवेशी संपर्क करा. आपत्कालीन उपचारांसाठी या चॅटबॉटवर अवलंबून राहू नका.",
-            "hi": "ये लक्षण चिकित्सकीय आपातकाल के संकेत हो सकते हैं। कृपया तुरंत चिकित्सा सहायता लें या स्थानीय आपातकालीन सेवा से संपर्क करें। आपातकालीन उपचार के लिए इस चैटबॉट पर निर्भर न रहें।",
-        },
-        "Your message includes a potentially serious emergency symptom. Please seek urgent medical assessment now. If the symptom is severe, sudden, worsening, or you feel unsafe, contact your local emergency service or go to the nearest emergency department. Do not rely on this chatbot to determine the cause.": {
-            "mr": "तुमच्या संदेशात संभाव्यतः गंभीर आपत्कालीन लक्षण आहे. कृपया आत्ताच तातडीची वैद्यकीय तपासणी करून घ्या. लक्षण गंभीर, अचानक किंवा वाढत असल्यास किंवा तुम्हाला असुरक्षित वाटत असल्यास स्थानिक आपत्कालीन सेवेशी संपर्क करा किंवा जवळच्या आपत्कालीन विभागात जा. कारण निश्चित करण्यासाठी या चॅटबॉटवर अवलंबून राहू नका.",
-            "hi": "आपके संदेश में संभावित रूप से गंभीर आपातकालीन लक्षण है। कृपया अभी तुरंत चिकित्सा जांच करवाएं। यदि लक्षण गंभीर, अचानक या बढ़ रहे हैं, या आपको असुरक्षित महसूस हो रहा है, तो स्थानीय आपातकालीन सेवा से संपर्क करें या नजदीकी आपातकालीन विभाग में जाएं। कारण जानने के लिए इस चैटबॉट पर निर्भर न रहें।",
-        },
-    }
-    if answer.strip() in exact:
-        return exact[answer.strip()].get(language, answer)
-
-    # Final safety net: never return a partially translated English
-    # conversation response for a detected Indian-language session.
-    if language == "mr":
-        return "कृपया तुमची लक्षणे आणि त्यांचा कालावधी सांगा. मी सामान्य वैद्यकीय मार्गदर्शन देऊ शकतो."
-    if language == "hi":
-        return "कृपया अपने लक्षण और उनकी अवधि बताएं। मैं सामान्य चिकित्सकीय जानकारी दे सकता हूँ।"
-    return answer
-
-
-def translate_general_response(answer, language):
-    if not answer or language == "en":
-        return answer
-    if language == "mr":
-        return (
-            "मी मुख्यतः वैद्यकीय आणि आरोग्याशी संबंधित प्रश्नांमध्ये मदत करू शकतो. "
-            "तुम्ही मला लक्षणे, आजार, सामान्य आरोग्यविषयक माहिती, औषधे किंवा "
-            "वैद्यकीय मदत कधी घ्यावी याबद्दल विचारू शकता."
-        )
-    if language == "hi":
-        return (
-            "मैं मुख्य रूप से चिकित्सा और स्वास्थ्य से जुड़े सवालों में मदद कर सकता हूँ। "
-            "आप मुझसे लक्षणों, बीमारियों, सामान्य स्वास्थ्य जानकारी, दवाओं या "
-            "चिकित्सकीय सहायता कब लेनी चाहिए, इसके बारे में पूछ सकते हैं।"
-        )
-    return answer
-
-
-
-def build_conversation_guidance(state):
-    symptoms = []
-    primary = state.get("primary_symptom")
-    if primary:
-        symptoms.append(primary)
-    for symptom in state.get("associated_symptoms") or []:
-        if symptom and symptom not in symptoms:
-            symptoms.append(symptom)
-
-    response = build_multi_symptom_response(symptoms, "assistance") if symptoms else None
-    if not response:
-        response = (
-            "Thanks for sharing those details. I can provide general medical "
-            "information, but I cannot diagnose a condition."
-        )
-    context = []
-    if state.get("duration"):
-        context.append(f"You reported these symptoms for about {state['duration']}.")
-    if state.get("severity"):
-        context.append(f"You described the severity as {state['severity']}.")
-    if context:
-        response += "\n\n" + " ".join(context)
-    response += (
-        "\n\nIf symptoms become severe, rapidly worsen, or you develop "
-        "difficulty breathing, severe chest pain, fainting, confusion, "
-        "or heavy bleeding, seek urgent medical care."
-    )
-    return response
-
-
-
-def translate_medical_response(answer, language):
-    """Localize common deterministic medical-knowledge phrases."""
-    if not answer or language == "en":
-        return answer
-
-    translations = {
-        "mr": [
-            ("Here is some general medical information.",
-             "ही काही सामान्य वैद्यकीय माहिती आहे."),
-            ("This information does not provide a diagnosis.",
-             "ही माहिती निदान देत नाही."),
-            ("Fever:", "ताप:"),
-            ("Common symptoms associated with fever can include increased body temperature, chills, sweating, headache, body aches, weakness, and tiredness.",
-             "तापासोबत शरीराचे तापमान वाढणे, थंडी वाजणे, घाम येणे, डोकेदुखी, अंगदुखी, अशक्तपणा आणि थकवा अशी सामान्य लक्षणे दिसू शकतात."),
-            ("The cause of fever can vary, so symptoms alone cannot confirm a specific disease.",
-             "तापाची कारणे वेगवेगळी असू शकतात, त्यामुळे केवळ लक्षणांवरून विशिष्ट आजार निश्चित करता येत नाही."),
-            ("Important:", "महत्त्वाचे:"),
-            ("If symptoms are severe, worsening, persistent, or you have an emergency symptom, seek urgent medical care.",
-             "लक्षणे गंभीर, वाढत जाणारी किंवा सतत राहणारी असतील किंवा आपत्कालीन लक्षण दिसत असेल तर तातडीने वैद्यकीय मदत घ्या."),
-        ],
-        "hi": [
-            ("Here is some general medical information.",
-             "यह कुछ सामान्य चिकित्सा जानकारी है।"),
-            ("This information does not provide a diagnosis.",
-             "यह जानकारी निदान प्रदान नहीं करती है।"),
-            ("Fever:", "बुखार:"),
-            ("Common symptoms associated with fever can include increased body temperature, chills, sweating, headache, body aches, weakness, and tiredness.",
-             "बुखार के साथ शरीर का तापमान बढ़ना, ठंड लगना, पसीना आना, सिरदर्द, बदन दर्द, कमजोरी और थकान जैसे सामान्य लक्षण हो सकते हैं।"),
-            ("The cause of fever can vary, so symptoms alone cannot confirm a specific disease.",
-             "बुखार के कारण अलग-अलग हो सकते हैं, इसलिए केवल लक्षणों के आधार पर किसी विशेष बीमारी की पुष्टि नहीं की जा सकती।"),
-            ("Important:", "महत्वपूर्ण:"),
-            ("If symptoms are severe, worsening, persistent, or you have an emergency symptom, seek urgent medical care.",
-             "यदि लक्षण गंभीर, बढ़ते हुए या लगातार बने रहें, या कोई आपातकालीन लक्षण हो, तो तुरंत चिकित्सा सहायता लें।"),
-        ],
-    }
-
-    result = answer
-    for source, target in translations.get(language, []):
-        result = result.replace(source, target)
-    return result
-
-
-def handle_conversation_turn(session_id, text, symptoms, duration,
-                             confidence, final_intent):
-    state = get_conversation_state(session_id)
-    detected_language = detect_language(text)
-    language = (
-        detected_language
-        if detected_language != "en"
-        else (state.get("language") if state else "en")
-    ) or "en"
-    analysis_text = (
-        translate_input_to_english(text)
-        if language in {"mr", "hi"}
-        else text
-    )
-    query = normalize_text(analysis_text)
-
-    if state:
-        if language != state.get("language"):
-            save_conversation_state(
-                session_id, state.get("primary_symptom") or "symptom",
-                state.get("duration"), state.get("associated_symptoms", []),
-                state.get("severity"), state.get("step") or "duration",
-                language
-            )
-            state["language"] = language
-
-        step = state.get("step") or "duration"
-        primary = state.get("primary_symptom") or "symptom"
-        display_primary = primary.replace("_", " ")
-
-        if step == "duration":
-            if duration:
-                update_saved_symptom_duration(session_id, primary, duration)
-                state["duration"] = duration
-                save_conversation_state(
-                    session_id, primary, duration,
-                    state.get("associated_symptoms", []),
-                    state.get("severity"), "associated_symptoms", language
-                )
-                return _conversation_response(
-                    session_id, text,
-                    f"Got it. You have had {display_primary} for about {duration}. "
-                    "Do you also have headache, cough, chills, body pain, vomiting, or dizziness?",
-                    [], confidence, "conversation_follow_up"
-                )
-            return _conversation_response(
-                session_id, text,
-                f"How long have you had the {display_primary}? For example, you can say '2 days' or 'since yesterday'.",
-                [], confidence, "conversation_follow_up"
-            )
-
-        if step == "associated_symptoms":
-            new_symptoms = [s for s in symptoms if s != primary]
-            if query in {"no", "nope", "none", "no other symptoms", "not really", "nothing else"}:
-                new_symptoms = []
-            for symptom in new_symptoms:
-                save_medical_memory(
-                    session_id, "symptom", symptom,
-                    duration=state.get("duration"), source_message=text
-                )
-            save_conversation_state(
-                session_id, primary, state.get("duration"), new_symptoms,
-                state.get("severity"), "severity", language
-            )
-            return _conversation_response(
-                session_id, text,
-                f"Thanks. How would you describe the {display_primary} severity: mild, moderate, or severe?",
-                new_symptoms, confidence, "conversation_follow_up"
-            )
-
-        if step == "severity":
-            severity = extract_severity(analysis_text)
-            if not severity:
-                return _conversation_response(
-                    session_id, text,
-                    "How severe is it? You can say mild, moderate, severe, or give a pain score from 0 to 10.",
-                    [], confidence, "conversation_follow_up"
-                )
-            save_conversation_state(
-                session_id, primary, state.get("duration"),
-                state.get("associated_symptoms", []), severity,
-                "red_flags", language
-            )
-            return _conversation_response(
-                session_id, text,
-                "Thanks. Before I give general guidance, are you having difficulty breathing, severe chest pain, fainting, confusion, heavy bleeding, or another severe/emergency symptom?",
-                [], confidence, "conversation_safety_check"
-            )
-
-        if step == "red_flags":
-            emergency_phrases = [
-                "difficulty breathing", "cannot breathe", "cant breathe",
-                "severe chest pain", "fainting", "confusion", "heavy bleeding",
-                "shortness of breath", "coughing blood", "vomiting blood",
-                "seizure", "blue lips"
-            ]
-            yes = query in {"yes", "yeah", "yep"}
-            has_emergency = yes or any(p in query for p in emergency_phrases)
-            if has_emergency:
-                clear_conversation_state(session_id)
-                return _conversation_response(
-                    session_id, text,
-                    "Those symptoms can be signs of a medical emergency. Please seek urgent medical care now or contact your local emergency service. Do not rely on this chatbot for emergency care.",
-                    [], confidence, "emergency"
-                )
-            if query not in {"no", "nope", "none", "not really"}:
-                return _conversation_response(
-                    session_id, text,
-                    "Please answer yes or no. Are you having difficulty breathing, severe chest pain, fainting, confusion, heavy bleeding, or another severe/emergency symptom?",
-                    [], confidence, "conversation_safety_check"
-                )
-            answer = build_conversation_guidance(state)
-            clear_conversation_state(session_id)
-            return _conversation_response(
-                session_id, text, answer, [], confidence, "symptom_assistance"
-            )
-
-    if symptoms and final_intent == "symptom_assistance":
-        primary = symptoms[0]
-        other_symptoms = [s for s in symptoms if s != primary]
-        language = detected_language if detected_language != "en" else "en"
-
-        if duration:
-            step = "associated_symptoms"
-            answer = (
-                f"Okay, I understand you have {primary.replace('_', ' ')} and it has been present for about {duration}. "
-                "Do you also have headache, cough, chills, body pain, vomiting, or dizziness?"
-            )
-        else:
-            step = "duration"
-            answer = (
-                f"Okay, I understand you have {primary.replace('_', ' ')}. "
-                f"How long have you had the {primary.replace('_', ' ')}? For example, you can say '2 days' or 'since yesterday'."
-            )
-        save_structured_memories(session_id, text, symptoms, duration)
-        save_conversation_state(
-            session_id, primary, duration, other_symptoms,
-            extract_severity(analysis_text), step, language
-        )
-        return _conversation_response(
-            session_id, text, answer, symptoms, confidence, "conversation_start"
-        )
-
-    return None
-
-
 init_chat_database()
 init_medical_memory_table()
-init_conversation_state_table()
 
 
 # ============================================================
@@ -1140,67 +665,26 @@ print(
     "Loading Medical Knowledge Base..."
 )
 
+if not MEDICAL_KNOWLEDGE_FILE.exists():
 
-def load_medical_knowledge():
+    raise FileNotFoundError(
+        "Medical Knowledge file not found: "
+        f"{MEDICAL_KNOWLEDGE_FILE}"
+    )
 
-    if not MEDICAL_KNOWLEDGE_DIR.exists():
-        raise FileNotFoundError(
-            "Medical Knowledge directory not found: "
-            f"{MEDICAL_KNOWLEDGE_DIR}"
-        )
+medical_knowledge = pd.read_csv(
+    MEDICAL_KNOWLEDGE_FILE
+)
 
-    csv_files = sorted(MEDICAL_KNOWLEDGE_DIR.glob("*.csv"))
+print(
+    "Medical Knowledge Base loaded successfully."
+)
 
-    if not csv_files:
-        raise FileNotFoundError(
-            "No medical knowledge CSV files found in: "
-            f"{MEDICAL_KNOWLEDGE_DIR}"
-        )
-
-    frames = []
-    required_columns = {"symptom", "aliases", "question_type", "response"}
-
-    for csv_file in csv_files:
-        try:
-            frame = pd.read_csv(csv_file)
-        except Exception as exc:
-            print(f"Skipping {csv_file.name}: {exc}")
-            continue
-
-        frame.columns = [str(c).strip().lower() for c in frame.columns]
-        missing = required_columns - set(frame.columns)
-
-        if missing:
-            print(f"Skipping {csv_file.name}: missing columns {sorted(missing)}")
-            continue
-
-        frame = frame[["symptom", "aliases", "question_type", "response"]].copy()
-
-        for column in ["symptom", "aliases", "question_type", "response"]:
-            frame[column] = frame[column].fillna("").astype(str).str.strip()
-
-        frame["symptom"] = frame["symptom"].str.lower()
-        frame["question_type"] = frame["question_type"].str.lower()
-        frame = frame[(frame["symptom"] != "") & (frame["response"] != "")]
-
-        if not frame.empty:
-            frames.append(frame)
-            print(f"Loaded medical KB: {csv_file.name} ({len(frame)} records)")
-
-    if not frames:
-        raise ValueError("No valid medical knowledge records were loaded.")
-
-    return pd.concat(frames, ignore_index=True).drop_duplicates(
-        subset=["symptom", "aliases", "question_type", "response"]
-    ).reset_index(drop=True)
-
-
-medical_knowledge = load_medical_knowledge()
-
-print("Medical Knowledge Base loaded successfully.")
 print("----------------------------------------")
-print("Medical Knowledge records:", len(medical_knowledge))
-print("Medical KB files:", len(list(MEDICAL_KNOWLEDGE_DIR.glob("*.csv"))))
+print(
+    "Medical Knowledge records:",
+    len(medical_knowledge)
+)
 print("----------------------------------------")
 
 
@@ -1648,71 +1132,6 @@ SYMPTOM_ALIASES = {
     ]
 }
 
-# ============================================================
-# ADDITIONAL MEDICAL TOPIC ALIASES
-# ============================================================
-
-MEDICAL_TOPIC_ALIASES = {
-    "diabetes": ["diabetes", "diabetic", "sugar disease", "blood sugar"],
-    "anemia": ["anemia", "anaemia", "low hemoglobin", "low haemoglobin"],
-    "hemoglobin": ["hemoglobin", "haemoglobin", "hb level", "low hb"],
-    "asthma": ["asthma", "asthmatic"],
-    "migraine": ["migraine", "migraine headache"],
-    "dengue": ["dengue"],
-    "malaria": ["malaria"],
-    "typhoid": ["typhoid"],
-    "hypertension": ["hypertension", "high blood pressure", "high bp"],
-    "hypotension": ["hypotension", "low blood pressure", "low bp"],
-    "dehydration": ["dehydration", "dehydrated"],
-    "paracetamol": ["paracetamol", "acetaminophen", "calpol"],
-    "ibuprofen": ["ibuprofen"],
-    "aspirin": ["aspirin"],
-    "cetirizine": ["cetirizine"],
-    "antibiotic": ["antibiotic", "antibiotics"]
-}
-
-
-def extract_medical_topics(text):
-
-    normalized = normalize_text(text)
-    detected = []
-
-    for topic, aliases in MEDICAL_TOPIC_ALIASES.items():
-        for alias in aliases:
-            alias_normalized = normalize_text(alias)
-
-            if (
-                normalized == alias_normalized
-                or f" {alias_normalized} " in f" {normalized} "
-            ):
-                if topic not in detected:
-                    detected.append(topic)
-                break
-
-    # Automatically use aliases from every medical knowledge CSV.
-    for _, row in medical_knowledge.iterrows():
-        topic = str(row.get("symptom", "")).strip().lower()
-        aliases = str(row.get("aliases", "")).split("|")
-
-        if not topic:
-            continue
-
-        for alias in [topic] + aliases:
-            alias_normalized = normalize_text(alias)
-
-            if (
-                alias_normalized
-                and (
-                    normalized == alias_normalized
-                    or f" {alias_normalized} " in f" {normalized} "
-                )
-            ):
-                if topic not in detected:
-                    detected.append(topic)
-                break
-
-    return detected
-
 
 # ============================================================
 # EXTRACT SYMPTOMS
@@ -1831,10 +1250,6 @@ def is_medical_query(text):
         return True
 
     if extract_symptoms(text):
-
-        return True
-
-    if extract_medical_topics(text):
 
         return True
 
@@ -2003,60 +1418,6 @@ def get_knowledge_response(
 
 
 # ============================================================
-# DIRECT MEDICAL TOPIC RESPONSE
-# ============================================================
-
-def get_topic_knowledge_response(
-    topics,
-    question_type
-):
-    responses = []
-
-    for topic in topics:
-        rows = medical_knowledge[
-            medical_knowledge["symptom"]
-            .astype(str)
-            .str.strip()
-            .str.lower()
-            == topic.lower()
-        ]
-
-        if rows.empty:
-            continue
-
-        matching = rows[
-            rows["question_type"]
-            .astype(str)
-            .str.strip()
-            .str.lower()
-            == question_type.lower()
-        ]
-
-        if matching.empty:
-            matching = rows
-
-        response = str(
-            matching.iloc[0]["response"]
-        ).strip()
-
-        if response:
-            title = topic.replace("_", " ").title()
-            responses.append(f"{title}:\n{response}")
-
-    if not responses:
-        return None
-
-    return (
-        "Here is some general medical information. "
-        "This information does not provide a diagnosis.\n\n"
-        + "\n\n".join(responses)
-        + "\n\nImportant: If symptoms are severe, worsening, "
-        "persistent, or you have an emergency symptom, seek "
-        "urgent medical care."
-    )
-
-
-# ============================================================
 # MULTI SYMPTOM RESPONSE
 # ============================================================
 
@@ -2177,58 +1538,76 @@ def build_multi_symptom_response(
 
 def extract_duration(text):
 
-    query = normalize_text(text)
+    query = normalize_text(
+        text
+    )
 
-    # --------------------------------------------------------
-    # Natural-language duration phrases
-    # --------------------------------------------------------
-    # These are especially important when the user reports the
-    # duration in the same message as the symptom, e.g.
-    # "I have fever since yesterday".
-    relative_phrases = [
-        (r"\bsince yesterday\b", "since yesterday"),
-        (r"\bsince today\b", "since today"),
-        (r"\bsince this morning\b", "since this morning"),
-        (r"\bsince this afternoon\b", "since this afternoon"),
-        (r"\bsince this evening\b", "since this evening"),
-        (r"\bsince last night\b", "since last night"),
-        (r"\bsince last evening\b", "since last evening"),
-        (r"\bsince last week\b", "since last week"),
-        (r"\bsince yesterday morning\b", "since yesterday morning"),
-        (r"\bsince yesterday evening\b", "since yesterday evening"),
-        (r"\bsince yesterday night\b", "since yesterday night"),
-    ]
-
-    for pattern, value in relative_phrases:
-        if re.search(pattern, query):
-            return value
-
-    # "since 2 days ago", "for 2 days", "2 days"
     patterns = [
-        r"(?:since|for)\s+(\d+)\s*(day|days|hour|hours|week|weeks|month|months)(?:\s+ago)?",
-        r"(\d+)\s*(day|days|hour|hours|week|weeks|month|months)",
+
+        r"(\d+)\s*(day|days)",
+        r"(\d+)\s*(hour|hours)",
+        r"(\d+)\s*(week|weeks)",
+        r"(\d+)\s*(month|months)"
     ]
+
 
     for pattern in patterns:
-        match = re.search(pattern, query)
+
+        match = re.search(
+            pattern,
+            query
+        )
 
         if match:
-            number = match.group(1)
-            unit = match.group(2)
+
+            number = match.group(
+                1
+            )
+
+            unit = match.group(
+                2
+            )
 
             unit_map = {
-                "day": "day" if number == "1" else "days",
-                "days": "day" if number == "1" else "days",
-                "hour": "hour" if number == "1" else "hours",
-                "hours": "hour" if number == "1" else "hours",
-                "week": "week" if number == "1" else "weeks",
-                "weeks": "week" if number == "1" else "weeks",
-                "month": "month" if number == "1" else "months",
-                "months": "month" if number == "1" else "months",
+
+                "day":
+                    "day" if number == "1"
+                    else "days",
+
+                "days":
+                    "day" if number == "1"
+                    else "days",
+
+                "hour":
+                    "hour" if number == "1"
+                    else "hours",
+
+                "hours":
+                    "hour" if number == "1"
+                    else "hours",
+
+                "week":
+                    "week" if number == "1"
+                    else "weeks",
+
+                "weeks":
+                    "week" if number == "1"
+                    else "weeks",
+
+                "month":
+                    "month" if number == "1"
+                    else "months",
+
+                "months":
+                    "month" if number == "1"
+                    else "months"
             }
 
-            prefix = "since " if re.search(r"\bsince\b", match.group(0)) else ""
-            return f"{prefix}{number} {unit_map.get(unit, unit)}".strip()
+            return (
+                f"{number} "
+                f"{unit_map.get(unit, unit)}"
+            )
+
 
     return None
 
@@ -2556,7 +1935,9 @@ def get_recent_memory_summary(
 
 
     measurements = list(
-        latest_measurements.values()
+        reversed(
+            list(latest_measurements.values())
+        )
     )
 
     return {
@@ -2935,10 +2316,8 @@ def build_specific_memory_response(
     # This prevents an older value (for example 10) from being repeated
     # after the user has reported a newer value (for example 11).
     if measurement_items:
-        # get_medical_memory() returns newest-first.
-        # Keep only the latest value for this measurement.
         measurement_items = [
-            measurement_items[0]
+            measurement_items[-1]
         ]
 
 
@@ -3252,78 +2631,47 @@ def determine_final_intent(
     model_intent,
     confidence
 ):
-    query = normalize_text(text)
-    words = set(query.split())
 
-    symptoms = extract_symptoms(text)
-    medical_topics = extract_medical_topics(text)
+    query = normalize_text(
+        text
+    )
 
-    # OPD / outpatient is deliberately not a supported intent.
+    words = set(
+        query.split()
+    )
+
+    symptoms = extract_symptoms(
+        text
+    )
+
+
+    if (
+        "opd" in words
+        or
+        "outpatient" in words
+    ):
+
+        return "opd"
+
 
     emergency_words = {
+
         "emergency",
         "unconscious",
         "critical",
         "trauma"
     }
 
-    emergency_phrases = [
-        "cannot breathe",
-        "cant breathe",
-        "severe chest pain",
-        "heavy bleeding",
-        "difficulty breathing",
-        "blue lips",
-        "collapsed",
-        "medical emergency"
-    ]
 
-    if (
-        words.intersection(emergency_words)
-        or any(
-            phrase in query
-            for phrase in emergency_phrases
-        )
+    if words.intersection(
+        emergency_words
     ):
+
         return "emergency"
 
-    medicine_topics = {
-        "paracetamol",
-        "ibuprofen",
-        "aspirin",
-        "cetirizine",
-        "antibiotic"
-    }
-
-    disease_topics = {
-        "diabetes",
-        "anemia",
-        "asthma",
-        "migraine",
-        "dengue",
-        "malaria",
-        "typhoid",
-        "hypertension",
-        "hypotension",
-        "dehydration"
-    }
-
-    if any(
-        topic in medicine_topics
-        for topic in medical_topics
-    ):
-        return "medicine_information"
-
-    if any(
-        topic in disease_topics
-        for topic in medical_topics
-    ):
-        return "disease_information"
-
-    if "hemoglobin" in medical_topics:
-        return "symptom_information"
 
     assistance_patterns = [
+
         "i have",
         "i am having",
         "i feel",
@@ -3337,40 +2685,50 @@ def determine_final_intent(
         "mere"
     ]
 
+
     if (
         symptoms
-        and any(
+        and
+        any(
             pattern in query
             for pattern in assistance_patterns
         )
     ):
+
         return "symptom_assistance"
 
+
     information_patterns = [
+
         "symptoms of",
         "symptoms for",
         "what are the symptoms",
         "signs of",
         "symptom of",
-        "symptoms",
-        "what is",
-        "what are",
-        "tell me about"
+        "symptoms"
     ]
+
 
     if (
         symptoms
-        and any(
+        and
+        any(
             pattern in query
             for pattern in information_patterns
         )
     ):
+
         return "symptom_information"
 
+
     if symptoms:
+
         return "symptom_assistance"
 
-    return str(model_intent)
+
+    return str(
+        model_intent
+    )
 
 
 # ============================================================
@@ -3677,84 +3035,6 @@ def delete_memory(
 
 
 # ============================================================
-# DIRECT MEASUREMENT MEMORY QUERY
-# ============================================================
-
-def build_latest_measurement_response(session_id, text):
-
-    query = normalize_text(text)
-
-    measurement_aliases = {
-        "hemoglobin": ["hemoglobin", "haemoglobin", "hb"],
-        "blood_pressure": ["blood pressure", "bp"],
-        "temperature": ["temperature", "temp"],
-        "blood_sugar": ["blood sugar", "sugar", "glucose"],
-        "heart_rate": ["heart rate", "pulse"],
-        "oxygen_saturation": ["oxygen saturation", "spo2", "oxygen level"],
-        "weight": ["weight"]
-    }
-
-    requested_name = None
-
-    for name, aliases in measurement_aliases.items():
-        for alias in aliases:
-            alias_normalized = normalize_text(alias)
-            if alias_normalized and alias_normalized in query:
-                requested_name = name
-                break
-        if requested_name:
-            break
-
-    if requested_name is None:
-        return None
-
-    # Only treat the query as a direct memory question when it asks for
-    # the user's saved value, not when it is reporting a new measurement.
-    query_patterns = [
-        "what is my",
-        "what was my",
-        "what is the latest",
-        "what was the latest",
-        "tell me my",
-        "show me my",
-        "do you know my",
-        "my latest",
-        "my current"
-    ]
-
-    if not any(pattern in query for pattern in query_patterns):
-        return None
-
-    memories = get_medical_memory(session_id, limit=100)
-    requested_normalized = normalize_text(requested_name)
-
-    matching = [
-        item for item in memories
-        if item.get("memory_type") == "measurement"
-        and normalize_text(item.get("name", "")) == requested_normalized
-    ]
-
-    if not matching:
-        display_name = requested_name.replace("_", " ").title()
-        return (
-            f"I don't have any saved information about {display_name} "
-            "from this session."
-        )
-
-    # get_medical_memory returns newest-first, so the first match is latest.
-    latest = matching[0]
-    display_name = requested_name.replace("_", " ").title()
-    value = str(latest.get("value") or "").strip()
-    unit = str(latest.get("unit") or "").strip()
-
-    return (
-        f"Your latest reported {display_name} is {value} {unit}."
-        "\n\nThis is based only on information you previously reported "
-        "and is not a diagnosis."
-    )
-
-
-# ============================================================
 # PREDICT
 # ============================================================
 
@@ -3809,16 +3089,20 @@ def predict():
     text = text.strip()
 
     # ========================================================
-    # LANGUAGE + INTERNAL MEDICAL ANALYSIS TEXT
+    # MULTILINGUAL ANALYSIS
     # ========================================================
-    # Keep the user's original text for display/storage, but use an
-    # English-normalized representation for the existing ML/NLP pipeline.
+    # Keep original text for UI/storage.
+    # Convert Marathi/Hindi to English internally so the
+    # existing ML/NLP/MEDIQ pipeline can understand it.
+
     detected_language = detect_language(text)
+
     analysis_text = (
         translate_input_to_english(text)
         if detected_language in {"mr", "hi"}
         else text
     )
+
 
 
     if not text:
@@ -3904,6 +3188,19 @@ def predict():
 
 
         # ====================================================
+        # FINAL INTENT
+        # ====================================================
+
+        final_intent = (
+            determine_final_intent(
+                analysis_text,
+                model_prediction,
+                confidence
+            )
+        )
+
+
+        # ====================================================
         # CURRENT DATA
         # ====================================================
 
@@ -3945,133 +3242,12 @@ def predict():
 
 
         # ====================================================
-        # EMERGENCY-FIRST SAFETY GATE
-        # ====================================================
-        # Red-flag symptoms must be handled before the
-        # conversational question flow. This prevents the
-        # assistant from asking routine questions such as
-        # duration before giving urgent-care guidance.
-        emergency_text = normalize_text(analysis_text)
-
-        # normalize_text() can collapse phrases such as
-        # "chest pain" -> "chestpain". Keep both natural and
-        # normalized forms so red-flag detection is robust.
-        emergency_patterns = [
-            "severe chest pain",
-            "severe chestpain",
-            "crushing chest pain",
-            "crushing chestpain",
-            "pressure in my chest",
-            "pressure in my chest",
-            "chest pain and difficulty breathing",
-            "chestpain and difficulty breathing",
-            "chest pain with difficulty breathing",
-            "chestpain with difficulty breathing",
-            "difficulty breathing",
-            "difficultybreathing",
-            "cannot breathe",
-            "cannotbreathe",
-            "can't breathe",
-            "cant breathe",
-            "shortness of breath",
-            "shortnessofbreath",
-            "fainting",
-            "passed out",
-            "passedout",
-            "loss of consciousness",
-            "lossofconsciousness",
-            "severe bleeding",
-            "severebleeding",
-            "heavy bleeding",
-            "heavybleeding",
-            "coughing blood",
-            "coughingblood",
-            "vomiting blood",
-            "vomitingblood",
-            "blood in vomit",
-            "bloodinvomit",
-            "severe confusion",
-            "severeconfusion",
-            "sudden confusion",
-            "suddenconfusion",
-            "seizure",
-            "convulsion",
-            "blue lips",
-            "bluelips",
-            "stroke symptoms",
-            "strokesymptoms",
-            "face drooping",
-            "facedrooping",
-            "difficulty speaking",
-            "difficultyspeaking",
-            "sudden weakness on one side",
-            "suddenweaknessononeside"
-        ]
-
-        emergency_detected = any(
-            pattern in emergency_text
-            for pattern in emergency_patterns
-        )
-
-        if emergency_detected:
-            emergency_answer = (
-                "Your message includes a potentially serious emergency "
-                "symptom. Please seek urgent medical assessment now. "
-                "If the symptom is severe, sudden, worsening, or you "
-                "feel unsafe, contact your local emergency service or "
-                "go to the nearest emergency department. Do not rely "
-                "on this chatbot to determine the cause."
-            )
-            emergency_answer = translate_conversation_response(
-                emergency_answer, detected_language
-            )
-
-            save_structured_memories(
-                session_id=session_id,
-                text=text,
-                symptoms=symptoms,
-                duration=duration
-            )
-
-            save_chat_message(
-                session_id,
-                "user",
-                text,
-                symptoms
-            )
-
-            save_chat_message(
-                session_id,
-                "assistant",
-                emergency_answer,
-                symptoms
-            )
-
-            return jsonify({
-                "status": "success",
-                "session_id": session_id,
-                "question": text,
-                "intent": "emergency",
-                "confidence": round(confidence, 4),
-                "symptoms": symptoms,
-                "previous_symptoms": previous_symptoms,
-                "duration": duration,
-                "measurements": measurements,
-                "medical_query": True,
-                "answer": emergency_answer,
-                "answer_similarity": 1.0,
-                "source": "emergency_safety_gate",
-                "language": detected_language
-            })
-
-
-        # ========================================================
         # NORMALIZED QUERY
-        # ========================================================
+        # ====================================================
 
         normalized_query = (
             normalize_text(
-                analysis_text
+                text
             )
         )
 
@@ -4116,53 +3292,6 @@ def predict():
 
 
         specific_memory_answer = None
-
-
-        # ====================================================
-        # DIRECT MEASUREMENT RECALL
-        # ====================================================
-        # Handles questions such as:
-        #   "what is my hemoglobin?"
-        #   "what was my BP?"
-        #   "what is my latest temperature?"
-        # This must run before the general fallback/MEDIQ retrieval.
-        # A new measurement such as "my hemoglobin is 12 g/dL" is not
-        # treated as recall because measurements is non-empty.
-        if not measurements:
-            direct_measurement_answer = (
-                build_latest_measurement_response(
-                    session_id,
-                    text
-                )
-            )
-
-            if direct_measurement_answer:
-                save_chat_message(
-                    session_id,
-                    "user",
-                    text,
-                    []
-                )
-
-                save_chat_message(
-                    session_id,
-                    "assistant",
-                    direct_measurement_answer,
-                    previous_symptoms
-                )
-
-                return jsonify({
-                    "status": "success",
-                    "session_id": session_id,
-                    "question": text,
-                    "intent": "measurement_recall",
-                    "confidence": round(confidence, 4),
-                    "symptoms": previous_symptoms,
-                    "medical_query": True,
-                    "answer": direct_measurement_answer,
-                    "answer_similarity": 1.0,
-                    "source": "structured_memory"
-                })
 
 
         # A NEW measurement must always be treated as a current report.
@@ -4355,34 +3484,6 @@ def predict():
 
 
         # ====================================================
-        # CONVERSATIONAL MEDICAL ENGINE
-        # ====================================================
-        # Run this BEFORE the legacy generic follow-up handler.
-        # This is important because replies such as "2 days" are
-        # generic follow-ups, but inside an active conversation they
-        # must advance the conversation state instead of returning
-        # the older generic follow-up message.
-
-        final_intent = determine_final_intent(
-            text,
-            model_prediction,
-            confidence
-        )
-
-        conversation_response = handle_conversation_turn(
-            session_id=session_id,
-            text=text,
-            symptoms=symptoms,
-            duration=duration,
-            confidence=confidence,
-            final_intent=final_intent
-        )
-
-        if conversation_response is not None:
-            return conversation_response
-
-
-        # ====================================================
         # FOLLOW-UP
         # ====================================================
 
@@ -4456,171 +3557,24 @@ def predict():
 
 
         # ====================================================
+        # ====================================================
         # GENERAL QUERY
         # ====================================================
 
         if not medical_query:
 
-            answer = general_fallback(
-                analysis_text
-            )
-            answer = translate_general_response(
-                answer, detected_language
-            )
+            # Gemini gets a chance to answer general health
+            # questions before the static fallback.
 
-
-            save_chat_message(
-                session_id,
-                "user",
-                text,
-                []
+            gemini_answer = generate_gemini_medical_response(
+                user_text=text,
+                language=detected_language,
+                medical_context="",
+                conversation_context=""
             )
 
+            if gemini_answer:
 
-            save_chat_message(
-                session_id,
-                "assistant",
-                answer,
-                []
-            )
-
-
-            return jsonify({
-
-                "status":
-                    "success",
-
-                "session_id":
-                    session_id,
-
-                "question":
-                    text,
-
-                "intent":
-                    "general",
-
-                "confidence":
-                    round(
-                        confidence,
-                        4
-                    ),
-
-                "symptoms":
-                    [],
-
-                "medical_query":
-                    False,
-
-                "answer":
-                    answer,
-
-                "answer_similarity":
-                    1.0,
-
-                "source":
-                    "general_fallback",
-                "language": detected_language
-            })
-
-
-        # ====================================================
-        # MEASUREMENT ONLY
-        # ====================================================
-
-        if measurements and not symptoms:
-
-            measurement_answer = (
-                build_measurement_response(
-                    measurements
-                )
-            )
-
-
-            save_structured_memories(
-                session_id=session_id,
-                text=text,
-                symptoms=[],
-                duration=duration
-            )
-
-
-            save_chat_message(
-                session_id,
-                "user",
-                text,
-                []
-            )
-
-
-            save_chat_message(
-                session_id,
-                "assistant",
-                measurement_answer,
-                []
-            )
-
-
-            return jsonify({
-
-                "status":
-                    "success",
-
-                "session_id":
-                    session_id,
-
-                "question":
-                    text,
-
-                "intent":
-                    "measurement_report",
-
-                "confidence":
-                    round(
-                        confidence,
-                        4
-                    ),
-
-                "symptoms":
-                    [],
-
-                "previous_symptoms":
-                    previous_symptoms,
-
-                "duration":
-                    duration,
-
-                "measurements":
-                    measurements,
-
-                "medical_query":
-                    True,
-
-                "answer":
-                    measurement_answer,
-
-                "answer_similarity":
-                    1.0,
-
-                "source":
-                    "structured_memory"
-            })
-
-
-        # ====================================================
-        # DIRECT MEDICAL TOPIC RESPONSE
-        # ====================================================
-
-        medical_topics = extract_medical_topics(analysis_text)
-
-        if medical_topics:
-            topic_question_type = get_question_type(analysis_text)
-
-            topic_answer = get_topic_knowledge_response(
-                medical_topics,
-                topic_question_type
-            )
-
-            if topic_answer:
                 save_chat_message(
                     session_id,
                     "user",
@@ -4628,17 +3582,10 @@ def predict():
                     symptoms
                 )
 
-                save_structured_memories(
-                    session_id=session_id,
-                    text=text,
-                    symptoms=symptoms,
-                    duration=duration
-                )
-
                 save_chat_message(
                     session_id,
                     "assistant",
-                    topic_answer,
+                    gemini_answer,
                     symptoms
                 )
 
@@ -4646,17 +3593,59 @@ def predict():
                     "status": "success",
                     "session_id": session_id,
                     "question": text,
-                    "intent": final_intent,
-                    "confidence": round(confidence, 4),
+                    "intent": "general",
+                    "confidence": round(
+                        confidence,
+                        4
+                    ),
                     "symptoms": symptoms,
-                    "previous_symptoms": previous_symptoms,
-                    "duration": duration,
-                    "measurements": measurements,
-                    "medical_query": True,
-                    "answer": topic_answer,
+                    "medical_query": False,
+                    "answer": gemini_answer,
                     "answer_similarity": 1.0,
-                    "source": "medical_knowledge"
+                    "source": "gemini",
+                    "language": detected_language
                 })
+
+            answer = general_fallback(
+                analysis_text
+            )
+
+            answer = translate_general_response(
+                answer,
+                detected_language
+            )
+
+            save_chat_message(
+                session_id,
+                "user",
+                text,
+                symptoms
+            )
+
+            save_chat_message(
+                session_id,
+                "assistant",
+                answer,
+                symptoms
+            )
+
+            return jsonify({
+                "status": "success",
+                "session_id": session_id,
+                "question": text,
+                "intent": "general",
+                "confidence": round(
+                    confidence,
+                    4
+                ),
+                "symptoms": symptoms,
+                "medical_query": False,
+                "answer": answer,
+                "answer_similarity": 1.0,
+                "source": "general_fallback",
+                "language": detected_language
+            })
+
 
         # ====================================================
         # MEDICAL RESPONSE
@@ -4666,10 +3655,9 @@ def predict():
 
             question_type = (
                 get_question_type(
-                    analysis_text
+                    text
                 )
             )
-
 
             medical_answer = (
                 build_multi_symptom_response(
@@ -4678,8 +3666,40 @@ def predict():
                 )
             )
 
+            # ------------------------------------------------
+            # GEMINI MEDICAL RESPONSE
+            # ------------------------------------------------
+            # The existing medical knowledge answer is supplied
+            # to Gemini as factual context.
+            # Gemini only rewrites/explains it naturally in the
+            # user's language.
+            # ------------------------------------------------
+
+            gemini_medical_answer = None
 
             if medical_answer:
+
+                gemini_medical_answer = (
+                    generate_gemini_medical_response(
+                        user_text=text,
+                        language=detected_language,
+                        medical_context=medical_answer,
+                        conversation_context=""
+                    )
+                )
+
+            # ------------------------------------------------
+            # Prefer Gemini when available.
+            # Otherwise preserve existing medical response.
+            # ------------------------------------------------
+
+            final_answer = (
+                gemini_medical_answer
+                if gemini_medical_answer
+                else medical_answer
+            )
+
+            if final_answer:
 
                 save_chat_message(
                     session_id,
@@ -4688,7 +3708,6 @@ def predict():
                     symptoms
                 )
 
-
                 save_structured_memories(
                     session_id=session_id,
                     text=text,
@@ -4696,14 +3715,12 @@ def predict():
                     duration=duration
                 )
 
-
                 save_chat_message(
                     session_id,
                     "assistant",
-                    medical_answer,
+                    final_answer,
                     symptoms
                 )
-
 
                 return jsonify({
 
@@ -4741,16 +3758,20 @@ def predict():
                         True,
 
                     "answer":
-                        translate_medical_response(
-                            medical_answer,
-                            detected_language
-                        ),
+                        final_answer,
 
                     "answer_similarity":
                         1.0,
 
                     "source":
-                        "medical_knowledge"
+                        (
+                            "gemini"
+                            if gemini_medical_answer
+                            else "medical_knowledge"
+                        ),
+
+                    "language":
+                        detected_language
                 })
 
 
@@ -4761,19 +3782,34 @@ def predict():
         mediq_result = (
             retrieve_mediq_answer(
                 analysis_text,
-                final_intent
+                model_prediction
             )
         )
 
 
         if mediq_result is not None:
 
-            answer = translate_medical_response(
+            answer = (
                 mediq_result[
                     "answer"
-                ],
-                detected_language
+                ]
             )
+
+            # Let Gemini explain the retrieved MEDIQ answer
+            # in the user's language while keeping MEDIQ as
+            # the factual source.
+
+            gemini_mediq_answer = (
+                generate_gemini_medical_response(
+                    user_text=text,
+                    language=detected_language,
+                    medical_context=answer,
+                    conversation_context=""
+                )
+            )
+
+            if gemini_mediq_answer:
+                answer = gemini_mediq_answer
 
 
             save_structured_memories(
@@ -4844,7 +3880,14 @@ def predict():
                     ],
 
                 "source":
-                    "mediq"
+                    (
+                        "gemini"
+                        if gemini_mediq_answer
+                        else "mediq"
+                    ),
+
+                "language":
+                    detected_language
             })
 
 
@@ -4993,5 +4036,3 @@ if __name__ == "__main__":
         port=5000,
         debug=False
     )
-
-

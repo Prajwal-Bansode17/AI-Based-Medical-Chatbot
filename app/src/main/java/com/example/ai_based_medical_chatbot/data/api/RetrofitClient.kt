@@ -1,46 +1,69 @@
 package com.example.ai_based_medical_chatbot.data.api
 
 import okhttp3.OkHttpClient
+import okhttp3.Interceptor
+import okhttp3.Response
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import java.util.concurrent.TimeUnit
-import okhttp3.Interceptor
-import okhttp3.Response
 
 object RetrofitClient {
 
     private class RetryInterceptor(
         private val maxRetries: Int = 1
     ) : Interceptor {
-        override fun intercept(chain: Interceptor.Chain): Response {
+
+        override fun intercept(
+            chain: Interceptor.Chain
+        ): Response {
+
             var attempt = 0
             var lastException: Exception? = null
 
             while (attempt <= maxRetries) {
+
                 try {
-                    return chain.proceed(chain.request())
+                    return chain.proceed(
+                        chain.request()
+                    )
+
                 } catch (e: Exception) {
+
                     lastException = e
-                    if (attempt == maxRetries) throw e
+
+                    if (attempt == maxRetries) {
+                        throw e
+                    }
+
                     attempt++
                 }
             }
 
-            throw lastException ?: IllegalStateException("Request failed")
+            throw lastException
+                ?: IllegalStateException(
+                    "Request failed"
+                )
         }
     }
 
-    // =========================================================
+
     // =========================================================
     // LOCAL FLASK API
     // =========================================================
-    // The Flask backend is running on the development laptop.
-    // Android phone and laptop must be connected to the same Wi-Fi.
-    // Current laptop IPv4: 192.168.1.8
-    // Flask API: http://192.168.1.8:5000/
+    // Flask backend is running on Prajwal's laptop.
+    //
+    // Current laptop IPv4:
+    // 172.26.114.98
+    //
+    // Physical Android phone and laptop must be connected
+    // to the same Wi-Fi/network.
+    //
+    // Flask API:
+    // http://172.26.114.98:5000/
     // =========================================================
 
-    private const val BASE_URL = "http://192.168.1.8:5000/"
+    private const val BASE_URL =
+        "http://172.26.114.98:5000/"
 
 
     // =========================================================
@@ -49,7 +72,10 @@ object RetrofitClient {
 
     private val okHttpClient =
         OkHttpClient.Builder()
-            .addInterceptor(RetryInterceptor())
+
+            .addInterceptor(
+                RetryInterceptor()
+            )
 
             // Time to establish connection
             .connectTimeout(
