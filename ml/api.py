@@ -176,6 +176,72 @@ def detect_language(text):
     return "en"
 
 
+# ============================================================
+# EXPLICIT OUTPUT-LANGUAGE REQUEST DETECTION
+# ============================================================
+#
+# detect_language() above answers "what language is the user's sentence
+# written in". That is NOT the same question as "what language does the
+# user want the ANSWER in". A user can type/speak entirely in English and
+# still ask for a Marathi answer ("I have back pain, please give me
+# information in Marathi"), or type mostly in Marathi/Hindi and ask for
+# the answer in a different language ("मला back pain आहे, information
+# English मध्ये द्या"). This function looks specifically for the user
+# NAMING a language (English/Hindi/Marathi, in either script, with or
+# without connecting words like "in" / "में" / "मध्ये" / "mein" / "madhe")
+# anywhere in the message. If more than one language name is mentioned,
+# the one mentioned LAST wins, since that is how these requests are
+# phrased in practice ("...information Marathi में दो" / "...explain it
+# in Hindi") — the language name comes right before/at the request itself.
+
+_ENGLISH_LANG_NAME_RE = re.compile(r"\benglish\b", re.IGNORECASE)
+_HINDI_LANG_NAME_RE = re.compile(r"\bhindi\b", re.IGNORECASE)
+_MARATHI_LANG_NAME_RE = re.compile(r"\bmarathi\b", re.IGNORECASE)
+
+_DEVANAGARI_LANG_NAME_TOKENS = {
+    "en": ["इंग्रजी", "इंग्लिश", "इंग्रज़ी"],
+    "hi": ["हिंदी", "हिन्दी"],
+    "mr": ["मराठी"],
+}
+
+
+def detect_requested_output_language(text):
+    """
+    Return "en" / "hi" / "mr" if the message explicitly names a response
+    language (e.g. "in Marathi", "मराठीत", "Hindi में", "English मध्ये"),
+    else None. None means: fall back to the detected input language.
+    """
+    if not text:
+        return None
+
+    text = str(text)
+    mentions = []  # (position_in_text, language_code)
+
+    for pattern, lang in (
+        (_ENGLISH_LANG_NAME_RE, "en"),
+        (_HINDI_LANG_NAME_RE, "hi"),
+        (_MARATHI_LANG_NAME_RE, "mr"),
+    ):
+        for match in pattern.finditer(text):
+            mentions.append((match.start(), lang))
+
+    for lang, tokens in _DEVANAGARI_LANG_NAME_TOKENS.items():
+        for token in tokens:
+            search_from = 0
+            while True:
+                idx = text.find(token, search_from)
+                if idx == -1:
+                    break
+                mentions.append((idx, lang))
+                search_from = idx + len(token)
+
+    if not mentions:
+        return None
+
+    mentions.sort(key=lambda item: item[0])
+    return mentions[-1][1]
+
+
 # Exact-phrase shortcuts for a handful of common canned inputs. This is
 # intentionally narrow (full-sentence, exact match only) — it's a cheap
 # first pass, not a translator. Anything else in Marathi/Hindi falls
@@ -1504,6 +1570,17 @@ def predict():
     # memory recall, and Gemini prompts. See LANGUAGE_SUPPORT_NOTES below
     # for exactly what this covers.
     detected_language = detect_language(text)
+
+    # requested_output_language is set only when the user EXPLICITLY named
+    # a response language (e.g. "in Marathi", "Hindi में"). When present it
+    # always wins over the language the sentence happens to be written in.
+    # final_language is what actually goes into every "language" field in
+    # the JSON response and into every Gemini/localization call below —
+    # detected_language is used only to decide how to pre-process the
+    # input text (analysis_text), never for the response language.
+    requested_output_language = detect_requested_output_language(text)
+    final_language = requested_output_language or detected_language
+
     analysis_text = (
         translate_input_to_english(text)
         if detected_language in {"mr", "hi"}
@@ -1548,7 +1625,7 @@ def predict():
             specific_memory_answer = build_specific_memory_response(session_id, text)
 
         if specific_memory_answer:
-            localized_answer = localize_answer(specific_memory_answer, detected_language)
+            localized_answer = localize_answer(specific_memory_answer, final_language)
 
             save_chat_message(session_id, "user", text, [])
             save_chat_message(session_id, "assistant", localized_answer, previous_symptoms)
@@ -1564,7 +1641,7 @@ def predict():
                 "answer": localized_answer,
                 "answer_similarity": 1.0,
                 "source": "structured_memory",
-                "language": detected_language,
+                "language": final_language,
             })
 
         # ----------------------------------------------------
@@ -1572,7 +1649,7 @@ def predict():
         # ----------------------------------------------------
         if any(pattern in normalized_query for pattern in MEMORY_RECALL_PATTERNS):
             memory_answer = build_memory_recall_response(session_id)
-            localized_answer = localize_answer(memory_answer, detected_language)
+            localized_answer = localize_answer(memory_answer, final_language)
 
             save_chat_message(session_id, "user", text, [])
             save_chat_message(session_id, "assistant", localized_answer, previous_symptoms)
@@ -1588,7 +1665,7 @@ def predict():
                 "answer": localized_answer,
                 "answer_similarity": 1.0,
                 "source": "structured_memory",
-                "language": detected_language,
+                "language": final_language,
             })
 
         # ----------------------------------------------------
@@ -1603,7 +1680,7 @@ def predict():
 
             followup_answer = generate_gemini_medical_response(
                 user_text=text,
-                language=detected_language,
+                language=final_language,
                 medical_context=followup_context,
                 conversation_context=conversation_context,
             )
@@ -1611,7 +1688,7 @@ def predict():
             if not followup_answer:
                 followup_answer = build_followup_response(session_id, text)
                 if followup_answer:
-                    followup_answer = localize_answer(followup_answer, detected_language)
+                    followup_answer = localize_answer(followup_answer, final_language)
 
             if followup_answer:
                 save_chat_message(session_id, "user", text, [])
@@ -1629,7 +1706,7 @@ def predict():
                     "answer": followup_answer,
                     "answer_similarity": 1.0,
                     "source": "conversation_memory",
-                    "language": detected_language,
+                    "language": final_language,
                 })
 
         # ----------------------------------------------------
@@ -1638,7 +1715,7 @@ def predict():
         if not medical_query:
             gemini_answer = generate_gemini_medical_response(
                 user_text=text,
-                language=detected_language,
+                language=final_language,
                 medical_context="",
                 conversation_context=conversation_context,
             )
@@ -1658,10 +1735,10 @@ def predict():
                     "answer": gemini_answer,
                     "answer_similarity": 1.0,
                     "source": "gemini",
-                    "language": detected_language,
+                    "language": final_language,
                 })
 
-            answer = localize_answer(general_fallback(analysis_text), detected_language)
+            answer = localize_answer(general_fallback(analysis_text), final_language)
 
             save_chat_message(session_id, "user", text, symptoms)
             save_chat_message(session_id, "assistant", answer, symptoms)
@@ -1677,7 +1754,7 @@ def predict():
                 "answer": answer,
                 "answer_similarity": 1.0,
                 "source": "general_fallback",
-                "language": detected_language,
+                "language": final_language,
             })
 
         # ----------------------------------------------------
@@ -1693,7 +1770,7 @@ def predict():
             if medical_answer:
                 gemini_medical_answer = generate_gemini_medical_response(
                     user_text=text,
-                    language=detected_language,
+                    language=final_language,
                     medical_context=medical_answer,
                     conversation_context=conversation_context,
                 )
@@ -1701,7 +1778,7 @@ def predict():
             if gemini_medical_answer:
                 final_answer = gemini_medical_answer
             elif medical_answer:
-                final_answer = localize_answer(medical_answer, detected_language)
+                final_answer = localize_answer(medical_answer, final_language)
             else:
                 final_answer = None
 
@@ -1726,7 +1803,7 @@ def predict():
                     "answer": final_answer,
                     "answer_similarity": 1.0,
                     "source": "gemini" if gemini_medical_answer else "medical_knowledge",
-                    "language": detected_language,
+                    "language": final_language,
                 })
 
         # ----------------------------------------------------
@@ -1739,7 +1816,7 @@ def predict():
 
             gemini_mediq_answer = generate_gemini_medical_response(
                 user_text=text,
-                language=detected_language,
+                language=final_language,
                 medical_context=answer,
                 conversation_context=conversation_context,
             )
@@ -1747,7 +1824,7 @@ def predict():
             if gemini_mediq_answer:
                 answer = gemini_mediq_answer
             else:
-                answer = localize_answer(answer, detected_language)
+                answer = localize_answer(answer, final_language)
 
             save_structured_memories(
                 session_id=session_id, text=text, symptoms=symptoms, duration=duration
@@ -1769,7 +1846,7 @@ def predict():
                 "answer": answer,
                 "answer_similarity": mediq_result["similarity"],
                 "source": "gemini" if gemini_mediq_answer else "mediq",
-                "language": detected_language,
+                "language": final_language,
             })
 
         # ----------------------------------------------------
@@ -1779,7 +1856,7 @@ def predict():
             "I could not find a suitable answer in my current medical "
             "knowledge base. Please consult a qualified healthcare "
             "professional for personalized medical advice.",
-            detected_language,
+            final_language,
         )
 
         save_structured_memories(
@@ -1800,7 +1877,7 @@ def predict():
             "answer": answer,
             "answer_similarity": 0.0,
             "source": "safe_fallback",
-            "language": detected_language,
+            "language": final_language,
         })
 
     except Exception as e:

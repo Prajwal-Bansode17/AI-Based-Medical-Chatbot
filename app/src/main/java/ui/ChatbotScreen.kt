@@ -2,6 +2,9 @@ package ui
 
 import android.content.Context
 import android.content.Intent
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.widget.Toast
 import android.os.Handler
 import android.os.Looper
 import android.speech.RecognizerIntent
@@ -38,6 +41,10 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.ThumbUp
+import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -120,7 +127,8 @@ data class ChatMessage(
     val intent: String = "",
     val confidence: Double = 0.0,
     val similarity: Double = 0.0,
-    val isError: Boolean = false
+    val isError: Boolean = false,
+    val language: String = ""
 )
 
 // Backend contract used by ChatbotScreen:
@@ -193,6 +201,7 @@ fun ChatbotScreen(
     // otherwise a failed voice request can leave this stuck "true" and a
     // later typed message gets read aloud unexpectedly.
     var speakNextResponse by remember { mutableStateOf(false) }
+    var lastUserQuestion by remember { mutableStateOf("") }
 
     val textToSpeech = remember(context) {
         TextToSpeech(context) { status ->
@@ -325,6 +334,7 @@ fun ChatbotScreen(
         isListening = false
 
         messages.add(ChatMessage(text = cleanText, isUser = true))
+        lastUserQuestion = cleanText
         message = ""
         keyboardController?.hide()
         isTyping = true
@@ -359,7 +369,8 @@ fun ChatbotScreen(
                             isUser = false,
                             intent = result.intent,
                             confidence = result.confidence,
-                            similarity = result.answerSimilarity
+                            similarity = result.answerSimilarity,
+                            language = normalizeResponseLanguage(result.language)
                         )
                     )
 
@@ -625,7 +636,30 @@ fun ChatbotScreen(
             item { Spacer(modifier = Modifier.height(4.dp)) }
 
             items(items = messages) { chatMessage ->
-                MessageBubble(message = chatMessage)
+                MessageBubble(
+                    message = chatMessage,
+                    context = context,
+                    onRegenerate = {
+                        if (!isTyping && lastUserQuestion.isNotBlank()) {
+                            sendMessage(lastUserQuestion)
+                        }
+                    },
+                    onSpeak = { aiMessage ->
+                        if (isSpeaking) {
+                            textToSpeech.stop()
+                            isSpeaking = false
+                        } else {
+                            val locale = localeForDetectedCode(
+                                normalizeResponseLanguage(aiMessage.language)
+                            )
+                            speakResponse(
+                                aiMessage.text,
+                                locale,
+                                "manual_${UUID.randomUUID()}"
+                            )
+                        }
+                    }
+                )
             }
 
             if (isTyping) {
@@ -845,7 +879,14 @@ private fun fixMeasurementFormatting(
 // =============================================================
 
 @Composable
-fun MessageBubble(message: ChatMessage) {
+fun MessageBubble(
+    message: ChatMessage,
+    context: Context,
+    onRegenerate: () -> Unit,
+    onSpeak: (ChatMessage) -> Unit
+) {
+    var liked by remember(message.text) { mutableStateOf<Boolean?>(null) }
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = if (message.isUser) Arrangement.End else Arrangement.Start,
@@ -856,10 +897,18 @@ fun MessageBubble(message: ChatMessage) {
                 modifier = Modifier
                     .size(34.dp)
                     .clip(CircleShape)
-                    .background(if (message.isError) Color(0xFFD32F2F) else Color(0xFF1976D2)),
+                    .background(
+                        if (message.isError) Color(0xFFD32F2F)
+                        else Color(0xFF1976D2)
+                    ),
                 contentAlignment = Alignment.Center
             ) {
-                Text(text = "AI", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    text = "AI",
+                    color = Color.White,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold
+                )
             }
 
             Spacer(modifier = Modifier.width(7.dp))
@@ -871,9 +920,19 @@ fun MessageBubble(message: ChatMessage) {
         ) {
             Surface(
                 shape = if (message.isUser) {
-                    RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp, bottomStart = 20.dp, bottomEnd = 5.dp)
+                    RoundedCornerShape(
+                        topStart = 20.dp,
+                        topEnd = 20.dp,
+                        bottomStart = 20.dp,
+                        bottomEnd = 5.dp
+                    )
                 } else {
-                    RoundedCornerShape(topStart = 5.dp, topEnd = 20.dp, bottomStart = 20.dp, bottomEnd = 20.dp)
+                    RoundedCornerShape(
+                        topStart = 5.dp,
+                        topEnd = 20.dp,
+                        bottomStart = 20.dp,
+                        bottomEnd = 20.dp
+                    )
                 },
                 color = when {
                     message.isError -> Color(0xFFFFEBEE)
@@ -882,23 +941,185 @@ fun MessageBubble(message: ChatMessage) {
                 },
                 shadowElevation = if (message.isUser) 0.dp else 1.dp
             ) {
-                Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 11.dp)) {
-                    FormattedMessageText(text = message.text, isUser = message.isUser)
+                Column(
+                    modifier = Modifier.padding(
+                        horizontal = 14.dp,
+                        vertical = 11.dp
+                    )
+                ) {
+                    FormattedMessageText(
+                        text = message.text,
+                        isUser = message.isUser
+                    )
+                }
+            }
+
+            // Gemini-style response action bar.
+            // Only AI responses get these actions; user bubbles remain unchanged.
+            if (!message.isUser && !message.isError) {
+                Spacer(modifier = Modifier.height(3.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    ActionIcon(
+                        icon = Icons.Default.ThumbUp,
+                        description = "Helpful",
+                        active = liked == true,
+                        onClick = {
+                            liked = if (liked == true) null else true
+                            Toast.makeText(
+                                context,
+                                if (liked == true) "Marked helpful" else "Feedback cleared",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    )
+
+                    ActionIcon(
+                        icon = null,
+                        textIcon = "👎",
+                        description = "Not helpful",
+                        active = liked == false,
+                        onClick = {
+                            liked = if (liked == false) null else false
+                            Toast.makeText(
+                                context,
+                                if (liked == false) "Feedback recorded" else "Feedback cleared",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    )
+
+                    ActionIcon(
+                        icon = Icons.Default.Refresh,
+                        description = "Regenerate",
+                        onClick = onRegenerate
+                    )
+
+                    ActionIcon(
+                        icon = Icons.Default.Share,
+                        description = "Share",
+                        onClick = {
+                            val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                type = "text/plain"
+                                putExtra(Intent.EXTRA_TEXT, message.text)
+                            }
+                            context.startActivity(
+                                Intent.createChooser(
+                                    shareIntent,
+                                    "Share MedAssist response"
+                                )
+                            )
+                        }
+                    )
+
+                    ActionIcon(
+                        icon = null,
+                        textIcon = "⧉",
+                        description = "Copy",
+                        onClick = {
+                            val clipboard =
+                                context.getSystemService(Context.CLIPBOARD_SERVICE)
+                                    as? ClipboardManager
+
+                            clipboard?.setPrimaryClip(
+                                ClipData.newPlainText(
+                                    "MedAssist response",
+                                    message.text
+                                )
+                            )
+
+                            Toast.makeText(
+                                context,
+                                "Response copied",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    )
+
+                    ActionIcon(
+                        icon = Icons.Default.MoreVert,
+                        description = "More",
+                        onClick = {
+                            Toast.makeText(
+                                context,
+                                "More options coming soon",
+                                Toast.LENGTH_SHORT
+                            ).show()
+                        }
+                    )
+
+                    Spacer(modifier = Modifier.weight(1f))
+
+                    // Speaker action is separated to the right, matching
+                    // the Gemini-style layout from the reference image.
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(CircleShape)
+                            .background(Color(0xFF2E7D32))
+                            .clickable { onSpeak(message) },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "🔊",
+                            fontSize = 20.sp,
+                            modifier = Modifier.semantics {
+                                contentDescription = "Speak response"
+                            }
+                        )
+                    }
                 }
             }
 
             if (!message.isUser && !message.isError && message.intent.isNotBlank()) {
                 Row(
-                    modifier = Modifier.padding(start = 4.dp, top = 4.dp),
+                    modifier = Modifier.padding(start = 4.dp, top = 2.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = message.intent.replace("_", " ").replaceFirstChar { it.uppercase() },
+                        text = message.intent
+                            .replace("_", " ")
+                            .replaceFirstChar { it.uppercase() },
                         fontSize = 9.sp,
                         color = Color(0xFF98A2B3)
                     )
                 }
             }
+        }
+    }
+}
+
+@Composable
+private fun ActionIcon(
+    icon: androidx.compose.ui.graphics.vector.ImageVector? = null,
+    description: String,
+    active: Boolean = false,
+    textIcon: String? = null,
+    onClick: () -> Unit
+) {
+    IconButton(
+        onClick = onClick,
+        modifier = Modifier.size(38.dp)
+    ) {
+        if (icon != null) {
+            Icon(
+                imageVector = icon,
+                contentDescription = description,
+                tint = if (active) Color(0xFF1976D2) else Color(0xFF667085),
+                modifier = Modifier.size(20.dp)
+            )
+        } else {
+            Text(
+                text = textIcon ?: "",
+                color = if (active) Color(0xFF1976D2) else Color(0xFF667085),
+                fontSize = 20.sp,
+                modifier = Modifier.semantics {
+                    contentDescription = description
+                }
+            )
         }
     }
 }
