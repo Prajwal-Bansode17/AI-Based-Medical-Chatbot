@@ -1,5 +1,7 @@
 package ui
 
+import android.content.Context
+
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -22,6 +24,8 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -35,8 +39,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -60,6 +66,17 @@ fun LoginScreen(
 
     var email by remember {
         mutableStateOf("")
+    }
+
+    // Recent email suggestions. These are stored locally on the device.
+    val context = LocalContext.current
+
+    var recentEmails by remember {
+        mutableStateOf(loadRecentEmails(context))
+    }
+
+    var emailFieldFocused by remember {
+        mutableStateOf(false)
     }
 
     var password by remember {
@@ -337,61 +354,116 @@ fun LoginScreen(
                 // EMAIL FIELD
                 // =================================================
 
-                OutlinedTextField(
-                    value = email,
+                // =================================================
+                // EMAIL FIELD + RECENT EMAIL SUGGESTIONS
+                // =================================================
 
-                    onValueChange = {
-                        email = it
-                        emailError = ""
-                    },
+                Box(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
 
-                    modifier = Modifier.fillMaxWidth(),
+                    OutlinedTextField(
+                        value = email,
 
-                    enabled = !isLoading,
+                        onValueChange = {
+                            email = it
+                            emailError = ""
+                        },
 
-                    singleLine = true,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .onFocusChanged {
+                                emailFieldFocused = it.isFocused
+                            },
 
-                    placeholder = {
-                        Text(
-                            text = "Enter your email",
+                        enabled = !isLoading,
 
-                            color = Color(0xFF9AAAB3),
+                        singleLine = true,
 
-                            fontSize = 14.sp
+                        placeholder = {
+                            Text(
+                                text = "Enter your email",
+
+                                color = Color(0xFF9AAAB3),
+
+                                fontSize = 14.sp
+                            )
+                        },
+
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Email,
+
+                                contentDescription = "Email",
+
+                                tint = primaryBlue
+                            )
+                        },
+
+                        isError = emailError.isNotEmpty(),
+
+                        shape = RoundedCornerShape(15.dp),
+
+                        colors = OutlinedTextFieldDefaults.colors(
+
+                            focusedBorderColor = primaryBlue,
+
+                            unfocusedBorderColor = Color(0xFFD6E2E7),
+
+                            focusedContainerColor = Color(0xFFFAFDFE),
+
+                            unfocusedContainerColor = Color(0xFFFAFDFE),
+
+                            cursorColor = primaryBlue,
+
+                            focusedTextColor = textDark,
+
+                            unfocusedTextColor = textDark
                         )
-                    },
-
-                    leadingIcon = {
-                        Icon(
-                            imageVector = Icons.Default.Email,
-
-                            contentDescription = "Email",
-
-                            tint = primaryBlue
-                        )
-                    },
-
-                    isError = emailError.isNotEmpty(),
-
-                    shape = RoundedCornerShape(15.dp),
-
-                    colors = OutlinedTextFieldDefaults.colors(
-
-                        focusedBorderColor = primaryBlue,
-
-                        unfocusedBorderColor = Color(0xFFD6E2E7),
-
-                        focusedContainerColor = Color(0xFFFAFDFE),
-
-                        unfocusedContainerColor = Color(0xFFFAFDFE),
-
-                        cursorColor = primaryBlue,
-
-                        focusedTextColor = textDark,
-
-                        unfocusedTextColor = textDark
                     )
-                )
+
+                    val filteredSuggestions =
+                        recentEmails.filter {
+                            email.isBlank() ||
+                                    it.contains(
+                                        email.trim(),
+                                        ignoreCase = true
+                                    )
+                        }
+
+                    DropdownMenu(
+                        expanded =
+                            emailFieldFocused &&
+                                    !isLoading &&
+                                    filteredSuggestions.isNotEmpty(),
+
+                        onDismissRequest = {
+                            emailFieldFocused = false
+                        },
+
+                        modifier = Modifier.fillMaxWidth(0.90f)
+                    ) {
+
+                        filteredSuggestions.forEach { suggestion ->
+
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = suggestion,
+                                        color = textDark,
+                                        fontSize = 14.sp
+                                    )
+                                },
+
+                                onClick = {
+                                    email = suggestion
+                                    emailError = ""
+                                    emailFieldFocused = false
+                                }
+                            )
+                        }
+                    }
+                }
 
 
                 // =================================================
@@ -757,6 +829,15 @@ fun LoginScreen(
                         // SEND TO MAIN ACTIVITY / SUPABASE
                         // -----------------------------------------
 
+                        // Save the frequently used email locally so it can
+                        // be suggested the next time the user logs in.
+                        recentEmails =
+                            saveRecentEmail(
+                                context = context,
+                                email = cleanEmail,
+                                currentEmails = recentEmails
+                            )
+
                         onLoginClick(
                             cleanEmail,
                             password
@@ -968,4 +1049,78 @@ fun LoginScreen(
             }
         }
     }
+}
+
+// =========================================================
+// RECENT EMAIL SUGGESTIONS
+// =========================================================
+
+private const val LOGIN_PREFS_NAME = "medassist_login_preferences"
+private const val RECENT_EMAILS_KEY = "recent_emails"
+private const val MAX_RECENT_EMAILS = 5
+
+private fun loadRecentEmails(
+    context: Context
+): List<String> {
+
+    val preferences =
+        context.getSharedPreferences(
+            LOGIN_PREFS_NAME,
+            Context.MODE_PRIVATE
+        )
+
+    return preferences
+        .getStringSet(
+            RECENT_EMAILS_KEY,
+            emptySet()
+        )
+        ?.toList()
+        ?.sorted()
+        ?: emptyList()
+}
+
+private fun saveRecentEmail(
+    context: Context,
+    email: String,
+    currentEmails: List<String>
+): List<String> {
+
+    val cleanEmail = email.trim()
+
+    if (cleanEmail.isBlank()) {
+        return currentEmails
+    }
+
+    val updated =
+        buildList {
+
+            add(cleanEmail)
+
+            currentEmails.forEach { existing ->
+
+                if (
+                    !existing.equals(
+                        cleanEmail,
+                        ignoreCase = true
+                    )
+                ) {
+                    add(existing)
+                }
+            }
+        }
+            .take(MAX_RECENT_EMAILS)
+
+    context
+        .getSharedPreferences(
+            LOGIN_PREFS_NAME,
+            Context.MODE_PRIVATE
+        )
+        .edit()
+        .putStringSet(
+            RECENT_EMAILS_KEY,
+            updated.toSet()
+        )
+        .apply()
+
+    return updated
 }

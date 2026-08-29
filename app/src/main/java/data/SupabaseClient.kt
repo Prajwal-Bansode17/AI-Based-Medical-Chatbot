@@ -3,9 +3,13 @@ package com.example.ai_based_medical_chatbot.data
 import android.content.Context
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONObject
-import java.net.HttpURLConnection
-import java.net.URL
+import java.io.IOException
+import java.util.concurrent.TimeUnit
 
 data class SupabaseUser(
     val id: String,
@@ -33,30 +37,61 @@ object SupabaseClient {
     private const val KEY_FULL_NAME =
         "full_name"
 
-    // =========================================================
-    // SAVE USER SESSION
-    // =========================================================
+    private val jsonMediaType =
+        "application/json; charset=utf-8".toMediaType()
+
+    /*
+     * Supabase login is intentionally handled with OkHttp.
+     *
+     * The project already contains OkHttp 4.12.0 in build.gradle.kts.
+     * This avoids the Ktor Android-engine timeout that was happening
+     * during the Supabase Auth request.
+     */
+    private val httpClient =
+        OkHttpClient.Builder()
+            .connectTimeout(
+                30,
+                TimeUnit.SECONDS
+            )
+            .readTimeout(
+                30,
+                TimeUnit.SECONDS
+            )
+            .writeTimeout(
+                30,
+                TimeUnit.SECONDS
+            )
+            .callTimeout(
+                35,
+                TimeUnit.SECONDS
+            )
+            .retryOnConnectionFailure(true)
+            .build()
 
     private fun saveUser(
         context: Context,
         user: SupabaseUser
     ) {
-
         context
             .getSharedPreferences(
                 PREFS_NAME,
                 Context.MODE_PRIVATE
             )
             .edit()
-            .putString(KEY_USER_ID, user.id)
-            .putString(KEY_EMAIL, user.email)
-            .putString(KEY_FULL_NAME, user.fullName)
+            .putString(
+                KEY_USER_ID,
+                user.id
+            )
+            .putString(
+                KEY_EMAIL,
+                user.email
+            )
+            .putString(
+                KEY_FULL_NAME,
+                user.fullName
+            )
             .apply()
     }
-
-    // =========================================================
-    // GET SAVED USER
-    // =========================================================
 
     fun getSavedUser(
         context: Context
@@ -100,10 +135,6 @@ object SupabaseClient {
         )
     }
 
-    // =========================================================
-    // GET CHAT SESSION ID
-    // =========================================================
-
     fun getChatSessionId(
         context: Context
     ): String? {
@@ -115,14 +146,26 @@ object SupabaseClient {
         return "supabase_user_${user.id}"
     }
 
-    // =========================================================
-    // CLEAR SESSION
-    // =========================================================
+    /*
+     * Persistent login:
+     * MainActivity can call this when the application starts.
+     * The saved user is returned immediately, so reopening the app
+     * does not force the user to enter the password again.
+     */
+    suspend fun restoreSessionUser(
+        context: Context
+    ): SupabaseUser? =
+        withContext(Dispatchers.IO) {
+            getSavedUser(context)
+        }
 
+    /*
+     * Local logout. This is deliberately non-suspend because it only
+     * clears SharedPreferences and MainActivity can call it directly.
+     */
     fun clearSession(
         context: Context
     ) {
-
         context
             .getSharedPreferences(
                 PREFS_NAME,
@@ -133,9 +176,11 @@ object SupabaseClient {
             .apply()
     }
 
-    // =========================================================
-    // REGISTER USER
-    // =========================================================
+    suspend fun logoutUser(
+        context: Context
+    ) {
+        clearSession(context)
+    }
 
     suspend fun registerUser(
         email: String,
@@ -144,163 +189,140 @@ object SupabaseClient {
     ): Result<String> =
         withContext(Dispatchers.IO) {
 
+            val cleanEmail =
+                email.trim()
+
+            val cleanName =
+                fullName.trim()
+
+            if (cleanEmail.isBlank()) {
+                return@withContext Result.failure(
+                    Exception(
+                        "Please enter your email address."
+                    )
+                )
+            }
+
+            if (password.length < 6) {
+                return@withContext Result.failure(
+                    Exception(
+                        "Password must contain at least 6 characters."
+                    )
+                )
+            }
+
+            if (cleanName.isBlank()) {
+                return@withContext Result.failure(
+                    Exception(
+                        "Please enter your full name."
+                    )
+                )
+            }
+
             try {
 
-                val cleanEmail =
-                    email.trim()
-
-                val cleanName =
-                    fullName.trim()
-
-                if (cleanEmail.isBlank()) {
-                    return@withContext Result.failure(
-                        Exception(
-                            "Please enter your email address."
+                val body =
+                    JSONObject().apply {
+                        put(
+                            "email",
+                            cleanEmail
                         )
-                    )
-                }
-
-                if (password.length < 6) {
-                    return@withContext Result.failure(
-                        Exception(
-                            "Password must contain at least 6 characters."
+                        put(
+                            "password",
+                            password
                         )
-                    )
-                }
-
-                if (cleanName.isBlank()) {
-                    return@withContext Result.failure(
-                        Exception(
-                            "Please enter your full name."
-                        )
-                    )
-                }
-
-                val url =
-                    URL(
-                        "$SUPABASE_URL/auth/v1/signup"
-                    )
-
-                val connection =
-                    url.openConnection()
-                            as HttpURLConnection
-
-                try {
-
-                    connection.requestMethod =
-                        "POST"
-
-                    connection.doOutput =
-                        true
-
-                    connection.connectTimeout =
-                        15000
-
-                    connection.readTimeout =
-                        15000
-
-                    connection.setRequestProperty(
-                        "Content-Type",
-                        "application/json"
-                    )
-
-                    connection.setRequestProperty(
-                        "Accept",
-                        "application/json"
-                    )
-
-                    connection.setRequestProperty(
-                        "apikey",
-                        SUPABASE_KEY
-                    )
-
-                    connection.setRequestProperty(
-                        "Authorization",
-                        "Bearer $SUPABASE_KEY"
-                    )
-
-                    val body =
-                        JSONObject().apply {
-
-                            put(
-                                "email",
-                                cleanEmail
-                            )
-
-                            put(
-                                "password",
-                                password
-                            )
-
-                            put(
-                                "data",
-                                JSONObject().apply {
-
-                                    put(
-                                        "full_name",
-                                        cleanName
-                                    )
-                                }
-                            )
-                        }
-
-                    connection.outputStream.use { output ->
-
-                        output.write(
-                            body.toString()
-                                .toByteArray(
-                                    Charsets.UTF_8
+                        put(
+                            "data",
+                            JSONObject().apply {
+                                put(
+                                    "full_name",
+                                    cleanName
                                 )
+                            }
                         )
                     }
 
-                    val responseCode =
-                        connection.responseCode
-
-                    val responseText =
-                        readResponse(
-                            connection,
-                            responseCode
+                val request =
+                    Request.Builder()
+                        .url(
+                            "$SUPABASE_URL/auth/v1/signup"
                         )
+                        .post(
+                            body
+                                .toString()
+                                .toRequestBody(
+                                    jsonMediaType
+                                )
+                        )
+                        .header(
+                            "apikey",
+                            SUPABASE_KEY
+                        )
+                        .header(
+                            "Authorization",
+                            "Bearer $SUPABASE_KEY"
+                        )
+                        .header(
+                            "Accept",
+                            "application/json"
+                        )
+                        .build()
 
-                    if (
-                        responseCode in 200..299
-                    ) {
+                httpClient
+                    .newCall(request)
+                    .execute()
+                    .use { response ->
+
+                        val responseText =
+                            response.body
+                                ?.string()
+                                .orEmpty()
+
+                        if (!response.isSuccessful) {
+                            return@withContext Result.failure(
+                                Exception(
+                                    extractAuthError(
+                                        responseText,
+                                        false
+                                    )
+                                )
+                            )
+                        }
 
                         Result.success(
                             "Registration successful. Please verify your email before logging in."
                         )
-
-                    } else {
-
-                        Result.failure(
-                            Exception(
-                                extractErrorMessage(
-                                    responseText
-                                )
-                            )
-                        )
                     }
 
-                } finally {
+            } catch (e: java.net.SocketTimeoutException) {
 
-                    connection.disconnect()
-                }
+                Result.failure(
+                    Exception(
+                        "Supabase request timed out. Please try again."
+                    )
+                )
+
+            } catch (e: IOException) {
+
+                Result.failure(
+                    Exception(
+                        "Unable to connect to Supabase. Please check your internet connection."
+                    )
+                )
 
             } catch (e: Exception) {
 
                 Result.failure(
                     Exception(
                         e.message
-                            ?: "Unable to connect to Supabase."
+                            ?.takeIf {
+                                it.isNotBlank()
+                            }
+                            ?: "Registration failed. Please try again."
                     )
                 )
             }
         }
-
-    // =========================================================
-    // LOGIN USER
-    // =========================================================
 
     suspend fun loginUser(
         email: String,
@@ -309,340 +331,201 @@ object SupabaseClient {
     ): Result<SupabaseUser> =
         withContext(Dispatchers.IO) {
 
+            val cleanEmail =
+                email.trim()
+
+            if (cleanEmail.isBlank()) {
+                return@withContext Result.failure(
+                    Exception(
+                        "Please enter your email address."
+                    )
+                )
+            }
+
+            if (password.isBlank()) {
+                return@withContext Result.failure(
+                    Exception(
+                        "Please enter your password."
+                    )
+                )
+            }
+
             try {
 
-                val cleanEmail =
-                    email.trim()
-
-                if (cleanEmail.isBlank()) {
-
-                    return@withContext Result.failure(
-                        Exception(
-                            "Please enter your email address."
+                val body =
+                    JSONObject().apply {
+                        put(
+                            "email",
+                            cleanEmail
                         )
-                    )
-                }
-
-                if (password.isBlank()) {
-
-                    return@withContext Result.failure(
-                        Exception(
-                            "Please enter your password."
+                        put(
+                            "password",
+                            password
                         )
-                    )
-                }
+                    }
 
-                val url =
-                    URL(
-                        "$SUPABASE_URL/auth/v1/token?grant_type=password"
-                    )
+                val request =
+                    Request.Builder()
+                        .url(
+                            "$SUPABASE_URL/auth/v1/token?grant_type=password"
+                        )
+                        .post(
+                            body
+                                .toString()
+                                .toRequestBody(
+                                    jsonMediaType
+                                )
+                        )
+                        .header(
+                            "apikey",
+                            SUPABASE_KEY
+                        )
+                        .header(
+                            "Authorization",
+                            "Bearer $SUPABASE_KEY"
+                        )
+                        .header(
+                            "Accept",
+                            "application/json"
+                        )
+                        .build()
 
-                val connection =
-                    url.openConnection()
-                            as HttpURLConnection
+                httpClient
+                    .newCall(request)
+                    .execute()
+                    .use { response ->
 
-                try {
+                        val responseText =
+                            response.body
+                                ?.string()
+                                .orEmpty()
 
-                    connection.requestMethod =
-                        "POST"
+                        if (!response.isSuccessful) {
+                            return@withContext Result.failure(
+                                Exception(
+                                    extractAuthError(
+                                        responseText,
+                                        true
+                                    )
+                                )
+                            )
+                        }
 
-                    connection.doOutput =
-                        true
+                        val json =
+                            JSONObject(
+                                responseText
+                            )
 
-                    connection.connectTimeout =
-                        15000
+                        val user =
+                            json.optJSONObject(
+                                "user"
+                            )
+                                ?: return@withContext Result.failure(
+                                    Exception(
+                                        "Login failed: user information was not returned."
+                                    )
+                                )
 
-                    connection.readTimeout =
-                        15000
+                        val userId =
+                            user.optString(
+                                "id"
+                            )
 
-                    connection.setRequestProperty(
-                        "Content-Type",
-                        "application/json"
-                    )
+                        if (userId.isBlank()) {
+                            return@withContext Result.failure(
+                                Exception(
+                                    "Login failed: user ID was not returned."
+                                )
+                            )
+                        }
 
-                    connection.setRequestProperty(
-                        "Accept",
-                        "application/json"
-                    )
-
-                    connection.setRequestProperty(
-                        "apikey",
-                        SUPABASE_KEY
-                    )
-
-                    connection.setRequestProperty(
-                        "Authorization",
-                        "Bearer $SUPABASE_KEY"
-                    )
-
-                    val body =
-                        JSONObject().apply {
-
-                            put(
+                        val userEmail =
+                            user.optString(
                                 "email",
                                 cleanEmail
                             )
 
-                            put(
-                                "password",
-                                password
+                        val metadata =
+                            user.optJSONObject(
+                                "user_metadata"
                             )
-                        }
 
-                    connection.outputStream.use { output ->
+                        val fullName =
+                            metadata?.optString(
+                                "full_name",
+                                ""
+                            ) ?: ""
 
-                        output.write(
-                            body.toString()
-                                .toByteArray(
-                                    Charsets.UTF_8
-                                )
+                        val loggedInUser =
+                            SupabaseUser(
+                                id = userId,
+                                email = userEmail,
+                                fullName = fullName
+                            )
+
+                        saveUser(
+                            context,
+                            loggedInUser
+                        )
+
+                        Result.success(
+                            loggedInUser
                         )
                     }
 
-                    val responseCode =
-                        connection.responseCode
+            } catch (e: java.net.SocketTimeoutException) {
 
-                    val responseText =
-                        readResponse(
-                            connection,
-                            responseCode
-                        )
-
-                    if (
-                        responseCode !in 200..299
-                    ) {
-
-                        return@withContext Result.failure(
-                            Exception(
-                                extractLoginErrorMessage(
-                                    responseText
-                                )
-                            )
-                        )
-                    }
-
-                    val json =
-                        JSONObject(responseText)
-
-                    val user =
-                        json.optJSONObject("user")
-
-                            ?: return@withContext Result.failure(
-                                Exception(
-                                    "Login failed: user information was not returned."
-                                )
-                            )
-
-                    val userId =
-                        user.optString("id")
-
-                    if (userId.isBlank()) {
-
-                        return@withContext Result.failure(
-                            Exception(
-                                "Login failed: user ID was not returned."
-                            )
-                        )
-                    }
-
-                    val userEmail =
-                        user.optString(
-                            "email",
-                            cleanEmail
-                        )
-
-                    val metadata =
-                        user.optJSONObject(
-                            "user_metadata"
-                        )
-
-                    val fullName =
-                        metadata?.optString(
-                            "full_name",
-                            ""
-                        ) ?: ""
-
-                    val loggedInUser =
-                        SupabaseUser(
-                            id = userId,
-                            email = userEmail,
-                            fullName = fullName
-                        )
-
-                    // Save login session
-                    saveUser(
-                        context,
-                        loggedInUser
+                Result.failure(
+                    Exception(
+                        "Supabase request timed out. Please try again."
                     )
+                )
 
-                    Result.success(
-                        loggedInUser
+            } catch (e: IOException) {
+
+                Result.failure(
+                    Exception(
+                        "Unable to connect to Supabase. Please check your internet connection."
                     )
-
-                } finally {
-
-                    connection.disconnect()
-                }
+                )
 
             } catch (e: Exception) {
 
                 Result.failure(
                     Exception(
                         e.message
-                            ?: "Unable to connect to Supabase."
+                            ?.takeIf {
+                                it.isNotBlank()
+                            }
+                            ?: "Login failed. Please try again."
                     )
                 )
             }
         }
 
-    // =========================================================
-    // READ RESPONSE
-    // =========================================================
-
-    private fun readResponse(
-        connection: HttpURLConnection,
-        responseCode: Int
+    private fun extractAuthError(
+        response: String,
+        isLogin: Boolean
     ): String {
 
-        return if (
-            responseCode in 200..299
-        ) {
-
-            connection.inputStream
-                .bufferedReader()
-                .use {
-                    it.readText()
-                }
-
-        } else {
-
-            connection.errorStream
-                ?.bufferedReader()
-                ?.use {
-                    it.readText()
-                }
-                ?: "Unknown Supabase error"
-        }
-    }
-
-    // =========================================================
-    // LOGIN ERROR
-    // =========================================================
-
-    private fun extractLoginErrorMessage(
-        response: String
-    ): String {
-
-        return try {
-
-            val json =
-                JSONObject(response)
-
-            val errorCode =
-                json.optString(
-                    "error_code",
-                    ""
-                )
-
-            val errorDescription =
-                json.optString(
-                    "error_description",
-                    ""
-                )
-
-            val message =
-                json.optString(
-                    "msg",
-                    ""
-                )
-
-            val normalMessage =
-                json.optString(
-                    "message",
-                    ""
-                )
-
-            when {
-
-                errorCode ==
-                        "email_not_confirmed" ->
-
-                    "Email not confirmed. Please verify your email first."
-
-                errorDescription.contains(
-                    "Email not confirmed",
-                    ignoreCase = true
-                ) ->
-
-                    "Email not confirmed. Please verify your email first."
-
-                message.contains(
-                    "Email not confirmed",
-                    ignoreCase = true
-                ) ->
-
-                    "Email not confirmed. Please verify your email first."
-
-                errorCode ==
-                        "invalid_credentials" ->
-
-                    "Account not found or password is incorrect."
-
-                errorDescription.contains(
-                    "Invalid login credentials",
-                    ignoreCase = true
-                ) ->
-
-                    "Account not found or password is incorrect."
-
-                message.contains(
-                    "Invalid login credentials",
-                    ignoreCase = true
-                ) ->
-
-                    "Account not found or password is incorrect."
-
-                errorDescription.isNotBlank() ->
-                    errorDescription
-
-                message.isNotBlank() ->
-                    message
-
-                normalMessage.isNotBlank() ->
-                    normalMessage
-
-                else ->
-                    "Login failed. Please check your email and password."
+        if (response.isBlank()) {
+            return if (isLogin) {
+                "Login failed. Please try again."
+            } else {
+                "Registration failed. Please try again."
             }
-
-        } catch (_: Exception) {
-
-            "Login failed. Please check your email and password."
         }
-    }
-
-    // =========================================================
-    // GENERAL ERROR
-    // =========================================================
-
-    private fun extractErrorMessage(
-        response: String
-    ): String {
 
         return try {
 
             val json =
-                JSONObject(response)
+                JSONObject(
+                    response
+                )
 
             val errorCode =
                 json.optString(
                     "error_code",
-                    ""
-                )
-
-            val message =
-                json.optString(
-                    "msg",
                     ""
                 )
 
@@ -652,42 +535,83 @@ object SupabaseClient {
                     ""
                 )
 
+            val message =
+                json.optString(
+                    "msg",
+                    ""
+                )
+
             val normalMessage =
                 json.optString(
                     "message",
                     ""
                 )
 
+            val combined =
+                listOf(
+                    errorCode,
+                    errorDescription,
+                    message,
+                    normalMessage
+                ).joinToString(" ")
+
             when {
 
-                errorCode ==
-                        "user_already_exists" ->
+                combined.contains(
+                    "email_not_confirmed",
+                    ignoreCase = true
+                ) ||
+                        combined.contains(
+                            "email not confirmed",
+                            ignoreCase = true
+                        ) ->
+                    "Email not confirmed. Please verify your email first."
 
+                combined.contains(
+                    "invalid_credentials",
+                    ignoreCase = true
+                ) ||
+                        combined.contains(
+                            "invalid login credentials",
+                            ignoreCase = true
+                        ) ->
+                    "Account not found or password is incorrect."
+
+                combined.contains(
+                    "user_already_exists",
+                    ignoreCase = true
+                ) ||
+                        combined.contains(
+                            "already registered",
+                            ignoreCase = true
+                        ) ->
                     "An account with this email already exists. Please login."
 
-                message.isNotBlank() ->
-                    message
-
                 errorDescription.isNotBlank() ->
                     errorDescription
+
+                message.isNotBlank() ->
+                    message
 
                 normalMessage.isNotBlank() ->
                     normalMessage
 
+                errorCode.isNotBlank() ->
+                    errorCode
+
                 else ->
-                    "Registration failed. Please try again."
+                    if (isLogin) {
+                        "Login failed. Please check your email and password."
+                    } else {
+                        "Registration failed. Please try again."
+                    }
             }
 
         } catch (_: Exception) {
 
-            if (
-                response.isNotBlank()
-            ) {
-
-                response
-
+            if (isLogin) {
+                "Login failed. Please check your email and password."
             } else {
-
                 "Registration failed. Please try again."
             }
         }

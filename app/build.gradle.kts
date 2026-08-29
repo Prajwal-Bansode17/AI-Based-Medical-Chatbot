@@ -87,7 +87,7 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.lifecycle.runtime.ktx)
     implementation(libs.androidx.activity.compose)
-
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     // Compose
     implementation(
         platform(
@@ -137,6 +137,12 @@ dependencies {
 
     implementation(
         "io.ktor:ktor-client-core:3.2.1"
+    )
+
+
+    // Google ML Kit - Language Identification
+    implementation(
+        "com.google.mlkit:language-id:17.0.6"
     )
 
     // Retrofit

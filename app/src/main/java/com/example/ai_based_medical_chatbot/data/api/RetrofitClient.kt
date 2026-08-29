@@ -1,16 +1,21 @@
 package com.example.ai_based_medical_chatbot.data.api
 
-import okhttp3.OkHttpClient
 import okhttp3.Interceptor
+import okhttp3.OkHttpClient
 import okhttp3.Response
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
+import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 object RetrofitClient {
 
+    // =========================================================
+    // RETRY INTERCEPTOR
+    // =========================================================
+
     private class RetryInterceptor(
-        private val maxRetries: Int = 1
+        private val maxRetries: Int = 2
     ) : Interceptor {
 
         override fun intercept(
@@ -31,7 +36,9 @@ object RetrofitClient {
 
                     lastException = e
 
-                    if (attempt == maxRetries) {
+                    // Retry only network/connection failures.
+                    // HTTP 4xx/5xx responses are not retried.
+                    if (e !is IOException || attempt == maxRetries) {
                         throw e
                     }
 
@@ -48,22 +55,23 @@ object RetrofitClient {
 
 
     // =========================================================
-    // LOCAL FLASK API
+    // FLASK BACKEND
     // =========================================================
-    // Flask backend is running on Prajwal's laptop.
     //
-    // Current laptop IPv4:
-    // 172.26.114.98
+    // Current Flask server:
     //
-    // Physical Android phone and laptop must be connected
+    // Laptop IPv4 : 192.168.1.7
+    // Flask Port  : 5000
+    //
+    // Phone and laptop must be connected
     // to the same Wi-Fi/network.
     //
-    // Flask API:
-    // http://172.26.114.98:5000/
+    // Flask:
+    // http://192.168.1.7:5000/
     // =========================================================
 
     private const val BASE_URL =
-        "http://172.26.114.98:5000/"
+        "http://192.168.1.7:5000/"
 
 
     // =========================================================
@@ -77,13 +85,13 @@ object RetrofitClient {
                 RetryInterceptor()
             )
 
-            // Time to establish connection
+            // Time allowed to establish connection
             .connectTimeout(
                 20,
                 TimeUnit.SECONDS
             )
 
-            // Time to wait for Flask response
+            // Time allowed to receive Flask response
             .readTimeout(
                 90,
                 TimeUnit.SECONDS

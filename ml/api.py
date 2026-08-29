@@ -1,83 +1,40 @@
-from pathlib import Path
+import os
 import re
 import sqlite3
 from datetime import datetime
+from pathlib import Path
 
 import joblib
 import pandas as pd
-
 from flask import Flask, jsonify, request
-import os
 from google import genai
-
 from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.metrics.pairwise import cosine_similarity
-
 
 # ============================================================
 # PATHS
 # ============================================================
 
 BASE_DIR = Path(__file__).resolve().parent
+MODEL_FILE = BASE_DIR / "models" / "medical_intent_model.joblib"
+MEDICAL_KNOWLEDGE_FILE = BASE_DIR / "data" / "raw" / "medical_knowledge.csv"
+CHAT_DB_FILE = BASE_DIR / "data" / "chat_history.db"
 
-MODEL_FILE = (
-    BASE_DIR
-    / "models"
-    / "medical_intent_model.joblib"
-)
-
-MEDICAL_KNOWLEDGE_FILE = (
-    BASE_DIR
-    / "data"
-    / "raw"
-    / "medical_knowledge.csv"
-)
-
-CHAT_DB_FILE = (
-    BASE_DIR
-    / "data"
-    / "chat_history.db"
-)
-
-
-# ============================================================
-# FIND MEDIQ DATASET
-# ============================================================
 
 def find_mediq_dataset():
-
-    search_root = (
-        BASE_DIR
-        / "data"
-        / "raw"
-        / "mediq"
-    )
+    search_root = BASE_DIR / "data" / "raw" / "mediq"
 
     if not search_root.exists():
+        raise FileNotFoundError(f"MEDIQ folder not found: {search_root}")
 
-        raise FileNotFoundError(
-            f"MEDIQ folder not found: {search_root}"
-        )
-
-    files = list(
-        search_root.rglob("mediq_full.csv")
-    )
-
+    files = list(search_root.rglob("mediq_full.csv"))
     if not files:
-
-        raise FileNotFoundError(
-            f"mediq_full.csv not found inside: {search_root}"
-        )
+        raise FileNotFoundError(f"mediq_full.csv not found inside: {search_root}")
 
     return files[0]
 
 
 DATA_FILE = find_mediq_dataset()
-
-
-# ============================================================
-# FLASK APP
-# ============================================================
 
 app = Flask(__name__)
 
@@ -87,149 +44,246 @@ app = Flask(__name__)
 # ============================================================
 
 def detect_language(text):
+    """
+    Detect English, Marathi, or Hindi from both native scripts and
+    Roman/Latin-script speech transcription.
 
+    Examples:
+        Marathi:  मला ताप आला आहे  /  mala tap aala aahe
+        Hindi:    मुझे बुखार है      /  mujhe bukhar hai
+        English:  I have fever
+
+    The Android speech recognizer may return Marathi/Hindi in Roman
+    letters, so script-only detection is not sufficient.
+    """
     if not text:
         return "en"
 
-    text = str(text)
-
-    devanagari = sum(
-        1
-        for ch in text
-        if "\u0900" <= ch <= "\u097F"
-    )
-
-    if devanagari == 0:
+    text = str(text).strip()
+    if not text:
         return "en"
 
     lower = text.lower()
 
-    marathi_markers = [
-        "\u092e\u0932\u093e",
-        "\u092e\u093e\u091d\u093e",
-        "\u092e\u093e\u091d\u0940",
-        "\u092e\u094d\u0939\u0923\u091c\u0947",
-        "\u0906\u0938\u0947",
-        "\u0906\u0938\u0947\u0939\u0940",
-        "\u0915\u093e\u092f",
-        "\u0915\u0936\u0940",
-        "\u0915\u0936\u093e",
-        "\u0915\u093f\u0924\u0940",
-        "\u0924\u093e\u092a",
-        "\u0906\u093c\u0939\u0947",
-        "\u0906\u093b\u0939\u0947"
-    ]
+    # ---- Devanagari script ----
+    devanagari_count = sum(1 for ch in text if "\u0900" <= ch <= "\u097F")
 
-    marathi_score = sum(
-        1
-        for marker in marathi_markers
-        if marker in text
-    )
+    if devanagari_count > 0:
+        marathi_markers = [
+            "मला", "माझा", "माझी", "माझे", "माझ्या", "माझं", "म्हणजे", "म्हणून",
+            "आहे", "आहेत", "काय", "कशी", "कसा", "कसे", "किती", "ताप", "खोकला",
+            "सर्दी", "दुखत", "दुखणे", "दुखतं", "वेदना", "पोट", "डोके", "डोकं",
+            "घसा", "उलटी", "गरगर", "चक्कर", "कमजोरी", "अशक्तपणा", "औषध", "गोळी",
+            "काळजी", "करू", "करायचं", "घ्यावी", "घ्यावे", "घ्यावं",
+        ]
+        hindi_markers = [
+            "मुझे", "मेरा", "मेरी", "मेरे", "मुझको", "क्या", "कैसे", "कैसा",
+            "कैसी", "कितना", "कितनी", "कितने", "है", "हैं", "था", "थी", "थे",
+            "बुखार", "खांसी", "जुकाम", "दर्द", "पेट", "सिर", "गला", "उल्टी",
+            "चक्कर", "कमजोरी", "दवा", "गोली", "सावधानी", "करना", "करो", "करूं",
+            "चाहिए",
+        ]
 
-    hindi_markers = [
-        "\u092e\u0941\u091d\u0947",
-        "\u092e\u0947\u0930\u093e",
-        "\u092e\u0947\u0930\u0940",
-        "\u0915\u094d\u092f\u093e",
-        "\u0915\u0948\u0938\u093e",
-        "\u0915\u0948\u0938\u0947",
-        "\u0915\u093f\u0924\u0928\u0947",
-        "\u0939\u0948",
-        "\u0939\u0942\u0901"
-    ]
+        marathi_score = sum(1 for marker in marathi_markers if marker in text)
+        hindi_score = sum(1 for marker in hindi_markers if marker in text)
 
-    hindi_score = sum(
-        1
-        for marker in hindi_markers
-        if marker in text
-    )
-
-    if marathi_score >= hindi_score:
+        if marathi_score > hindi_score:
+            return "mr"
+        if hindi_score > marathi_score:
+            return "hi"
+        # Unknown Devanagari text: Marathi is the safer default for this
+        # application's target audience.
         return "mr"
 
-    return "hi"
+    # ---- Roman/Latin script ----
+    words = set(re.findall(r"[a-zA-Z]+", lower))
+
+    roman_marathi_words = {
+        "mala", "maza", "mazi", "majha", "majhi", "majhe", "majhya", "aahe",
+        "ahe", "aahat", "aahet", "kay", "kasa", "kashi", "kashe", "kiti",
+        "mhanje", "mhanun", "aata", "ata", "tula", "tyala", "tyachi",
+        "tyache", "zala", "zali", "zale", "zhala", "zhali", "zhalay",
+        "hotay", "hota", "hoti", "hote", "dukh", "dukhat", "dukhte",
+        "dukhtay", "dukhata", "tap", "taap", "khokla", "sardi", "ghasa",
+        "gala", "pot", "dok", "doka", "dokyala", "chakkar", "garagar",
+        "kamjori", "ashaktpana", "ulti", "malmal", "oushadha", "aushadh",
+        "aushadha", "goli", "tablet", "kalji", "karu", "karaycha",
+        "karaychi", "karayche", "ghyavi", "ghyava", "ghyave", "ghyav",
+        "pasun", "paryant", "mi", "mee", "tumhi", "apan", "aapan",
+    }
+    roman_hindi_words = {
+        "mujhe", "mujhko", "mera", "meri", "mere", "kya", "kaise", "kaisa",
+        "kaisi", "kitna", "kitni", "kitne", "hai", "hain", "tha", "thi",
+        "the", "bukhar", "khansi", "jukam", "dard", "pet", "sir", "gala",
+        "ulti", "chakkar", "kamzori", "dawai", "dava", "goli", "savdhani",
+        "karna", "karo", "karu", "karun", "chahiye",
+    }
+
+    marathi_score = len(words.intersection(roman_marathi_words))
+    hindi_score = len(words.intersection(roman_hindi_words))
+
+    roman_marathi_phrases = [
+        "mala ", "majha ", "majhi ", "majhe ", "maza ", "mazi ", "majhya ",
+        "mala kay", "mala kasa", "mala kashi", "mala kashe", "mala kay karu",
+        "kay karu", "kay karaycha", "kay karaychi", "kay karayche",
+        "mala aahe", "mala ahe", "majha doka", "majha dok", "majhe dok",
+        "majha pot", "majhe pot", "mala tap", "mala taap", "mala khokla",
+        "mala sardi", "mala chakkar", "mala kamjori", "mala dukh",
+        "mala dukhat", "mi kay", "mi kay karu", "pasun", "karu",
+        "karaycha", "karaychi",
+    ]
+    for phrase in roman_marathi_phrases:
+        if phrase in lower:
+            marathi_score += 2
+
+    strong_marathi_phrases = [
+        "tap aahe", "taap aahe", "khokla aahe", "sardi aahe",
+        "pot dukhat", "dok dukhat", "doka dukhat", "ghasa dukhat",
+        "mala bara vatat nahi", "mala bar vatat nahi", "mala kay karu",
+        "mala kay karaycha",
+    ]
+    for phrase in strong_marathi_phrases:
+        if phrase in lower:
+            marathi_score += 5
+
+    roman_hindi_phrases = [
+        "mujhe ", "mujhko ", "mera ", "meri ", "mere ", "mujhe kya",
+        "mujhe kaise", "mujhe kaisa", "mujhe kaisi", "mujhe bukhar",
+        "mujhe khansi", "mujhe dard", "mera sir", "mere sir", "mera pet",
+        "mere pet", "mujhe chakkar", "mujhe kamzori", "kya karna",
+        "kya karu", "kya karna chahiye",
+    ]
+    for phrase in roman_hindi_phrases:
+        if phrase in lower:
+            hindi_score += 2
+
+    strong_hindi_phrases = [
+        "mujhe bukhar hai", "mujhe khansi hai", "mujhe dard hai",
+        "mere pet mein dard", "mera sir dard", "mujhe chakkar hai",
+        "mujhe kamzori hai",
+    ]
+    for phrase in strong_hindi_phrases:
+        if phrase in lower:
+            hindi_score += 5
+
+    if marathi_score > hindi_score and marathi_score > 0:
+        return "mr"
+    if hindi_score > marathi_score and hindi_score > 0:
+        return "hi"
+    if marathi_score == hindi_score and marathi_score > 0:
+        return "mr"
+
+    return "en"
+
+
+# Exact-phrase shortcuts for a handful of common canned inputs. This is
+# intentionally narrow (full-sentence, exact match only) — it's a cheap
+# first pass, not a translator. Anything else in Marathi/Hindi falls
+# through to normalize_text()'s word-level substitutions, and ultimately
+# to Gemini for real translation. See LANGUAGE_SUPPORT_NOTES at the
+# bottom of this file for what is and isn't covered.
+_MARATHI_PHRASE_SHORTCUTS = {
+    "मला ताप आला आहे": "I have fever",
+    "मला ताप आहे": "I have fever",
+    "मला घाशी खवखवत आहे": "I have sore throat",
+    "माझे डोके दुखत आहे": "I have headache",
+    "माझे पोट दुखत आहे": "I have stomach pain",
+    "मला खोकला येत आहे": "I have cough",
+    "मला सर्दी झाली आहे": "I have cold",
+}
+_HINDI_PHRASE_SHORTCUTS = {
+    "मुझे बुखार है": "I have fever",
+    "मुझे सिरदर्द है": "I have headache",
+    "मुझे पेट में दर्द है": "I have stomach pain",
+    "मुझे खांसी है": "I have cough",
+    "मुझे जुकाम है": "I have cold",
+}
 
 
 def translate_input_to_english(text):
-
     if not text:
         return text
 
-    # Common Marathi medical phrases.
-    replacements = {
-        "\u092e\u0932\u093e \u0924\u093e\u092a \u0906\u0932\u093e \u0906\u0939\u0947":
-            "I have fever",
-
-        "\u092e\u0932\u093e \u0924\u093e\u092a \u0906\u0939\u0947":
-            "I have fever",
-
-        "\u092e\u0932\u093e \u0918\u093e\u0936\u0940 \u0916\u0935\u0916\u0935\u0924 \u0906\u0939\u0947":
-            "I have sore throat",
-
-        "\u092e\u093e\u091d\u0947 \u0921\u094b\u0915\u0947 \u0926\u0941\u0916\u0924 \u0906\u0939\u0947":
-            "I have headache",
-
-        "\u092e\u093e\u091d\u0947 \u092a\u094b\u091f \u0926\u0941\u0916\u0924 \u0906\u0939\u0947":
-            "I have stomach pain",
-
-        "\u092e\u0932\u093e \u0916\u094b\u0915\u0932\u093e \u092f\u0947\u0924 \u0906\u0939\u0947":
-            "I have cough",
-
-        "\u092e\u0932\u093e \u0938\u0930\u094d\u0926\u0940 \u091d\u093e\u0932\u0940 \u0906\u0939\u0947":
-            "I have cold"
-    }
-
     clean = str(text).strip()
 
-    if clean in replacements:
-        return replacements[clean]
+    if clean in _MARATHI_PHRASE_SHORTCUTS:
+        return _MARATHI_PHRASE_SHORTCUTS[clean]
+    if clean in _HINDI_PHRASE_SHORTCUTS:
+        return _HINDI_PHRASE_SHORTCUTS[clean]
 
-    # Hindi common phrases.
-    hindi_replacements = {
-        "\u092e\u0941\u091d\u0947 \u092c\u0941\u0916\u093e\u0930 \u0939\u0948":
-            "I have fever",
-
-        "\u092e\u0941\u091d\u0947 \u0938\u093f\u0930\u0926\u0930\u094d\u0926 \u0939\u0948":
-            "I have headache",
-
-        "\u092e\u0941\u091d\u0947 \u092a\u0947\u091f \u092e\u0947\u0902 \u0926\u0930\u094d\u0926 \u0939\u0948":
-            "I have stomach pain",
-
-        "\u092e\u0941\u091d\u0947 \u0916\u093e\u0902\u0938\u0940 \u0939\u0948":
-            "I have cough",
-
-        "\u092e\u0941\u091d\u0947 \u091c\u0941\u0915\u093e\u092e \u0939\u0948":
-            "I have cold"
-    }
-
-    if clean in hindi_replacements:
-        return hindi_replacements[clean]
-
-    # Preserve English input.
+    # Preserve everything else as-is (normalize_text() handles word-level
+    # substitution downstream, and Gemini handles full translation).
     return clean
 
 
-def translate_general_response(answer, language):
+_LANGUAGE_NOTICE_PREFIX = {
+    "mr": "मी दिलेल्या माहितीनुसार सामान्य माहिती देत आहे. ",
+    "hi": "मैं दी गई जानकारी के आधार पर सामान्य जानकारी दे रहा हूं. ",
+}
 
-    if language == "en":
-        return answer
 
-    if language == "mr":
-        return (
-            "\u092e\u0940 \u0926\u093f\u0932\u0947\u0932\u094d\u092f\u093e \u092e\u093e\u0939\u093f\u0924\u0940\u0928\u0942\u0928 "
-            "\u0938\u093e\u092e\u093e\u0928\u094d\u092f \u092e\u093e\u0939\u093f\u0924\u0940 \u0926\u0947\u0924 \u0906\u0939\u0947. "
-            + str(answer)
+def translate_text_with_gemini(text, language):
+    """
+    Ask Gemini to translate `text` into `language`, changing nothing else.
+    This is deliberately a plain translation prompt (not the medical
+    system instruction used elsewhere) so it can't add, remove, or
+    reinterpret any medical content — only re-express it.
+    Returns None if Gemini isn't configured or the call fails.
+    """
+    if gemini_client is None or not text:
+        return None
+
+    target_language = {"hi": "Hindi", "mr": "Marathi"}.get(language)
+    if target_language is None:
+        return None
+
+    prompt = (
+        f"Translate the ENTIRE medical assistant response into {target_language}.\n"
+        f"STRICT LANGUAGE REQUIREMENT: Every sentence, heading, bullet, label, "
+        f"disclaimer, and explanatory phrase MUST be written in {target_language}. "
+        f"Do NOT leave English sentences or English headings in the response. "
+        f"Translate ordinary medical wording too. Keep medicine names, drug names, "
+        f"standard medical abbreviations, numbers, measurements, units, and proper "
+        f"names unchanged when translation would be inappropriate. Preserve every "
+        f"medical fact and the original meaning exactly. Do not add or remove facts. "
+        f"Return ONLY the translated response, with no commentary about translation.\n\n"
+        f"SOURCE RESPONSE:\n{text}"
+    )
+
+    try:
+        response = gemini_client.models.generate_content(
+            model=GEMINI_MODEL,
+            contents=prompt,
         )
+        translated = getattr(response, "text", None)
+        return translated.strip() if translated else None
+    except Exception as e:
+        print("Gemini translation error:", e)
+        return None
 
-    if language == "hi":
-        return (
-            "\u092e\u0948\u0902 \u0926\u0940 \u0917\u0908 \u091c\u093e\u0928\u0915\u093e\u0930\u0940 \u0915\u0947 \u0906\u0927\u093e\u0930 \u092a\u0930 "
-            "\u0938\u093e\u092e\u093e\u0928\u094d\u092f \u091c\u093e\u0928\u0915\u093e\u0930\u0940 \u0926\u0947 \u0930\u0939\u093e \u0939\u0942\u0901. "
-            + str(answer)
-        )
 
-    return answer
+def localize_answer(text, language):
+    """
+    Make sure `text` is actually presented in `language` before it goes
+    back to the user. English passes through unchanged. For Hindi/Marathi,
+    try a real Gemini translation first; if Gemini isn't configured or the
+    call fails, fall back to a short localized lead-in sentence so the
+    response at least acknowledges the language instead of silently
+    answering in English while claiming otherwise.
 
+    Use this on any answer that was NOT already generated by Gemini with
+    a language-aware prompt (e.g. text pulled straight from the knowledge
+    base, MEDIQ, or a hardcoded string) right before it's returned.
+    """
+    if language == "en" or not text:
+        return text
+
+    translated = translate_text_with_gemini(text, language)
+    if translated:
+        return translated
+
+    prefix = _LANGUAGE_NOTICE_PREFIX.get(language, "")
+    return prefix + str(text)
 
 
 # ============================================================
@@ -237,16 +291,12 @@ def translate_general_response(answer, language):
 # ============================================================
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-
 GEMINI_MODEL = "gemini-3.6-flash"
-
 gemini_client = None
 
 if GEMINI_API_KEY:
     try:
-        gemini_client = genai.Client(
-            api_key=GEMINI_API_KEY
-        )
+        gemini_client = genai.Client(api_key=GEMINI_API_KEY)
         print("Gemini AI : Connected")
     except Exception as e:
         print("Gemini AI : Connection failed:", e)
@@ -255,34 +305,35 @@ else:
 
 
 def generate_gemini_medical_response(
-    user_text,
-    language="en",
-    medical_context="",
-    conversation_context=""
+    user_text, language="en", medical_context="", conversation_context=""
 ):
-
     if gemini_client is None:
         return None
 
-    language_names = {
-        "en": "English",
-        "mr": "Marathi",
-        "hi": "Hindi"
-    }
-
-    target_language = language_names.get(
-        language,
-        "English"
-    )
+    language_names = {"en": "English", "mr": "Marathi", "hi": "Hindi"}
+    target_language = language_names.get(language, "English")
 
     system_instruction = f"""
 You are MEDASSIST AI, a medical information assistant.
 
-Always respond in {target_language}.
+TARGET RESPONSE LANGUAGE: {target_language}
 
-Rules:
-- Always use the user's requested/preferred language.
-- Do not switch to English unless requested.
+STRICT OUTPUT LANGUAGE RULE — HIGHEST PRIORITY:
+- The complete final answer MUST be written in {target_language}.
+- Do NOT mix English with {target_language}.
+- Do NOT write an English heading followed by a {target_language} explanation.
+- Translate EVERY heading, sentence, bullet point, label, warning, disclaimer,
+  and explanatory phrase into {target_language}.
+- If the supplied medical context is in English, translate it completely into
+  {target_language}; never copy English sentences from the context.
+- Use the native script for Marathi and Hindi whenever possible.
+- Medicine names, drug names, standard medical abbreviations, numbers, units,
+  and proper names may remain unchanged when they are standard terms.
+- Never output phrases such as "Here is some general information", "Fever:",
+  "Important:", "Disclaimer:", or other English prose when the target language
+  is Marathi or Hindi. Translate those phrases too.
+
+MEDICAL RULES:
 - Do not diagnose.
 - Give general medical information.
 - Do not invent medical facts.
@@ -291,15 +342,10 @@ Rules:
 - For severe or worsening symptoms, recommend medical care.
 - Never claim to replace a doctor.
 - Do not introduce yourself in normal answers.
-- Do not say "Hello", "Hi", "Namaste", "Namaskar", "I am MEDASSIST AI",
-  or repeat the assistant identity on every response.
-- Only greet when the conversation is explicitly starting and a greeting is requested.
+- Do not say "Hello", "Hi", "Namaste", "Namaskar", or "I am MEDASSIST AI"
+  unless a greeting is explicitly requested.
 - Answer the user's current question directly.
-- For a follow-up question, stay focused on the symptom or condition from the
-  previous conversation unless the user clearly changes topic.
-- If the user asks what to do, what care to take, precautions, home care,
-  treatment, remedy, or relief, answer specifically for the active previous
-  symptom or condition when one exists.
+- For follow-up questions, stay focused on the active symptom or condition.
 """
 
     prompt = f"""
@@ -312,26 +358,36 @@ Medical context:
 Previous conversation:
 {conversation_context or "No previous conversation context available."}
 
-Answer clearly and naturally in {target_language}.
-Do not repeat any assistant greeting or self-introduction.
+Write the FINAL answer only in {target_language}.
+Every sentence and heading must be in {target_language}.
+Do not copy English wording from the medical context.
+Do not provide an English translation alongside the answer.
 """
 
     try:
         response = gemini_client.models.generate_content(
             model=GEMINI_MODEL,
-            contents=system_instruction + "\n\n" + prompt
+            contents=system_instruction + "\n\n" + prompt,
         )
-
         answer = getattr(response, "text", None)
-
         if answer:
-            return answer.strip()
+            answer = answer.strip()
 
+            # Gemini is instructed to answer only in the requested language,
+            # but it can occasionally copy an English heading/sentence from
+            # the supplied medical context. For Marathi/Hindi, run one final
+            # translation pass so the API does not return a mixed-language
+            # answer.
+            if language in ("mr", "hi"):
+                localized = translate_text_with_gemini(answer, language)
+                if localized:
+                    return localized.strip()
+
+            return answer
     except Exception as e:
         print("Gemini generation error:", e)
 
     return None
-
 
 
 # ============================================================
@@ -339,16 +395,8 @@ Do not repeat any assistant greeting or self-introduction.
 # ============================================================
 
 def init_chat_database():
-
-    CHAT_DB_FILE.parent.mkdir(
-        parents=True,
-        exist_ok=True
-    )
-
-    conn = sqlite3.connect(
-        CHAT_DB_FILE
-    )
-
+    CHAT_DB_FILE.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(CHAT_DB_FILE)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS chat_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -359,180 +407,90 @@ def init_chat_database():
             created_at TEXT NOT NULL
         )
     """)
-
     conn.commit()
     conn.close()
 
 
-def save_chat_message(
-    session_id,
-    role,
-    message,
-    symptoms=None
-):
+def save_chat_message(session_id, role, message, symptoms=None):
+    conn = sqlite3.connect(CHAT_DB_FILE)
+    symptom_text = ",".join(symptoms) if symptoms else ""
 
-    conn = sqlite3.connect(
-        CHAT_DB_FILE
-    )
-
-    symptom_text = ""
-
-    if symptoms:
-
-        symptom_text = ",".join(
-            symptoms
-        )
-
-    conn.execute("""
+    conn.execute(
+        """
         INSERT INTO chat_history
-        (
-            session_id,
-            role,
-            message,
-            symptoms,
-            created_at
-        )
+            (session_id, role, message, symptoms, created_at)
         VALUES (?, ?, ?, ?, ?)
-    """, (
-        session_id,
-        role,
-        message,
-        symptom_text,
-        datetime.now().isoformat()
-    ))
-
+        """,
+        (session_id, role, message, symptom_text, datetime.now().isoformat()),
+    )
     conn.commit()
     conn.close()
 
 
-def get_chat_history(
-    session_id,
-    limit=20
-):
-
-    conn = sqlite3.connect(
-        CHAT_DB_FILE
-    )
-
+def get_chat_history(session_id, limit=20):
+    conn = sqlite3.connect(CHAT_DB_FILE)
     conn.row_factory = sqlite3.Row
 
-    rows = conn.execute("""
-        SELECT
-            role,
-            message,
-            symptoms,
-            created_at
+    rows = conn.execute(
+        """
+        SELECT role, message, symptoms, created_at
         FROM chat_history
         WHERE session_id = ?
         ORDER BY id DESC
         LIMIT ?
-    """, (
-        session_id,
-        limit
-    )).fetchall()
-
+        """,
+        (session_id, limit),
+    ).fetchall()
     conn.close()
 
-    return [
-        dict(row)
-        for row in reversed(rows)
-    ]
+    return [dict(row) for row in reversed(rows)]
 
 
-def build_conversation_context(
-    session_id,
-    limit=12
-):
+def build_conversation_context(session_id, limit=12):
     """Build recent conversation context for Gemini follow-ups."""
-    history = get_chat_history(
-        session_id,
-        limit=limit
-    )
-
+    history = get_chat_history(session_id, limit=limit)
     if not history:
         return ""
 
     lines = []
-
     for item in history:
-        role = str(
-            item.get("role", "")
-        ).strip().lower()
-
-        message = str(
-            item.get("message", "")
-        ).strip()
-
+        role = str(item.get("role", "")).strip().lower()
+        message = str(item.get("message", "")).strip()
         if not message:
             continue
 
-        prefix = (
-            "User"
-            if role == "user"
-            else "MEDASSIST AI"
-            if role == "assistant"
-            else role.title() or "Message"
-        )
+        if role == "user":
+            prefix = "User"
+        elif role == "assistant":
+            prefix = "MEDASSIST AI"
+        else:
+            prefix = role.title() or "Message"
 
-        lines.append(
-            f"{prefix}: {message}"
-        )
+        lines.append(f"{prefix}: {message}")
 
     return "\n".join(lines)
 
 
-def get_previous_symptoms(
-    session_id
-):
-
-    history = get_chat_history(
-        session_id,
-        limit=20
-    )
-
+def get_previous_symptoms(session_id):
+    history = get_chat_history(session_id, limit=20)
     symptoms = []
 
     for item in history:
-
-        stored = item.get(
-            "symptoms",
-            ""
-        )
-
+        stored = item.get("symptoms", "")
         if not stored:
             continue
 
         for symptom in stored.split(","):
-
             symptom = symptom.strip()
-
-            if (
-                symptom
-                and symptom not in symptoms
-            ):
-
-                symptoms.append(
-                    symptom
-                )
+            if symptom and symptom not in symptoms:
+                symptoms.append(symptom)
 
     return symptoms
 
 
-def clear_chat_history(
-    session_id
-):
-
-    conn = sqlite3.connect(
-        CHAT_DB_FILE
-    )
-
-    conn.execute("""
-        DELETE FROM chat_history
-        WHERE session_id = ?
-    """, (
-        session_id,
-    ))
-
+def clear_chat_history(session_id):
+    conn = sqlite3.connect(CHAT_DB_FILE)
+    conn.execute("DELETE FROM chat_history WHERE session_id = ?", (session_id,))
     conn.commit()
     conn.close()
 
@@ -542,11 +500,7 @@ def clear_chat_history(
 # ============================================================
 
 def init_medical_memory_table():
-
-    conn = sqlite3.connect(
-        CHAT_DB_FILE
-    )
-
+    conn = sqlite3.connect(CHAT_DB_FILE)
     conn.execute("""
         CREATE TABLE IF NOT EXISTS medical_memory (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -560,105 +514,59 @@ def init_medical_memory_table():
             created_at TEXT NOT NULL
         )
     """)
-
     conn.commit()
     conn.close()
 
 
 def save_medical_memory(
-    session_id,
-    memory_type,
-    name,
-    value=None,
-    unit=None,
-    duration=None,
-    source_message=""
+    session_id, memory_type, name, value=None, unit=None, duration=None,
+    source_message="",
 ):
-
-    conn = sqlite3.connect(
-        CHAT_DB_FILE
-    )
-
-    conn.execute("""
+    conn = sqlite3.connect(CHAT_DB_FILE)
+    conn.execute(
+        """
         INSERT INTO medical_memory
+            (session_id, memory_type, name, value, unit, duration,
+             source_message, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        """,
         (
             session_id,
             memory_type,
             name,
-            value,
-            unit,
-            duration,
+            str(value) if value is not None else "",
+            str(unit) if unit is not None else "",
+            str(duration) if duration is not None else "",
             source_message,
-            created_at
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (
-        session_id,
-        memory_type,
-        name,
-        str(value) if value is not None else "",
-        str(unit) if unit is not None else "",
-        str(duration) if duration is not None else "",
-        source_message,
-        datetime.now().isoformat()
-    ))
-
+            datetime.now().isoformat(),
+        ),
+    )
     conn.commit()
     conn.close()
 
 
-def get_medical_memory(
-    session_id,
-    limit=50
-):
-
-    conn = sqlite3.connect(
-        CHAT_DB_FILE
-    )
-
+def get_medical_memory(session_id, limit=50):
+    conn = sqlite3.connect(CHAT_DB_FILE)
     conn.row_factory = sqlite3.Row
 
-    rows = conn.execute("""
-        SELECT
-            memory_type,
-            name,
-            value,
-            unit,
-            duration,
-            source_message,
-            created_at
+    rows = conn.execute(
+        """
+        SELECT memory_type, name, value, unit, duration, source_message, created_at
         FROM medical_memory
         WHERE session_id = ?
         ORDER BY id DESC
         LIMIT ?
-    """, (
-        session_id,
-        limit
-    )).fetchall()
-
+        """,
+        (session_id, limit),
+    ).fetchall()
     conn.close()
 
-    return [
-        dict(row)
-        for row in reversed(rows)
-    ]
+    return [dict(row) for row in reversed(rows)]
 
 
-def clear_medical_memory(
-    session_id
-):
-
-    conn = sqlite3.connect(
-        CHAT_DB_FILE
-    )
-
-    conn.execute("""
-        DELETE FROM medical_memory
-        WHERE session_id = ?
-    """, (
-        session_id,
-    ))
-
+def clear_medical_memory(session_id):
+    conn = sqlite3.connect(CHAT_DB_FILE)
+    conn.execute("DELETE FROM medical_memory WHERE session_id = ?", (session_id,))
     conn.commit()
     conn.close()
 
@@ -668,313 +576,186 @@ init_medical_memory_table()
 
 
 # ============================================================
-# LOAD ML MODEL
+# LOAD ML MODEL / DATASETS
 # ============================================================
 
 print("Loading ML model...")
-
 if not MODEL_FILE.exists():
-
-    raise FileNotFoundError(
-        f"ML model not found: {MODEL_FILE}"
-    )
-
-model = joblib.load(
-    MODEL_FILE
-)
-
-print(
-    "ML model loaded successfully."
-)
-
-
-# ============================================================
-# LOAD MEDIQ DATASET
-# ============================================================
+    raise FileNotFoundError(f"ML model not found: {MODEL_FILE}")
+model = joblib.load(MODEL_FILE)
+print("ML model loaded successfully.")
 
 print("Loading MEDIQ dataset...")
-
-dataset = pd.read_csv(
-    DATA_FILE
-)
-
-print(
-    "MEDIQ dataset loaded successfully."
-)
-
+dataset = pd.read_csv(DATA_FILE)
+print("MEDIQ dataset loaded successfully.")
 print("----------------------------------------")
-print(
-    "Dataset shape:",
-    dataset.shape
-)
+print("Dataset shape:", dataset.shape)
 print("----------------------------------------")
 
-
-# ============================================================
-# LOAD MEDICAL KNOWLEDGE
-# ============================================================
-
-print(
-    "Loading Medical Knowledge Base..."
-)
-
+print("Loading Medical Knowledge Base...")
 if not MEDICAL_KNOWLEDGE_FILE.exists():
-
-    raise FileNotFoundError(
-        "Medical Knowledge file not found: "
-        f"{MEDICAL_KNOWLEDGE_FILE}"
-    )
-
-medical_knowledge = pd.read_csv(
-    MEDICAL_KNOWLEDGE_FILE
-)
-
-print(
-    "Medical Knowledge Base loaded successfully."
-)
-
+    raise FileNotFoundError(f"Medical Knowledge file not found: {MEDICAL_KNOWLEDGE_FILE}")
+medical_knowledge = pd.read_csv(MEDICAL_KNOWLEDGE_FILE)
+print("Medical Knowledge Base loaded successfully.")
 print("----------------------------------------")
-print(
-    "Medical Knowledge records:",
-    len(medical_knowledge)
-)
+print("Medical Knowledge records:", len(medical_knowledge))
 print("----------------------------------------")
 
 
-# ============================================================
-# FIND DATASET COLUMNS
-# ============================================================
-
-def find_column(
-    columns,
-    possible_names
-):
-
-    mapping = {
-        str(column).strip().lower(): column
-        for column in columns
-    }
-
+def find_column(columns, possible_names):
+    mapping = {str(column).strip().lower(): column for column in columns}
     for name in possible_names:
-
         if name.lower() in mapping:
-
-            return mapping[
-                name.lower()
-            ]
-
+            return mapping[name.lower()]
     return None
 
 
-QUESTION_COLUMN = find_column(
-    dataset.columns,
-    [
-        "question",
-        "text",
-        "query",
-        "user_question"
-    ]
-)
-
-
-ANSWER_COLUMN = find_column(
-    dataset.columns,
-    [
-        "answer",
-        "response",
-        "bot_answer",
-        "reply"
-    ]
-)
-
-
-CATEGORY_COLUMN = find_column(
-    dataset.columns,
-    [
-        "category",
-        "intent",
-        "topic"
-    ]
-)
-
+QUESTION_COLUMN = find_column(dataset.columns, ["question", "text", "query", "user_question"])
+ANSWER_COLUMN = find_column(dataset.columns, ["answer", "response", "bot_answer", "reply"])
+CATEGORY_COLUMN = find_column(dataset.columns, ["category", "intent", "topic"])
 
 if QUESTION_COLUMN is None:
-
-    raise ValueError(
-        "Question column not found."
-    )
-
-
+    raise ValueError("Question column not found.")
 if ANSWER_COLUMN is None:
-
-    raise ValueError(
-        "Answer column not found."
-    )
+    raise ValueError("Answer column not found.")
 
 
 # ============================================================
 # TEXT NORMALIZATION
 # ============================================================
 
-def normalize_text(text):
+# NOTE ON MULTILINGUAL SUPPORT: everything downstream (symptom detection,
+# medical-query detection, MEDIQ retrieval) runs the text through this
+# function first. The single-word substitutions below are what let
+# Romanized *and* Devanagari-script Marathi/Hindi symptom words get
+# recognized by the rest of the (English-built) pipeline — this is doing
+# real work, not just cosmetic cleanup.
+_NORMALIZE_REPLACEMENTS = {
+    # Romanized Marathi / Hindi
+    "pn": "also",
+    "aahe": "have",
+    "ahe": "have",
+    "mala": "i",
+    "majha": "my",
+    "maza": "my",
+    "majhi": "my",
+    "mujhe": "i",
+    "mera": "my",
+    "meri": "my",
+    "mere": "my",
+    "kay": "what",
+    "kya": "what",
+    "bukhar": "fever",
+    "tap": "fever",
+    "taap": "fever",
+    "sardi": "cold",
+    "khokla": "cough",
+    "khansi": "cough",
+    "kamjori": "weakness",
+    "kamzori": "weakness",
+    "ashaktpana": "weakness",
+    "chakkar": "dizziness",
+    "dukht": "pain",
+    "dukh": "pain",
+    "dard": "pain",
+    # Devanagari script (Marathi + Hindi)
+    "आहे": "have",
+    "आहेत": "have",
+    "मला": "i",
+    "माझा": "my",
+    "माझी": "my",
+    "माझे": "my",
+    "मुझे": "i",
+    "मेरा": "my",
+    "मेरी": "my",
+    "मेरे": "my",
+    "काय": "what",
+    "क्या": "what",
+    "ताप": "fever",
+    "बुखार": "fever",
+    "सर्दी": "cold",
+    "जुकाम": "cold",
+    "खोकला": "cough",
+    "खांसी": "cough",
+    "कमजोरी": "weakness",
+    "अशक्तपणा": "weakness",
+    "चक्कर": "dizziness",
+    "दुखत": "pain",
+    "दुखणे": "pain",
+    "दुखतं": "pain",
+    "दर्द": "pain",
+}
 
+# Devanagari is outside a-z/0-9, so any character-class filter used on
+# this text must include the Devanagari block (\u0900-\u097F) — otherwise
+# Marathi/Hindi script input gets silently stripped down to nothing
+# before it ever reaches symptom or intent detection.
+_WORD_CHAR_PATTERN = re.compile(r"[^a-zA-Z0-9\u0900-\u097F]")
+_FINAL_CHAR_PATTERN = re.compile(r"[^a-z0-9\s\u0900-\u097F]")
+_WHITESPACE_PATTERN = re.compile(r"\s+")
+
+_SPELLING_MAP = {
+    "fevr": "fever",
+    "fvr": "fever",
+    "feaver": "fever",
+    "fevar": "fever",
+    "hedache": "headache",
+    "headche": "headache",
+    "headpain": "headache",
+    "caugh": "cough",
+    "coff": "cough",
+    "vomitng": "vomiting",
+    "vomitting": "vomiting",
+    "diarhea": "diarrhea",
+    "diarrhoea": "diarrhea",
+    "dizines": "dizziness",
+    "dizzyness": "dizziness",
+    "weaknes": "weakness",
+    "stomac": "stomach",
+    "stomache": "stomach",
+    "throate": "throat",
+}
+
+_PHRASE_MAP = {
+    "head pain": "headache",
+    "head ache": "headache",
+    "head is paining": "headache",
+    "body pain": "bodypain",
+    "body ache": "bodypain",
+    "high temperature": "fever",
+    "throwing up": "vomiting",
+    "feeling sick": "nausea",
+    "sore throat": "sorethroat",
+    "stomach ache": "stomachpain",
+    "stomach pain": "stomachpain",
+    "chest pain": "chestpain",
+    "back pain": "backpain",
+    "joint pain": "jointpain",
+    "difficulty breathing": "breathing",
+    "problem breathing": "breathing",
+}
+
+
+def normalize_text(text):
     text = str(text).lower()
 
-    replacements = {
-
-        "pn": "also",
-        "aahe": "have",
-        "ahe": "have",
-
-        "mala": "i",
-        "majha": "my",
-        "maza": "my",
-        "majhi": "my",
-
-        "kay": "what",
-
-        "bukhar": "fever",
-        "sardi": "cold",
-        "khokla": "cough",
-
-        "kamjori": "weakness",
-        "chakkar": "dizziness",
-
-        "dukht": "pain",
-        "dukh": "pain",
-        "dard": "pain"
-    }
-
     words = text.split()
-
     normalized_words = []
-
     for word in words:
-
-        clean_word = re.sub(
-            r"[^a-zA-Z0-9]",
-            "",
-            word
-        )
-
-        if clean_word in replacements:
-
-            clean_word = replacements[
-                clean_word
-            ]
-
-        normalized_words.append(
-            clean_word
-        )
-
-    text = " ".join(
-        normalized_words
-    )
-
-
-    # ========================================================
-    # SPELLING CORRECTION
-    # ========================================================
-
-    spelling_map = {
-
-        "fevr": "fever",
-        "fvr": "fever",
-        "feaver": "fever",
-        "fevar": "fever",
-
-        "hedache": "headache",
-        "headche": "headache",
-        "headpain": "headache",
-
-        "caugh": "cough",
-        "coff": "cough",
-
-        "vomitng": "vomiting",
-        "vomitting": "vomiting",
-
-        "diarhea": "diarrhea",
-        "diarrhoea": "diarrhea",
-
-        "dizines": "dizziness",
-        "dizzyness": "dizziness",
-
-        "weaknes": "weakness",
-
-        "stomac": "stomach",
-        "stomache": "stomach",
-
-        "throate": "throat"
-    }
+        clean_word = _WORD_CHAR_PATTERN.sub("", word)
+        clean_word = _NORMALIZE_REPLACEMENTS.get(clean_word, clean_word)
+        normalized_words.append(clean_word)
+    text = " ".join(normalized_words)
 
     words = text.split()
-
-    words = [
-        spelling_map.get(
-            word,
-            word
-        )
-        for word in words
-    ]
-
+    words = [_SPELLING_MAP.get(word, word) for word in words]
     text = " ".join(words)
 
+    for old, new in _PHRASE_MAP.items():
+        text = text.replace(old, new)
 
-    # ========================================================
-    # PHRASE NORMALIZATION
-    # ========================================================
-
-    phrase_map = {
-
-        "head pain": "headache",
-        "head ache": "headache",
-        "head is paining": "headache",
-
-        "body pain": "bodypain",
-        "body ache": "bodypain",
-
-        "high temperature": "fever",
-
-        "throwing up": "vomiting",
-
-        "feeling sick": "nausea",
-
-        "sore throat": "sorethroat",
-
-        "stomach ache": "stomachpain",
-        "stomach pain": "stomachpain",
-
-        "chest pain": "chestpain",
-
-        "back pain": "backpain",
-
-        "joint pain": "jointpain",
-
-        "difficulty breathing": "breathing",
-
-        "problem breathing": "breathing"
-    }
-
-    for old, new in phrase_map.items():
-
-        text = text.replace(
-            old,
-            new
-        )
-
-
-    text = re.sub(
-        r"[^a-z0-9\s]",
-        " ",
-        text
-    )
-
-    text = re.sub(
-        r"\s+",
-        " ",
-        text
-    )
-
+    text = _FINAL_CHAR_PATTERN.sub(" ", text)
+    text = _WHITESPACE_PATTERN.sub(" ", text)
     return text.strip()
 
 
@@ -983,76 +764,23 @@ def normalize_text(text):
 # ============================================================
 
 dataset = dataset.copy()
-
-dataset[
-    QUESTION_COLUMN
-] = (
-    dataset[
-        QUESTION_COLUMN
-    ]
-    .fillna("")
-    .astype(str)
-    .str.strip()
-)
-
-dataset[
-    ANSWER_COLUMN
-] = (
-    dataset[
-        ANSWER_COLUMN
-    ]
-    .fillna("")
-    .astype(str)
-    .str.strip()
-)
-
-dataset = dataset[
-    (dataset[QUESTION_COLUMN] != "")
-    &
-    (dataset[ANSWER_COLUMN] != "")
-].copy()
-
-dataset.reset_index(
-    drop=True,
-    inplace=True
-)
-
-dataset[
-    "_question_clean"
-] = (
-    dataset[
-        QUESTION_COLUMN
-    ]
-    .apply(normalize_text)
-)
+dataset[QUESTION_COLUMN] = dataset[QUESTION_COLUMN].fillna("").astype(str).str.strip()
+dataset[ANSWER_COLUMN] = dataset[ANSWER_COLUMN].fillna("").astype(str).str.strip()
+dataset = dataset[(dataset[QUESTION_COLUMN] != "") & (dataset[ANSWER_COLUMN] != "")].copy()
+dataset.reset_index(drop=True, inplace=True)
+dataset["_question_clean"] = dataset[QUESTION_COLUMN].apply(normalize_text)
 
 
 # ============================================================
 # TF-IDF
 # ============================================================
 
-print(
-    "Creating MEDIQ retrieval index..."
-)
-
+print("Creating MEDIQ retrieval index...")
 vectorizer = TfidfVectorizer(
-    lowercase=True,
-    stop_words="english",
-    ngram_range=(1, 2),
-    min_df=1
+    lowercase=True, stop_words="english", ngram_range=(1, 2), min_df=1
 )
-
-retrieval_matrix = (
-    vectorizer.fit_transform(
-        dataset[
-            "_question_clean"
-        ]
-    )
-)
-
-print(
-    "MEDIQ retrieval index ready."
-)
+retrieval_matrix = vectorizer.fit_transform(dataset["_question_clean"])
+print("MEDIQ retrieval index ready.")
 
 
 # ============================================================
@@ -1060,3099 +788,1084 @@ print(
 # ============================================================
 
 SYMPTOM_ALIASES = {
-
-    "fever": [
-        "fever",
-        "fevr",
-        "fvr",
-        "feaver",
-        "temperature",
-        "bukhar"
-    ],
-
-    "headache": [
-        "headache",
-        "headpain",
-        "head pain",
-        "head ache",
-        "head is paining",
-        "hedache"
-    ],
-
-    "cough": [
-        "cough",
-        "caugh",
-        "coff",
-        "khokla"
-    ],
-
-    "cold": [
-        "cold",
-        "sardi",
-        "running nose",
-        "runny nose"
-    ],
-
-    "body_pain": [
-        "body pain",
-        "bodypain",
-        "body ache",
-        "bodyache"
-    ],
-
-    "stomach_pain": [
-        "stomach pain",
-        "stomachpain",
-        "stomach ache",
-        "stomachache"
-    ],
-
-    "chest_pain": [
-        "chest pain",
-        "chestpain",
-        "chest ache"
-    ],
-
-    "back_pain": [
-        "back pain",
-        "backpain"
-    ],
-
-    "joint_pain": [
-        "joint pain",
-        "jointpain"
-    ],
-
-    "vomiting": [
-        "vomiting",
-        "vomit",
-        "vomitting",
-        "throwing up"
-    ],
-
-    "nausea": [
-        "nausea",
-        "feeling sick",
-        "sick feeling"
-    ],
-
-    "diarrhea": [
-        "diarrhea",
-        "diarhea",
-        "loose motion",
-        "loose motions"
-    ],
-
-    "dizziness": [
-        "dizziness",
-        "dizines",
-        "dizzyness",
-        "chakkar"
-    ],
-
-    "weakness": [
-        "weakness",
-        "weaknes",
-        "kamjori",
-        "tired",
-        "fatigue"
-    ],
-
+    "fever": ["fever", "fevr", "fvr", "feaver", "temperature", "bukhar"],
+    "headache": ["headache", "headpain", "head pain", "head ache", "head is paining", "hedache"],
+    "cough": ["cough", "caugh", "coff", "khokla"],
+    "cold": ["cold", "sardi", "running nose", "runny nose"],
+    "body_pain": ["body pain", "bodypain", "body ache", "bodyache"],
+    "stomach_pain": ["stomach pain", "stomachpain", "stomach ache", "stomachache"],
+    "chest_pain": ["chest pain", "chestpain", "chest ache"],
+    "back_pain": ["back pain", "backpain"],
+    "joint_pain": ["joint pain", "jointpain"],
+    "vomiting": ["vomiting", "vomit", "vomitting", "throwing up"],
+    "nausea": ["nausea", "feeling sick", "sick feeling"],
+    "diarrhea": ["diarrhea", "diarhea", "loose motion", "loose motions"],
+    "dizziness": ["dizziness", "dizines", "dizzyness", "chakkar"],
+    "weakness": ["weakness", "weaknes", "kamjori", "tired", "fatigue"],
     "breathing_problem": [
-        "breathing",
-        "breathless",
-        "difficulty breathing",
-        "problem breathing",
-        "shortness of breath"
+        "breathing", "breathless", "difficulty breathing", "problem breathing",
+        "shortness of breath",
     ],
-
-    "sore_throat": [
-        "sore throat",
-        "sorethroat",
-        "throat pain",
-        "throat ache"
-    ],
-
-    "rash": [
-        "rash",
-        "skin rash",
-        "itchy rash"
-    ],
-
-    "swelling": [
-        "swelling",
-        "swollen"
-    ]
+    "sore_throat": ["sore throat", "sorethroat", "throat pain", "throat ache"],
+    "rash": ["rash", "skin rash", "itchy rash"],
+    "swelling": ["swelling", "swollen"],
 }
 
 
-# ============================================================
-# EXTRACT SYMPTOMS
-# ============================================================
-
 def extract_symptoms(text):
-
-    normalized = normalize_text(
-        text
-    )
-
+    normalized = normalize_text(text)
     detected = []
 
-    for symptom, aliases in (
-        SYMPTOM_ALIASES.items()
-    ):
-
+    for symptom, aliases in SYMPTOM_ALIASES.items():
         for alias in aliases:
-
-            alias_normalized = (
-                normalize_text(alias)
-            )
-
-            if (
-                alias_normalized
-                in normalized
-            ):
-
+            if normalize_text(alias) in normalized:
                 if symptom not in detected:
-
-                    detected.append(
-                        symptom
-                    )
-
+                    detected.append(symptom)
                 break
 
     return detected
 
 
-# ============================================================
-# MEDICAL KEYWORDS
-# ============================================================
-
 MEDICAL_KEYWORDS = {
-
-    "symptom",
-    "symptoms",
-    "disease",
-    "illness",
-
-    "medicine",
-    "medication",
-    "tablet",
-
-    "doctor",
-    "hospital",
-
-    "treatment",
-    "diagnosis",
-
-    "pain",
-    "fever",
-    "headache",
-    "cough",
-    "cold",
-
-    "vomiting",
-    "nausea",
-
-    "weakness",
-    "dizziness",
-
-    "rash",
-    "swelling",
-
-    "breathing",
-    "infection",
-
-    "blood",
-    "health",
-    "healthy",
-
-    "pregnancy",
-    "diabetes",
-    "cancer",
-    "asthma",
-    "allergy",
-
-    "emergency",
-    "injury",
-    "wound",
-
-    "dose",
-    "dosage"
+    "symptom", "symptoms", "disease", "illness", "medicine", "medication",
+    "tablet", "doctor", "hospital", "treatment", "diagnosis", "pain",
+    "fever", "headache", "cough", "cold", "vomiting", "nausea", "weakness",
+    "dizziness", "rash", "swelling", "breathing", "infection", "blood",
+    "health", "healthy", "pregnancy", "diabetes", "cancer", "asthma",
+    "allergy", "emergency", "injury", "wound", "dose", "dosage",
 }
 
 
-# ============================================================
-# MEDICAL QUERY
-# ============================================================
-
 def is_medical_query(text):
+    normalized = normalize_text(text)
+    words = set(normalized.split())
 
-    normalized = normalize_text(
-        text
-    )
-
-    words = set(
-        normalized.split()
-    )
-
-    if words.intersection(
-        MEDICAL_KEYWORDS
-    ):
-
+    if words.intersection(MEDICAL_KEYWORDS):
         return True
-
     if extract_symptoms(text):
-
         return True
-
     if extract_medical_measurements(text):
-
         return True
 
     return False
 
 
-# ============================================================
-# FOLLOW-UP DETECTION
-# ============================================================
+FOLLOWUP_PATTERNS = [
+    "since", "for", "from", "days", "day", "hours", "hour", "weeks", "week",
+    "months", "month", "yes", "no", "also", "still", "now", "today",
+    "yesterday", "same", "worse", "better", "what should i do",
+    "what can i do", "what to do", "what care", "care should i take",
+    "what precautions", "precautions", "how should i care",
+    "how to take care", "home care", "treatment", "remedy", "relief",
+    "it is", "its", "this", "that",
+]
+
 
 def is_followup_query(text):
-
-    query = normalize_text(
-        text
-    )
-
-    followup_patterns = [
-
-        "since",
-        "for",
-        "from",
-        "days",
-        "day",
-        "hours",
-        "hour",
-        "weeks",
-        "week",
-        "months",
-        "month",
-
-        "yes",
-        "no",
-
-        "also",
-        "still",
-        "now",
-        "today",
-        "yesterday",
-
-        "same",
-        "worse",
-        "better",
-
-        "what should i do",
-        "what can i do",
-        "what to do",
-        "what care",
-        "care should i take",
-        "what precautions",
-        "precautions",
-        "how should i care",
-        "how to take care",
-        "home care",
-        "treatment",
-        "remedy",
-        "relief",
-
-        "it is",
-        "its",
-        "this",
-        "that"
-    ]
-
-    for pattern in followup_patterns:
-
-        if pattern in query:
-
-            return True
-
-    return False
+    query = normalize_text(text)
+    return any(pattern in query for pattern in FOLLOWUP_PATTERNS)
 
 
-# ============================================================
-# GET QUESTION TYPE
-# ============================================================
+INFORMATION_PATTERNS = [
+    "what are the symptoms", "symptoms of", "symptoms for", "signs of",
+    "symptom of", "what symptoms", "symptoms",
+]
+
+ASSISTANCE_PATTERNS = [
+    "i have", "i am having", "i feel", "i am feeling", "suffering from",
+    "experiencing", "what should i do", "what can i do", "what to do",
+    "what care", "care should i take", "what precautions", "precautions",
+    "how should i care", "how to take care", "home care", "treatment",
+    "remedy", "relief", "mala", "majha", "maza", "mujhe", "mere",
+]
+
 
 def get_question_type(text):
+    query = normalize_text(text)
 
-    query = normalize_text(
-        text
-    )
-
-    information_patterns = [
-
-        "what are the symptoms",
-        "symptoms of",
-        "symptoms for",
-        "signs of",
-        "symptom of",
-        "what symptoms",
-        "symptoms"
-    ]
-
-    for pattern in information_patterns:
-
-        if pattern in query:
-
-            return "symptoms"
-
-
-    assistance_patterns = [
-
-        "i have",
-        "i am having",
-        "i feel",
-        "i am feeling",
-        "suffering from",
-        "experiencing",
-        "what should i do",
-        "what can i do",
-        "what to do",
-        "what care",
-        "care should i take",
-        "what precautions",
-        "precautions",
-        "how should i care",
-        "how to take care",
-        "home care",
-        "treatment",
-        "remedy",
-        "relief",
-        "mala",
-        "majha",
-        "maza",
-        "mujhe",
-        "mere"
-    ]
-
-    for pattern in assistance_patterns:
-
-        if pattern in query:
-
-            return "assistance"
-
+    if any(pattern in query for pattern in INFORMATION_PATTERNS):
+        return "symptoms"
+    if any(pattern in query for pattern in ASSISTANCE_PATTERNS):
+        return "assistance"
 
     return "symptoms"
 
 
-# ============================================================
-# GET KNOWLEDGE RESPONSE
-# ============================================================
-
-def get_knowledge_response(
-    symptom,
-    question_type
-):
-
-    rows = medical_knowledge[
-        medical_knowledge[
-            "symptom"
-        ]
-        .astype(str)
-        .str.strip()
-        == symptom
-    ]
-
+def get_knowledge_response(symptom, question_type):
+    rows = medical_knowledge[medical_knowledge["symptom"].astype(str).str.strip() == symptom]
     if rows.empty:
-
         return None
-
 
     matching = rows[
-        rows[
-            "question_type"
-        ]
-        .astype(str)
-        .str.strip()
-        .str.lower()
-        ==
-        question_type
+        rows["question_type"].astype(str).str.strip().str.lower() == question_type
     ]
-
-
     if matching.empty:
-
         matching = rows
-
-
     if matching.empty:
-
         return None
 
-
-    return str(
-        matching.iloc[0][
-            "response"
-        ]
-    ).strip()
+    return str(matching.iloc[0]["response"]).strip()
 
 
-# ============================================================
-# MULTI SYMPTOM RESPONSE
-# ============================================================
-
-def build_multi_symptom_response(
-    symptoms,
-    question_type
-):
-
+def build_multi_symptom_response(symptoms, question_type):
     responses = []
-
     for symptom in symptoms:
-
-        response = (
-            get_knowledge_response(
-                symptom,
-                question_type
-            )
-        )
-
+        response = get_knowledge_response(symptom, question_type)
         if response:
-
-            responses.append(
-                (
-                    symptom,
-                    response
-                )
-            )
-
+            responses.append((symptom, response))
 
     if not responses:
-
         return None
 
-
-    symptom_names = [
-
-        symptom.replace(
-            "_",
-            " "
-        )
-
-        for symptom, _ in responses
-    ]
-
+    symptom_names = [symptom.replace("_", " ") for symptom, _ in responses]
 
     if len(symptom_names) == 1:
-
-        intro = (
-            f"Here is some general information "
-            f"about {symptom_names[0]}."
-        )
-
+        intro = f"Here is some general information about {symptom_names[0]}."
     elif len(symptom_names) == 2:
-
         intro = (
-            f"You mentioned {symptom_names[0]} "
-            f"and {symptom_names[1]}. "
-            "These symptoms can occur together "
-            "for several reasons, and symptoms alone "
-            "cannot confirm a specific disease."
+            f"You mentioned {symptom_names[0]} and {symptom_names[1]}. "
+            "These symptoms can occur together for several reasons, and "
+            "symptoms alone cannot confirm a specific disease."
         )
-
     else:
-
         intro = (
-            "You mentioned multiple symptoms. "
-            "These symptoms can have different causes, "
-            "and symptoms alone cannot confirm a "
+            "You mentioned multiple symptoms. These symptoms can have "
+            "different causes, and symptoms alone cannot confirm a "
             "specific disease."
         )
 
+    sections = [
+        f"{symptom.replace('_', ' ').title()}:\n{response}"
+        for symptom, response in responses
+    ]
 
-    sections = []
-
-    for symptom, response in responses:
-
-        title = (
-            symptom
-            .replace(
-                "_",
-                " "
-            )
-            .title()
-        )
-
-        sections.append(
-            f"{title}:\n{response}"
-        )
-
-
-    combined = (
-        intro
-        + "\n\n"
-        + "\n\n".join(
-            sections
-        )
-    )
-
-
+    combined = intro + "\n\n" + "\n\n".join(sections)
     combined += (
-
-        "\n\nImportant: This information is for "
-        "general guidance and does not provide a "
-        "diagnosis. If your symptoms are severe, "
-        "worsening, persistent, or you develop "
-        "difficulty breathing, confusion, fainting, "
-        "severe chest pain, or another emergency "
-        "symptom, seek urgent medical care."
+        "\n\nImportant: This information is for general guidance and does "
+        "not provide a diagnosis. If your symptoms are severe, worsening, "
+        "persistent, or you develop difficulty breathing, confusion, "
+        "fainting, severe chest pain, or another emergency symptom, seek "
+        "urgent medical care."
     )
-
 
     return combined
 
 
-# ============================================================
-# EXTRACT DURATION
-# ============================================================
+DURATION_PATTERNS = [
+    (r"(\d+)\s*(day|days)", "day", "days"),
+    (r"(\d+)\s*(hour|hours)", "hour", "hours"),
+    (r"(\d+)\s*(week|weeks)", "week", "weeks"),
+    (r"(\d+)\s*(month|months)", "month", "months"),
+]
+
 
 def extract_duration(text):
+    query = normalize_text(text)
 
-    query = normalize_text(
-        text
-    )
-
-    patterns = [
-
-        r"(\d+)\s*(day|days)",
-        r"(\d+)\s*(hour|hours)",
-        r"(\d+)\s*(week|weeks)",
-        r"(\d+)\s*(month|months)"
-    ]
-
-
-    for pattern in patterns:
-
-        match = re.search(
-            pattern,
-            query
-        )
-
+    for pattern, singular, plural in DURATION_PATTERNS:
+        match = re.search(pattern, query)
         if match:
-
-            number = match.group(
-                1
-            )
-
-            unit = match.group(
-                2
-            )
-
-            unit_map = {
-
-                "day":
-                    "day" if number == "1"
-                    else "days",
-
-                "days":
-                    "day" if number == "1"
-                    else "days",
-
-                "hour":
-                    "hour" if number == "1"
-                    else "hours",
-
-                "hours":
-                    "hour" if number == "1"
-                    else "hours",
-
-                "week":
-                    "week" if number == "1"
-                    else "weeks",
-
-                "weeks":
-                    "week" if number == "1"
-                    else "weeks",
-
-                "month":
-                    "month" if number == "1"
-                    else "months",
-
-                "months":
-                    "month" if number == "1"
-                    else "months"
-            }
-
-            return (
-                f"{number} "
-                f"{unit_map.get(unit, unit)}"
-            )
-
+            number = match.group(1)
+            unit = singular if number == "1" else plural
+            return f"{number} {unit}"
 
     return None
 
 
-# ============================================================
-# STRUCTURED MEDICAL INFORMATION EXTRACTION
-# ============================================================
+MEASUREMENT_PATTERNS = [
+    (
+        "hemoglobin",
+        r"(?:hemoglobin|haemoglobin|hb)\s*(?:is|of|around|about|=|:)?\s*"
+        r"(\d+(?:\.\d+)?)\s*(g\s*/?\s*dl|gdl)?",
+        "g/dL",
+    ),
+    (
+        "blood_pressure",
+        r"(?:blood pressure|bp)\s*(?:is|of|around|about|=|:)?\s*"
+        r"(\d{2,3})\s*(?:/|over)\s*(\d{2,3})",
+        "mmHg",
+    ),
+    (
+        "temperature",
+        r"(?:temperature|temp)\s*(?:is|of|around|about|=|:)?\s*"
+        r"(\d+(?:\.\d+)?)\s*(f|c|fahrenheit|celsius)?",
+        "",
+    ),
+    (
+        "blood_sugar",
+        r"(?:blood sugar|sugar|glucose)\s*(?:is|of|around|about|=|:)?\s*"
+        r"(\d+(?:\.\d+)?)\s*(mg\s*/?\s*dl|mgdl)?",
+        "mg/dL",
+    ),
+    (
+        "heart_rate",
+        r"(?:heart rate|pulse)\s*(?:is|of|around|about|=|:)?\s*(\d{2,3})\s*(?:bpm)?",
+        "bpm",
+    ),
+    (
+        "oxygen_saturation",
+        r"(?:oxygen saturation|spo2|sao2|oxygen level)\s*"
+        r"(?:is|of|around|about|=|:)?\s*(\d{2,3})\s*(?:%)?",
+        "%",
+    ),
+    (
+        "weight",
+        r"(?:weight)\s*(?:is|of|around|about|=|:)?\s*"
+        r"(\d+(?:\.\d+)?)\s*(kg|kgs|kilograms|lb|lbs)?",
+        "",
+    ),
+]
+
 
 def extract_medical_measurements(text):
-
     query = normalize_text(text)
-
     results = []
 
-    patterns = [
-
-        (
-            "hemoglobin",
-            r"(?:hemoglobin|haemoglobin|hb)\s*"
-            r"(?:is|of|around|about|=|:)?\s*"
-            r"(\d+(?:\.\d+)?)\s*"
-            r"(g\s*/?\s*dl|gdl)?",
-            "g/dL"
-        ),
-
-        (
-            "blood_pressure",
-            r"(?:blood pressure|bp)\s*"
-            r"(?:is|of|around|about|=|:)?\s*"
-            r"(\d{2,3})\s*(?:/|over)\s*"
-            r"(\d{2,3})",
-            "mmHg"
-        ),
-
-        (
-            "temperature",
-            r"(?:temperature|temp)\s*"
-            r"(?:is|of|around|about|=|:)?\s*"
-            r"(\d+(?:\.\d+)?)\s*"
-            r"(f|c|fahrenheit|celsius)?",
-            ""
-        ),
-
-        (
-            "blood_sugar",
-            r"(?:blood sugar|sugar|glucose)\s*"
-            r"(?:is|of|around|about|=|:)?\s*"
-            r"(\d+(?:\.\d+)?)\s*"
-            r"(mg\s*/?\s*dl|mgdl)?",
-            "mg/dL"
-        ),
-
-        (
-            "heart_rate",
-            r"(?:heart rate|pulse)\s*"
-            r"(?:is|of|around|about|=|:)?\s*"
-            r"(\d{2,3})\s*"
-            r"(?:bpm)?",
-            "bpm"
-        ),
-
-        (
-            "oxygen_saturation",
-            r"(?:oxygen saturation|spo2|sao2|oxygen level)\s*"
-            r"(?:is|of|around|about|=|:)?\s*"
-            r"(\d{2,3})\s*"
-            r"(?:%)?",
-            "%"
-        ),
-
-        (
-            "weight",
-            r"(?:weight)\s*"
-            r"(?:is|of|around|about|=|:)?\s*"
-            r"(\d+(?:\.\d+)?)\s*"
-            r"(kg|kgs|kilograms|lb|lbs)?",
-            ""
-        )
-    ]
-
-
-    for name, pattern, default_unit in patterns:
-
-        match = re.search(
-            pattern,
-            query,
-            re.IGNORECASE
-        )
-
+    for name, pattern, default_unit in MEASUREMENT_PATTERNS:
+        match = re.search(pattern, query, re.IGNORECASE)
         if not match:
             continue
 
-
         if name == "blood_pressure":
-
-            value = (
-                f"{match.group(1)}/"
-                f"{match.group(2)}"
-            )
-
+            value = f"{match.group(1)}/{match.group(2)}"
             unit = default_unit
-
         else:
-
             value = match.group(1)
-
-            unit = (
-                match.group(2)
-                if match.lastindex
-                and match.lastindex >= 2
-                and match.group(2)
-                else default_unit
-            )
-
-
+            unit = match.group(2) if (match.lastindex or 0) >= 2 and match.group(2) else default_unit
             if name == "hemoglobin":
-
                 unit = "g/dL"
-
             elif name == "blood_sugar":
-
                 unit = "mg/dL"
 
-
         results.append({
-
-            "memory_type":
-                "measurement",
-
-            "name":
-                name,
-
-            "value":
-                value,
-
-            "unit":
-                unit,
-
-            "duration":
-                None
+            "memory_type": "measurement",
+            "name": name,
+            "value": value,
+            "unit": unit,
+            "duration": None,
         })
-
 
     return results
 
 
-# ============================================================
-# MEASUREMENT RESPONSE
-# ============================================================
-
-def build_measurement_response(
-    measurements
-):
-
-    lines = [
-        "I have recorded the health "
-        "measurement(s) you reported:"
-    ]
+def build_measurement_response(measurements):
+    lines = ["I have recorded the health measurement(s) you reported:"]
 
     for item in measurements:
-
-        name = (
-            item["name"]
-            .replace("_", " ")
-            .title()
-        )
-
-        value = (
-            item.get("value")
-            or ""
-        )
-
-        unit = (
-            item.get("unit")
-            or ""
-        )
-
-        lines.append(
-            f"- {name}: {value} {unit}".strip()
-        )
-
+        name = item["name"].replace("_", " ").title()
+        value = item.get("value") or ""
+        unit = item.get("unit") or ""
+        lines.append(f"- {name}: {value} {unit}".strip())
 
     lines.append(
-        "These values are stored as information "
-        "you provided. They do not by themselves "
-        "establish a diagnosis. If you want, you "
-        "can also tell me your symptoms, duration, "
-        "age, or other relevant health information."
+        "These values are stored as information you provided. They do not "
+        "by themselves establish a diagnosis. If you want, you can also "
+        "tell me your symptoms, duration, age, or other relevant health "
+        "information."
     )
 
     return "\n".join(lines)
 
 
-# ============================================================
-# SAVE STRUCTURED MEMORIES
-# ============================================================
-
-def save_structured_memories(
-    session_id,
-    text,
-    symptoms,
-    duration
-):
-
+def save_structured_memories(session_id, text, symptoms, duration):
     for symptom in symptoms:
-
         save_medical_memory(
-
-            session_id=session_id,
-
-            memory_type="symptom",
-
-            name=symptom,
-
-            duration=duration,
-
-            source_message=text
+            session_id=session_id, memory_type="symptom", name=symptom,
+            duration=duration, source_message=text,
         )
 
-
-    measurements = (
-        extract_medical_measurements(
-            text
-        )
-    )
-
-
+    measurements = extract_medical_measurements(text)
     for item in measurements:
-
         save_medical_memory(
-
             session_id=session_id,
-
-            memory_type=item[
-                "memory_type"
-            ],
-
-            name=item[
-                "name"
-            ],
-
-            value=item[
-                "value"
-            ],
-
-            unit=item[
-                "unit"
-            ],
-
-            duration=item[
-                "duration"
-            ],
-
-            source_message=text
+            memory_type=item["memory_type"],
+            name=item["name"],
+            value=item["value"],
+            unit=item["unit"],
+            duration=item["duration"],
+            source_message=text,
         )
-
 
     return measurements
 
 
-# ============================================================
-# RECENT MEMORY SUMMARY
-# ============================================================
-
-def get_recent_memory_summary(
-    session_id,
-    limit=20
-):
-
-    memories = get_medical_memory(
-        session_id,
-        limit=limit
-    )
+def get_recent_memory_summary(session_id, limit=20):
+    memories = get_medical_memory(session_id, limit=limit)
 
     symptoms = []
-    measurements = []
     latest_measurements = {}
 
-
     for item in memories:
+        if item["memory_type"] == "symptom":
+            key = (item["name"], item.get("duration") or "")
+            existing_keys = [(x["name"], x.get("duration") or "") for x in symptoms]
+            if key not in existing_keys:
+                symptoms.append(item)
 
-        if item[
-            "memory_type"
-        ] == "symptom":
-
-            existing = [
-
-                (
-                    x["name"],
-                    x.get("duration") or ""
-                )
-
-                for x in symptoms
-            ]
-
-            key = (
-
-                item["name"],
-
-                item.get(
-                    "duration"
-                ) or ""
-            )
-
-            if key not in existing:
-
-                symptoms.append(
-                    item
-                )
-
-
-        elif item[
-            "memory_type"
-        ] == "measurement":
-
+        elif item["memory_type"] == "measurement":
             # get_medical_memory() is newest-first internally. Keep only
             # the latest value for each measurement so an old value such
             # as 10 g/dL cannot be shown together with a newer 11 g/dL.
-            measurement_name = normalize_text(
-                item.get("name", "")
-            )
-
+            measurement_name = normalize_text(item.get("name", ""))
             if measurement_name not in latest_measurements:
                 latest_measurements[measurement_name] = item
 
-
-    measurements = list(
-        reversed(
-            list(latest_measurements.values())
-        )
-    )
-
-    return {
-
-        "symptoms":
-            symptoms,
-
-        "measurements":
-            measurements
-    }
+    measurements = list(reversed(list(latest_measurements.values())))
+    return {"symptoms": symptoms, "measurements": measurements}
 
 
-# ============================================================
-# GENERAL MEMORY RECALL
-# ============================================================
+def build_memory_recall_response(session_id):
+    summary = get_recent_memory_summary(session_id, limit=30)
+    symptom_items = summary["symptoms"]
+    measurement_items = summary["measurements"]
 
-def build_memory_recall_response(
-    session_id
-):
-
-    summary = (
-        get_recent_memory_summary(
-            session_id,
-            limit=30
-        )
-    )
-
-    symptom_items = (
-        summary["symptoms"]
-    )
-
-    measurement_items = (
-        summary["measurements"]
-    )
-
-
-    if (
-        not symptom_items
-        and
-        not measurement_items
-    ):
-
+    if not symptom_items and not measurement_items:
         return (
-            "I do not have any structured health "
-            "information saved for this session yet. "
-            "You can tell me your symptoms, duration, "
+            "I do not have any structured health information saved for "
+            "this session yet. You can tell me your symptoms, duration, "
             "or health measurements."
         )
 
-
-    parts = [
-
-        "Here is the health information "
-        "you previously shared with me:"
-    ]
-
+    parts = ["Here is the health information you previously shared with me:"]
 
     if symptom_items:
-
         symptom_lines = []
-
         for item in symptom_items:
-
-            name = (
-                item["name"]
-                .replace("_", " ")
-            )
-
-            duration = (
-                item.get("duration")
-                or ""
-            )
-
+            name = item["name"].replace("_", " ")
+            duration = item.get("duration") or ""
             if duration:
-
-                symptom_lines.append(
-                    f"- {name.title()} "
-                    f"(you reported it for {duration})"
-                )
-
+                symptom_lines.append(f"- {name.title()} (you reported it for {duration})")
             else:
-
-                symptom_lines.append(
-                    f"- {name.title()}"
-                )
-
-
-        parts.append(
-            "Symptoms:\n"
-            + "\n".join(
-                symptom_lines
-            )
-        )
-
+                symptom_lines.append(f"- {name.title()}")
+        parts.append("Symptoms:\n" + "\n".join(symptom_lines))
 
     if measurement_items:
-
         measurement_lines = []
-
         for item in measurement_items:
-
-            name = (
-                item["name"]
-                .replace("_", " ")
-                .title()
-            )
-
-            value = (
-                item.get("value")
-                or ""
-            )
-
-            unit = (
-                item.get("unit")
-                or ""
-            )
-
-            measurement_lines.append(
-                f"- {name}: {value} {unit}".strip()
-            )
-
-
-        parts.append(
-            "Reported measurements:\n"
-            + "\n".join(
-                measurement_lines
-            )
-        )
-
+            name = item["name"].replace("_", " ").title()
+            value = item.get("value") or ""
+            unit = item.get("unit") or ""
+            measurement_lines.append(f"- {name}: {value} {unit}".strip())
+        parts.append("Reported measurements:\n" + "\n".join(measurement_lines))
 
     parts.append(
-        "This is a record of information you "
-        "reported; it is not a diagnosis. If you "
-        "are concerned about a result or symptom, "
+        "This is a record of information you reported; it is not a "
+        "diagnosis. If you are concerned about a result or symptom, "
         "consult a qualified healthcare professional."
     )
 
-
-    return "\n\n".join(
-        parts
-    )
+    return "\n\n".join(parts)
 
 
-# ============================================================
-# SPECIFIC MEMORY RECALL
-# ============================================================
-
-def build_specific_memory_response(
-    session_id,
-    text
-):
-
-    query = normalize_text(
-        text
-    )
+MEASUREMENT_ALIASES = {
+    "hemoglobin": ["hemoglobin", "haemoglobin", "hb"],
+    "blood_pressure": ["blood pressure", "bp"],
+    "temperature": ["temperature", "temp"],
+    "blood_sugar": ["blood sugar", "sugar", "glucose"],
+    "heart_rate": ["heart rate", "pulse"],
+    "oxygen_saturation": ["oxygen saturation", "spo2", "oxygen level"],
+    "weight": ["weight"],
+}
 
 
-    memories = get_medical_memory(
-        session_id,
-        limit=100
-    )
+def _find_requested_memory_name(query):
+    for symptom, aliases in SYMPTOM_ALIASES.items():
+        for alias in [symptom] + aliases:
+            alias_normalized = normalize_text(alias)
+            if alias_normalized and alias_normalized in query:
+                return symptom
+
+    for name, aliases in MEASUREMENT_ALIASES.items():
+        for alias in aliases:
+            alias_normalized = normalize_text(alias)
+            if alias_normalized and alias_normalized in query:
+                return name
+
+    return None
 
 
+def build_specific_memory_response(session_id, text):
+    query = normalize_text(text)
+    memories = get_medical_memory(session_id, limit=100)
     if not memories:
-
         return None
 
-
-    requested_name = None
-
-
-    # ========================================================
-    # SYMPTOM DETECTION
-    # ========================================================
-
-    for symptom, aliases in (
-        SYMPTOM_ALIASES.items()
-    ):
-
-        all_names = [
-            symptom
-        ] + aliases
-
-
-        for alias in all_names:
-
-            alias_normalized = (
-                normalize_text(alias)
-            )
-
-
-            if (
-                alias_normalized
-                and
-                alias_normalized in query
-            ):
-
-                requested_name = symptom
-
-                break
-
-
-        if requested_name:
-
-            break
-
-
-    # ========================================================
-    # MEASUREMENT DETECTION
-    # ========================================================
-
-    measurement_aliases = {
-
-        "hemoglobin": [
-            "hemoglobin",
-            "haemoglobin",
-            "hb"
-        ],
-
-        "blood_pressure": [
-            "blood pressure",
-            "bp"
-        ],
-
-        "temperature": [
-            "temperature",
-            "temp"
-        ],
-
-        "blood_sugar": [
-            "blood sugar",
-            "sugar",
-            "glucose"
-        ],
-
-        "heart_rate": [
-            "heart rate",
-            "pulse"
-        ],
-
-        "oxygen_saturation": [
-            "oxygen saturation",
-            "spo2",
-            "oxygen level"
-        ],
-
-        "weight": [
-            "weight"
-        ]
-    }
-
-
+    requested_name = _find_requested_memory_name(query)
     if requested_name is None:
-
-        for name, aliases in (
-            measurement_aliases.items()
-        ):
-
-            for alias in aliases:
-
-                alias_normalized = (
-                    normalize_text(alias)
-                )
-
-
-                if (
-                    alias_normalized
-                    and
-                    alias_normalized in query
-                ):
-
-                    requested_name = name
-
-                    break
-
-
-            if requested_name:
-
-                break
-
-
-    if requested_name is None:
-
         return None
 
+    requested_normalized = normalize_text(requested_name)
+    matching = [
+        item for item in memories
+        if normalize_text(item.get("name", "")) == requested_normalized
+    ]
 
-    # ========================================================
-    # FIND MATCHING MEMORY
-    # ========================================================
-
-    matching = []
-
-
-    requested_normalized = (
-        normalize_text(
-            requested_name
-        )
-    )
-
-
-    for item in memories:
-
-        saved_name = normalize_text(
-            item.get(
-                "name",
-                ""
-            )
-        )
-
-
-        if (
-            saved_name
-            ==
-            requested_normalized
-        ):
-
-            matching.append(
-                item
-            )
-
+    display_name = requested_name.replace("_", " ")
 
     if not matching:
+        return f"I don't have any saved information about {display_name} from this session."
 
-        display_name = (
-            requested_name
-            .replace(
-                "_",
-                " "
-            )
-        )
-
-        return (
-            f"I don't have any saved information "
-            f"about {display_name} from this session."
-        )
-
-
-    # ========================================================
-    # BUILD RESPONSE
-    # ========================================================
-
-    display_name = (
-        requested_name
-        .replace(
-            "_",
-            " "
-        )
-        .title()
-    )
-
-
-    symptom_items = [
-
-        item
-
-        for item in matching
-
-        if item.get(
-            "memory_type"
-        ) == "symptom"
-    ]
-
-
-    measurement_items = [
-
-        item
-
-        for item in matching
-
-        if item.get(
-            "memory_type"
-        ) == "measurement"
-    ]
+    display_name_title = display_name.title()
+    symptom_items = [item for item in matching if item.get("memory_type") == "symptom"]
+    measurement_items = [item for item in matching if item.get("memory_type") == "measurement"]
 
     # For a specific measurement recall, show only the latest saved value.
     # This prevents an older value (for example 10) from being repeated
     # after the user has reported a newer value (for example 11).
     if measurement_items:
-        measurement_items = [
-            measurement_items[-1]
-        ]
+        measurement_items = [measurement_items[-1]]
 
-
-    lines = [
-
-        f"Yes. You previously told me "
-        f"about your {display_name.lower()}."
-    ]
-
-
-    # ========================================================
-    # SYMPTOM MEMORY
-    # ========================================================
+    lines = [f"Yes. You previously told me about your {display_name.lower()}."]
 
     for item in symptom_items:
-
-        duration = (
-            item.get(
-                "duration"
-            )
-            or ""
-        )
-
-
+        duration = item.get("duration") or ""
         if duration:
-
-            lines.append(
-
-                f"- You reported "
-                f"{display_name.lower()} "
-                f"for {duration}."
-            )
-
+            lines.append(f"- You reported {display_name.lower()} for {duration}.")
         else:
-
-            lines.append(
-
-                f"- You reported "
-                f"{display_name.lower()}."
-            )
-
-
-    # ========================================================
-    # MEASUREMENT MEMORY
-    # ========================================================
+            lines.append(f"- You reported {display_name.lower()}.")
 
     for item in measurement_items:
-
-        value = (
-            item.get(
-                "value"
-            )
-            or ""
-        )
-
-        unit = (
-            item.get(
-                "unit"
-            )
-            or ""
-        )
-
-
-        lines.append(
-
-            f"- Your reported "
-            f"{display_name} was "
-            f"{value} {unit}.".strip()
-        )
-
+        value = item.get("value") or ""
+        unit = item.get("unit") or ""
+        lines.append(f"- Your reported {display_name_title} was {value} {unit}.".strip())
 
     lines.append(
-
-        "This is based only on information "
-        "you previously reported. It is not "
-        "a diagnosis."
+        "This is based only on information you previously reported. It is "
+        "not a diagnosis."
     )
 
-
-    return "\n".join(
-        lines
-    )
+    return "\n".join(lines)
 
 
-# ============================================================
-# FOLLOW-UP RESPONSE
-# ============================================================
-
-def build_followup_response(
-    session_id,
-    text
-):
-
-    history = get_chat_history(
-        session_id,
-        limit=20
-    )
-
-
+def build_followup_response(session_id, text):
+    history = get_chat_history(session_id, limit=20)
     if not history:
-
         return None
 
+    previous_symptoms = get_previous_symptoms(session_id)
+    duration = extract_duration(text)
 
-    previous_symptoms = (
-        get_previous_symptoms(
-            session_id
-        )
-    )
-
-
-    duration = extract_duration(
-        text
-    )
-
-
-    if (
-        duration
-        and
-        previous_symptoms
-    ):
-
-        names = [
-
-            s.replace(
-                "_",
-                " "
-            )
-
-            for s in previous_symptoms
-        ]
-
-
+    if duration and previous_symptoms:
+        names = [s.replace("_", " ") for s in previous_symptoms]
         if len(names) == 1:
-
             symptom_text = names[0]
-
         elif len(names) == 2:
-
-            symptom_text = (
-                f"{names[0]} and "
-                f"{names[1]}"
-            )
-
+            symptom_text = f"{names[0]} and {names[1]}"
         else:
-
-            symptom_text = (
-                ", ".join(
-                    names[:-1]
-                )
-                +
-                f", and {names[-1]}"
-            )
-
+            symptom_text = ", ".join(names[:-1]) + f", and {names[-1]}"
 
         return (
-            f"You previously mentioned "
-            f"{symptom_text}, and now you've "
-            f"indicated that this has been present "
-            f"for about {duration}. Persistent or "
-            f"worsening symptoms should be assessed "
-            f"by a qualified healthcare professional. "
-            f"Please monitor your symptoms and seek "
-            f"medical care if they become severe or "
-            f"you develop concerning symptoms."
+            f"You previously mentioned {symptom_text}, and now you've "
+            f"indicated that this has been present for about {duration}. "
+            "Persistent or worsening symptoms should be assessed by a "
+            "qualified healthcare professional. Please monitor your "
+            "symptoms and seek medical care if they become severe or you "
+            "develop concerning symptoms."
         )
 
+    query = normalize_text(text)
 
-    query = normalize_text(
-        text
-    )
-
-
-    if query in {
-        "yes",
-        "yeah",
-        "yep"
-    }:
-
+    if query in {"yes", "yeah", "yep"}:
         return (
-            "Thank you for confirming. Please provide "
-            "any additional symptoms, how long they "
-            "have been present, or any relevant "
-            "information so I can provide general "
-            "guidance."
+            "Thank you for confirming. Please provide any additional "
+            "symptoms, how long they have been present, or any relevant "
+            "information so I can provide general guidance."
         )
 
-
-    if query in {
-        "no",
-        "nope"
-    }:
-
+    if query in {"no", "nope"}:
         return (
-            "Understood. Please continue monitoring "
-            "your symptoms. If they become severe, "
-            "worsen, or new concerning symptoms "
+            "Understood. Please continue monitoring your symptoms. If "
+            "they become severe, worsen, or new concerning symptoms "
             "develop, seek medical attention."
         )
-
 
     return None
 
 
-# ============================================================
-# GENERAL FALLBACK
-# ============================================================
+def general_fallback(text):
+    query = normalize_text(text)
 
-def general_fallback(
-    text
-):
-
-    query = normalize_text(
-        text
-    )
-
-
-    if (
-        "mobile phone" in query
-        or
-        (
-            "mobile" in query
-            and
-            "phone" in query
-        )
-    ):
-
+    if "mobile phone" in query or ("mobile" in query and "phone" in query):
         return (
-            "A mobile phone is a portable electronic "
-            "device used for communication, internet "
-            "access, applications, photography and "
-            "other digital services."
+            "A mobile phone is a portable electronic device used for "
+            "communication, internet access, applications, photography "
+            "and other digital services."
         )
 
-
-    if (
-        "what is computer" in query
-        or
-        "what is a computer" in query
-    ):
-
+    if "what is computer" in query or "what is a computer" in query:
         return (
-            "A computer is an electronic device that "
-            "processes data and performs tasks according "
-            "to instructions given by software."
+            "A computer is an electronic device that processes data and "
+            "performs tasks according to instructions given by software."
         )
 
-
-    if (
-        "what is python" in query
-    ):
-
+    if "what is python" in query:
         return (
-            "Python is a high-level programming language "
-            "commonly used for web development, data "
-            "analysis, automation, artificial intelligence "
-            "and machine learning."
+            "Python is a high-level programming language commonly used "
+            "for web development, data analysis, automation, artificial "
+            "intelligence and machine learning."
         )
-
 
     return (
-        "I can mainly help with medical and "
-        "health-related questions. You can ask me "
-        "about symptoms, diseases, general health "
-        "information, medicines, or when medical "
-        "attention may be needed."
+        "I can mainly help with medical and health-related questions. "
+        "You can ask me about symptoms, diseases, general health "
+        "information, medicines, or when medical attention may be needed."
     )
 
 
-# ============================================================
-# BAD ANSWER
-# ============================================================
-
-def is_bad_answer(
-    answer
-):
-
-    text = normalize_text(
-        answer
-    )
+BAD_ANSWER_PATTERNS = [
+    "sorry please ask another", "appropriate question", "ask another question",
+    "unable to provide", "cannot provide any information",
+    "i do not have the information", "i dont have the information",
+]
 
 
-    bad_patterns = [
-
-        "sorry please ask another",
-        "appropriate question",
-        "ask another question",
-        "unable to provide",
-        "cannot provide any information",
-        "i do not have the information",
-        "i dont have the information"
-    ]
+def is_bad_answer(answer):
+    text = normalize_text(answer)
+    return any(pattern in text for pattern in BAD_ANSWER_PATTERNS)
 
 
-    for pattern in bad_patterns:
+def determine_final_intent(text, model_intent, confidence):
+    query = normalize_text(text)
+    words = set(query.split())
+    symptoms = extract_symptoms(text)
 
-        if pattern in text:
-
-            return True
-
-
-    return False
-
-
-# ============================================================
-# INTENT
-# ============================================================
-
-def determine_final_intent(
-    text,
-    model_intent,
-    confidence
-):
-
-    query = normalize_text(
-        text
-    )
-
-    words = set(
-        query.split()
-    )
-
-    symptoms = extract_symptoms(
-        text
-    )
-
-
-    if (
-        "opd" in words
-        or
-        "outpatient" in words
-    ):
-
+    if "opd" in words or "outpatient" in words:
         return "opd"
 
-
-    emergency_words = {
-
-        "emergency",
-        "unconscious",
-        "critical",
-        "trauma"
-    }
-
-
-    if words.intersection(
-        emergency_words
-    ):
-
+    if words.intersection({"emergency", "unconscious", "critical", "trauma"}):
         return "emergency"
 
-
-    assistance_patterns = [
-
-        "i have",
-        "i am having",
-        "i feel",
-        "i am feeling",
-        "suffering from",
-        "experiencing",
-        "mala",
-        "majha",
-        "maza",
-        "mujhe",
-        "mere"
-    ]
-
-
-    if (
-        symptoms
-        and
-        any(
-            pattern in query
-            for pattern in assistance_patterns
-        )
-    ):
-
+    if symptoms and any(pattern in query for pattern in ASSISTANCE_PATTERNS):
         return "symptom_assistance"
 
-
-    information_patterns = [
-
-        "symptoms of",
-        "symptoms for",
-        "what are the symptoms",
-        "signs of",
-        "symptom of",
-        "symptoms"
-    ]
-
-
-    if (
-        symptoms
-        and
-        any(
-            pattern in query
-            for pattern in information_patterns
-        )
-    ):
-
+    if symptoms and any(pattern in query for pattern in INFORMATION_PATTERNS):
         return "symptom_information"
 
-
     if symptoms:
-
         return "symptom_assistance"
 
-
-    return str(
-        model_intent
-    )
+    return str(model_intent)
 
 
-# ============================================================
-# MEDIQ RETRIEVAL
-# ============================================================
-
-def retrieve_mediq_answer(
-    user_text,
-    final_intent
-):
-
-    query = normalize_text(
-        user_text
-    )
-
-
-    query_vector = (
-        vectorizer.transform(
-            [query]
-        )
-    )
-
-
-    similarities = (
-        cosine_similarity(
-            query_vector,
-            retrieval_matrix
-        )[0]
-    )
-
+def retrieve_mediq_answer(user_text, final_intent):
+    query = normalize_text(user_text)
+    query_vector = vectorizer.transform([query])
+    similarities = cosine_similarity(query_vector, retrieval_matrix)[0]
 
     candidates = []
-
-
-    for index in range(
-        len(dataset)
-    ):
-
-        answer = str(
-            dataset.iloc[index][
-                ANSWER_COLUMN
-            ]
-        )
-
-
-        if is_bad_answer(
-            answer
-        ):
-
+    for index in range(len(dataset)):
+        answer = str(dataset.iloc[index][ANSWER_COLUMN])
+        if is_bad_answer(answer):
             continue
 
-
-        score = float(
-            similarities[index]
-        )
-
+        score = float(similarities[index])
 
         if CATEGORY_COLUMN is not None:
-
-            category = normalize_text(
-                dataset.iloc[index][
-                    CATEGORY_COLUMN
-                ]
-            )
-
-
-            if category == normalize_text(
-                final_intent
-            ):
-
+            category = normalize_text(dataset.iloc[index][CATEGORY_COLUMN])
+            if category == normalize_text(final_intent):
                 score += 0.20
 
-
-        candidates.append(
-            (
-                index,
-                score
-            )
-        )
-
+        candidates.append((index, score))
 
     if not candidates:
-
         return None
 
-
-    candidates.sort(
-        key=lambda item: item[1],
-        reverse=True
-    )
-
-
-    best_index = candidates[0][0]
-
-    best_score = candidates[0][1]
-
-
-    answer = str(
-        dataset.iloc[
-            best_index
-        ][
-            ANSWER_COLUMN
-        ]
-    )
-
+    candidates.sort(key=lambda item: item[1], reverse=True)
+    best_index, best_score = candidates[0]
+    answer = str(dataset.iloc[best_index][ANSWER_COLUMN])
 
     return {
-
-        "answer":
-            answer,
-
-        "similarity":
-            round(
-                min(
-                    best_score,
-                    1.0
-                ),
-                4
-            ),
-
-        "source":
-            "mediq"
+        "answer": answer,
+        "similarity": round(min(best_score, 1.0), 4),
+        "source": "mediq",
     }
 
 
 # ============================================================
-# HOME
+# ROUTES
 # ============================================================
 
 @app.get("/")
 def home():
-
     return jsonify({
-
-        "status":
-            "success",
-
-        "service":
-            "MEDASSIST AI Medical NLP API",
-
-        "message":
-            "API is running",
-
-        "model_loaded":
-            True,
-
-        "dataset_loaded":
-            True,
-
-        "medical_knowledge_loaded":
-            True,
-
-        "chat_memory":
-            "SQLite",
-
-        "mediq_records":
-            int(
-                len(dataset)
-            ),
-
-        "medical_knowledge_records":
-            int(
-                len(medical_knowledge)
-            )
+        "status": "success",
+        "service": "MEDASSIST AI Medical NLP API",
+        "message": "API is running",
+        "model_loaded": True,
+        "dataset_loaded": True,
+        "medical_knowledge_loaded": True,
+        "chat_memory": "SQLite",
+        "mediq_records": int(len(dataset)),
+        "medical_knowledge_records": int(len(medical_knowledge)),
     })
 
-
-# ============================================================
-# HEALTH
-# ============================================================
 
 @app.get("/health")
 def health():
-
     return jsonify({
-
-        "status":
-            "healthy",
-
-        "model_loaded":
-            True,
-
-        "dataset_loaded":
-            True,
-
-        "medical_knowledge_loaded":
-            True,
-
-        "chat_memory":
-            "SQLite"
+        "status": "healthy",
+        "model_loaded": True,
+        "dataset_loaded": True,
+        "medical_knowledge_loaded": True,
+        "chat_memory": "SQLite",
     })
 
 
-# ============================================================
-# CHAT HISTORY
-# ============================================================
-
-@app.get(
-    "/history/<session_id>"
-)
-def history(
-    session_id
-):
-
+@app.get("/history/<session_id>")
+def history(session_id):
     return jsonify({
-
-        "status":
-            "success",
-
-        "session_id":
-            session_id,
-
-        "history":
-            get_chat_history(
-                session_id,
-                limit=50
-            )
+        "status": "success",
+        "session_id": session_id,
+        "history": get_chat_history(session_id, limit=50),
     })
 
 
-# ============================================================
-# DELETE CHAT HISTORY
-# ============================================================
-
-@app.delete(
-    "/history/<session_id>"
-)
-def delete_history(
-    session_id
-):
-
-    clear_chat_history(
-        session_id
-    )
-
-
+@app.delete("/history/<session_id>")
+def delete_history(session_id):
+    clear_chat_history(session_id)
     return jsonify({
-
-        "status":
-            "success",
-
-        "message":
-            "Chat history cleared",
-
-        "session_id":
-            session_id
+        "status": "success",
+        "message": "Chat history cleared",
+        "session_id": session_id,
     })
 
 
-# ============================================================
-# MEDICAL MEMORY
-# ============================================================
-
-@app.get(
-    "/memory/<session_id>"
-)
-def memory(
-    session_id
-):
-
+@app.get("/memory/<session_id>")
+def memory(session_id):
     return jsonify({
-
-        "status":
-            "success",
-
-        "session_id":
-            session_id,
-
-        "memory":
-            get_medical_memory(
-                session_id,
-                limit=100
-            )
+        "status": "success",
+        "session_id": session_id,
+        "memory": get_medical_memory(session_id, limit=100),
     })
 
 
-# ============================================================
-# DELETE MEDICAL MEMORY
-# ============================================================
-
-@app.delete(
-    "/memory/<session_id>"
-)
-def delete_memory(
-    session_id
-):
-
-    clear_medical_memory(
-        session_id
-    )
-
-
+@app.delete("/memory/<session_id>")
+def delete_memory(session_id):
+    clear_medical_memory(session_id)
     return jsonify({
-
-        "status":
-            "success",
-
-        "message":
-            "Structured medical memory cleared",
-
-        "session_id":
-            session_id
+        "status": "success",
+        "message": "Structured medical memory cleared",
+        "session_id": session_id,
     })
 
 
-# ============================================================
-# PREDICT
-# ============================================================
+MEMORY_QUESTION_WORDS = [
+    "remember", "previously", "earlier", "before", "told", "said",
+    "shared", "reported", "gave", "mentioned",
+]
 
-@app.post(
-    "/predict"
-)
+MEMORY_RECALL_PATTERNS = [
+    "what did i tell you before", "what did i tell you earlier",
+    "what did i say before", "what did i say earlier",
+    "what did i tell you about my health",
+    "what did i tell you about my health before",
+    "what did i tell you about my health earlier",
+    "what did i say about my health", "what did i say about my health before",
+    "what health information did i give you",
+    "what health information did i tell you",
+    "what health information did i share",
+    "what did i share about my health",
+    "what did i share with you before", "what did i share with you earlier",
+    "tell me my health history", "show me my health history",
+    "my previous symptoms", "my past symptoms",
+    "my previous health", "my past health", "my health history",
+    "previous health information", "past health information",
+    "do you remember my symptoms", "do you remember my health",
+    "do you remember my health history", "do you remember what i told you",
+    "do you remember what i said", "what do you remember about my health",
+    "what do you remember about me",
+]
+
+CARE_PHRASES = [
+    "what should i do", "what can i do", "what to do", "what care",
+    "care should i take", "what precautions", "precautions",
+    "how should i care", "how to take care", "home care", "treatment",
+    "remedy", "relief",
+]
+
+
+@app.post("/predict")
 def predict():
-
-    data = request.get_json(
-        silent=True
-    )
-
-
+    data = request.get_json(silent=True)
     if not data:
+        return jsonify({"status": "error", "message": "Request body is required"}), 400
 
-        return jsonify({
-
-            "status":
-                "error",
-
-            "message":
-                "Request body is required"
-
-        }), 400
-
-
-    text = data.get(
-        "text"
-    )
-
-
-    if (
-        not text
-        or
-        not isinstance(
-            text,
-            str
-        )
-    ):
-
-        return jsonify({
-
-            "status":
-                "error",
-
-            "message":
-                "text field is required"
-
-        }), 400
-
+    text = data.get("text")
+    if not text or not isinstance(text, str):
+        return jsonify({"status": "error", "message": "text field is required"}), 400
 
     text = text.strip()
+    if not text:
+        return jsonify({"status": "error", "message": "text cannot be empty"}), 400
 
-    # ========================================================
-    # MULTILINGUAL ANALYSIS
-    # ========================================================
-    # Keep original text for UI/storage.
-    # Convert Marathi/Hindi to English internally so the
-    # existing ML/NLP/MEDIQ pipeline can understand it.
-
+    # Auto-detect the spoken/typed language up front. `analysis_text` is
+    # what the ML/NLP pipeline actually reasons over; `text` (original,
+    # in whatever language/script it arrived in) is kept for storage,
+    # memory recall, and Gemini prompts. See LANGUAGE_SUPPORT_NOTES below
+    # for exactly what this covers.
     detected_language = detect_language(text)
-
     analysis_text = (
         translate_input_to_english(text)
         if detected_language in {"mr", "hi"}
         else text
     )
 
-
-
-    if not text:
-
-        return jsonify({
-
-            "status":
-                "error",
-
-            "message":
-                "text cannot be empty"
-
-        }), 400
-
-
-    # ========================================================
-    # SESSION ID
-    # ========================================================
-
-    session_id = data.get(
-        "session_id",
-        "default_user"
-    )
-
-
-    session_id = str(
-        session_id
-    ).strip()
-
-
-    if not session_id:
-
-        session_id = "default_user"
-
+    session_id = str(data.get("session_id", "default_user")).strip() or "default_user"
 
     try:
-
-        # ====================================================
-        # ML MODEL
-        # ====================================================
-
-        model_prediction = model.predict(
-            [analysis_text]
-        )[0]
-
-
-        model_prediction = str(
-            model_prediction
-        )
-
-
-        # ====================================================
-        # CONFIDENCE
-        # ====================================================
+        model_prediction = str(model.predict([analysis_text])[0])
 
         confidence = 0.0
-
-
-        if hasattr(
-            model,
-            "predict_proba"
-        ):
-
+        if hasattr(model, "predict_proba"):
             try:
-
-                probabilities = (
-                    model.predict_proba(
-                        [analysis_text]
-                    )[0]
-                )
-
-
-                confidence = float(
-                    max(
-                        probabilities
-                    )
-                )
-
-
+                probabilities = model.predict_proba([analysis_text])[0]
+                confidence = float(max(probabilities))
             except Exception:
-
                 confidence = 0.0
 
+        final_intent = determine_final_intent(analysis_text, model_prediction, confidence)
+        symptoms = extract_symptoms(analysis_text)
+        duration = extract_duration(analysis_text)
+        measurements = extract_medical_measurements(analysis_text)
+        previous_symptoms = get_previous_symptoms(session_id)
+        conversation_context = build_conversation_context(session_id, limit=12)
+        medical_query = is_medical_query(analysis_text)
+        normalized_query = normalize_text(text)
 
-        # ====================================================
-        # FINAL INTENT
-        # ====================================================
-
-        final_intent = (
-            determine_final_intent(
-                analysis_text,
-                model_prediction,
-                confidence
-            )
-        )
-
-
-        # ====================================================
-        # CURRENT DATA
-        # ====================================================
-
-        symptoms = extract_symptoms(
-            analysis_text
-        )
-
-        duration = extract_duration(
-            analysis_text
-        )
-
-        measurements = (
-            extract_medical_measurements(
-                analysis_text
-            )
-        )
-
-
-        # ====================================================
-        # PREVIOUS SYMPTOMS
-        # ====================================================
-
-        previous_symptoms = (
-            get_previous_symptoms(
-                session_id
-            )
-        )
-
-        conversation_context = build_conversation_context(
-            session_id,
-            limit=12
-        )
-
-
-        # ====================================================
-        # MEDICAL QUERY
-        # ====================================================
-
-        medical_query = (
-            is_medical_query(
-                analysis_text
-            )
-        )
-
-
-        # ====================================================
-        # NORMALIZED QUERY
-        # ====================================================
-
-        normalized_query = (
-            normalize_text(
-                text
-            )
-        )
-
-
-        # ====================================================
+        # ----------------------------------------------------
         # SPECIFIC MEMORY RECALL
-        # ====================================================
-        #
-        # IMPORTANT:
-        # This runs BEFORE generic memory and MEDIQ.
-        #
-        # Examples:
-        #
-        # Do you remember my fever?
-        # What did I tell you about my fever?
-        # Do you remember my hemoglobin?
-        # What was my BP?
-        #
-        # ====================================================
-
-        memory_question_words = [
-
-            "remember",
-            "previously",
-            "earlier",
-            "before",
-            "told",
-            "said",
-            "shared",
-            "reported",
-            "gave",
-            "mentioned"
-        ]
-
-
+        # e.g. "Do you remember my fever?" / "What was my BP?"
+        # Runs before generic memory and MEDIQ.
+        # ----------------------------------------------------
         has_memory_language = any(
-
-            word in normalized_query.split()
-
-            for word in memory_question_words
+            word in normalized_query.split() for word in MEMORY_QUESTION_WORDS
         )
-
 
         specific_memory_answer = None
-
-
-        # A NEW measurement must always be treated as a current report.
-        # Do not let memory-recall logic answer a query such as
-        # "my hemoglobin is 11 g/dL" using an older saved value.
+        # A NEW measurement must always be treated as a current report, not
+        # a recall of an older saved value (e.g. "my hemoglobin is 11 g/dL").
         if has_memory_language and not measurements:
-
-            specific_memory_answer = (
-                build_specific_memory_response(
-                    session_id,
-                    text
-                )
-            )
-
+            specific_memory_answer = build_specific_memory_response(session_id, text)
 
         if specific_memory_answer:
+            localized_answer = localize_answer(specific_memory_answer, detected_language)
 
-            save_chat_message(
-                session_id,
-                "user",
-                text,
-                []
-            )
-
-
-            save_chat_message(
-                session_id,
-                "assistant",
-                specific_memory_answer,
-                previous_symptoms
-            )
-
+            save_chat_message(session_id, "user", text, [])
+            save_chat_message(session_id, "assistant", localized_answer, previous_symptoms)
 
             return jsonify({
-
-                "status":
-                    "success",
-
-                "session_id":
-                    session_id,
-
-                "question":
-                    text,
-
-                "intent":
-                    "memory_recall",
-
-                "confidence":
-                    round(
-                        confidence,
-                        4
-                    ),
-
-                "symptoms":
-                    previous_symptoms,
-
-                "medical_query":
-                    True,
-
-                "answer":
-                    specific_memory_answer,
-
-                "answer_similarity":
-                    1.0,
-
-                "source":
-                    "structured_memory"
+                "status": "success",
+                "session_id": session_id,
+                "question": text,
+                "intent": "memory_recall",
+                "confidence": round(confidence, 4),
+                "symptoms": previous_symptoms,
+                "medical_query": True,
+                "answer": localized_answer,
+                "answer_similarity": 1.0,
+                "source": "structured_memory",
+                "language": detected_language,
             })
 
-
-        # ====================================================
+        # ----------------------------------------------------
         # GENERAL MEMORY RECALL
-        # ====================================================
+        # ----------------------------------------------------
+        if any(pattern in normalized_query for pattern in MEMORY_RECALL_PATTERNS):
+            memory_answer = build_memory_recall_response(session_id)
+            localized_answer = localize_answer(memory_answer, detected_language)
 
-        memory_recall_patterns = [
-
-            "what did i tell you before",
-            "what did i tell you earlier",
-            "what did i say before",
-            "what did i say earlier",
-
-            "what did i tell you about my health",
-            "what did i tell you about my health before",
-            "what did i tell you about my health earlier",
-
-            "what did i say about my health",
-            "what did i say about my health before",
-
-            "what health information did i give you",
-            "what health information did i tell you",
-            "what health information did i share",
-
-            "what did i share about my health",
-            "what did i share with you before",
-            "what did i share with you earlier",
-
-            "tell me my health history",
-            "show me my health history",
-
-            "my previous symptoms",
-            "my past symptoms",
-
-            "my previous health",
-            "my past health",
-
-            "my health history",
-
-            "previous health information",
-            "past health information",
-
-            "do you remember my symptoms",
-            "do you remember my health",
-            "do you remember my health history",
-
-            "do you remember what i told you",
-            "do you remember what i said",
-
-            "what do you remember about my health",
-            "what do you remember about me"
-        ]
-
-
-        if any(
-
-            pattern in normalized_query
-
-            for pattern
-            in memory_recall_patterns
-
-        ):
-
-            memory_answer = (
-                build_memory_recall_response(
-                    session_id
-                )
-            )
-
-
-            save_chat_message(
-                session_id,
-                "user",
-                text,
-                []
-            )
-
-
-            save_chat_message(
-                session_id,
-                "assistant",
-                memory_answer,
-                previous_symptoms
-            )
-
+            save_chat_message(session_id, "user", text, [])
+            save_chat_message(session_id, "assistant", localized_answer, previous_symptoms)
 
             return jsonify({
-
-                "status":
-                    "success",
-
-                "session_id":
-                    session_id,
-
-                "question":
-                    text,
-
-                "intent":
-                    "memory_recall",
-
-                "confidence":
-                    round(
-                        confidence,
-                        4
-                    ),
-
-                "symptoms":
-                    previous_symptoms,
-
-                "medical_query":
-                    True,
-
-                "answer":
-                    memory_answer,
-
-                "answer_similarity":
-                    1.0,
-
-                "source":
-                    "structured_memory"
+                "status": "success",
+                "session_id": session_id,
+                "question": text,
+                "intent": "memory_recall",
+                "confidence": round(confidence, 4),
+                "symptoms": previous_symptoms,
+                "medical_query": True,
+                "answer": localized_answer,
+                "answer_similarity": 1.0,
+                "source": "structured_memory",
+                "language": detected_language,
             })
 
-
-        # ====================================================
+        # ----------------------------------------------------
         # FOLLOW-UP
-        # ====================================================
-
-        if (
-            is_followup_query(text)
-            and
-            not symptoms
-            and
-            previous_symptoms
-        ):
-
-            care_phrases = [
-                "what should i do",
-                "what can i do",
-                "what to do",
-                "what care",
-                "care should i take",
-                "what precautions",
-                "precautions",
-                "how should i care",
-                "how to take care",
-                "home care",
-                "treatment",
-                "remedy",
-                "relief"
-            ]
-
+        # ----------------------------------------------------
+        if is_followup_query(text) and not symptoms and previous_symptoms:
             followup_context = ""
-
-            if any(
-                phrase in normalized_query
-                for phrase in care_phrases
-            ):
-                followup_context = (
-                    build_multi_symptom_response(
-                        previous_symptoms,
-                        "assistance"
-                    )
+            if any(phrase in normalized_query for phrase in CARE_PHRASES):
+                followup_context = build_multi_symptom_response(
+                    previous_symptoms, "assistance"
                 ) or ""
 
-            followup_answer = (
-                generate_gemini_medical_response(
-                    user_text=text,
-                    language=detected_language,
-                    medical_context=followup_context,
-                    conversation_context=conversation_context
-                )
+            followup_answer = generate_gemini_medical_response(
+                user_text=text,
+                language=detected_language,
+                medical_context=followup_context,
+                conversation_context=conversation_context,
             )
 
             if not followup_answer:
-                followup_answer = (
-                    build_followup_response(
-                        session_id,
-                        text
-                    )
-                )
+                followup_answer = build_followup_response(session_id, text)
+                if followup_answer:
+                    followup_answer = localize_answer(followup_answer, detected_language)
 
             if followup_answer:
-
-                save_chat_message(
-                    session_id,
-                    "user",
-                    text,
-                    []
-                )
-
-                save_chat_message(
-                    session_id,
-                    "assistant",
-                    followup_answer,
-                    previous_symptoms
-                )
+                save_chat_message(session_id, "user", text, [])
+                save_chat_message(session_id, "assistant", followup_answer, previous_symptoms)
 
                 return jsonify({
-
                     "status": "success",
-
                     "session_id": session_id,
-
                     "question": text,
-
                     "intent": "follow_up",
-
-                    "confidence": round(
-                        confidence,
-                        4
-                    ),
-
+                    "confidence": round(confidence, 4),
                     "symptoms": previous_symptoms,
-
-                    "previous_symptoms":
-                        previous_symptoms,
-
+                    "previous_symptoms": previous_symptoms,
                     "medical_query": True,
-
                     "answer": followup_answer,
-
                     "answer_similarity": 1.0,
-
-                    "source":
-                        "conversation_memory",
-
-                    "language":
-                        detected_language
+                    "source": "conversation_memory",
+                    "language": detected_language,
                 })
 
-
-        # ====================================================
-        # ====================================================
-        # GENERAL QUERY
-        # ====================================================
-
+        # ----------------------------------------------------
+        # GENERAL (non-medical) QUERY
+        # ----------------------------------------------------
         if not medical_query:
-
-            # Gemini gets a chance to answer general health
-            # questions before the static fallback.
-
             gemini_answer = generate_gemini_medical_response(
                 user_text=text,
                 language=detected_language,
                 medical_context="",
-                conversation_context=conversation_context
+                conversation_context=conversation_context,
             )
 
             if gemini_answer:
-
-                save_chat_message(
-                    session_id,
-                    "user",
-                    text,
-                    symptoms
-                )
-
-                save_chat_message(
-                    session_id,
-                    "assistant",
-                    gemini_answer,
-                    symptoms
-                )
+                save_chat_message(session_id, "user", text, symptoms)
+                save_chat_message(session_id, "assistant", gemini_answer, symptoms)
 
                 return jsonify({
                     "status": "success",
                     "session_id": session_id,
                     "question": text,
                     "intent": "general",
-                    "confidence": round(
-                        confidence,
-                        4
-                    ),
+                    "confidence": round(confidence, 4),
                     "symptoms": symptoms,
                     "medical_query": False,
                     "answer": gemini_answer,
                     "answer_similarity": 1.0,
                     "source": "gemini",
-                    "language": detected_language
+                    "language": detected_language,
                 })
 
-            answer = general_fallback(
-                analysis_text
-            )
+            answer = localize_answer(general_fallback(analysis_text), detected_language)
 
-            answer = translate_general_response(
-                answer,
-                detected_language
-            )
-
-            save_chat_message(
-                session_id,
-                "user",
-                text,
-                symptoms
-            )
-
-            save_chat_message(
-                session_id,
-                "assistant",
-                answer,
-                symptoms
-            )
+            save_chat_message(session_id, "user", text, symptoms)
+            save_chat_message(session_id, "assistant", answer, symptoms)
 
             return jsonify({
                 "status": "success",
                 "session_id": session_id,
                 "question": text,
                 "intent": "general",
-                "confidence": round(
-                    confidence,
-                    4
-                ),
+                "confidence": round(confidence, 4),
                 "symptoms": symptoms,
                 "medical_query": False,
                 "answer": answer,
                 "answer_similarity": 1.0,
                 "source": "general_fallback",
-                "language": detected_language
+                "language": detected_language,
             })
 
-
-        # ====================================================
-        # MEDICAL RESPONSE
-        # ====================================================
-
+        # ----------------------------------------------------
+        # MEDICAL RESPONSE (symptom-based)
+        # ----------------------------------------------------
         if symptoms:
+            question_type = get_question_type(text)
+            medical_answer = build_multi_symptom_response(symptoms, question_type)
 
-            question_type = (
-                get_question_type(
-                    text
-                )
-            )
-
-            medical_answer = (
-                build_multi_symptom_response(
-                    symptoms,
-                    question_type
-                )
-            )
-
-            # ------------------------------------------------
-            # GEMINI MEDICAL RESPONSE
-            # ------------------------------------------------
-            # The existing medical knowledge answer is supplied
-            # to Gemini as factual context.
-            # Gemini only rewrites/explains it naturally in the
-            # user's language.
-            # ------------------------------------------------
-
+            # The knowledge-base answer is supplied to Gemini as factual
+            # context; Gemini rewrites/explains it in the user's language.
             gemini_medical_answer = None
-
             if medical_answer:
-
-                gemini_medical_answer = (
-                    generate_gemini_medical_response(
-                        user_text=text,
-                        language=detected_language,
-                        medical_context=medical_answer,
-                        conversation_context=conversation_context
-                    )
-                )
-
-            # ------------------------------------------------
-            # Prefer Gemini when available.
-            # Otherwise preserve existing medical response.
-            # ------------------------------------------------
-
-            final_answer = (
-                gemini_medical_answer
-                if gemini_medical_answer
-                else medical_answer
-            )
-
-            if final_answer:
-
-                save_chat_message(
-                    session_id,
-                    "user",
-                    text,
-                    symptoms
-                )
-
-                save_structured_memories(
-                    session_id=session_id,
-                    text=text,
-                    symptoms=symptoms,
-                    duration=duration
-                )
-
-                save_chat_message(
-                    session_id,
-                    "assistant",
-                    final_answer,
-                    symptoms
-                )
-
-                return jsonify({
-
-                    "status":
-                        "success",
-
-                    "session_id":
-                        session_id,
-
-                    "question":
-                        text,
-
-                    "intent":
-                        final_intent,
-
-                    "confidence":
-                        round(
-                            confidence,
-                            4
-                        ),
-
-                    "symptoms":
-                        symptoms,
-
-                    "previous_symptoms":
-                        previous_symptoms,
-
-                    "duration":
-                        duration,
-
-                    "measurements":
-                        measurements,
-
-                    "medical_query":
-                        True,
-
-                    "answer":
-                        final_answer,
-
-                    "answer_similarity":
-                        1.0,
-
-                    "source":
-                        (
-                            "gemini"
-                            if gemini_medical_answer
-                            else "medical_knowledge"
-                        ),
-
-                    "language":
-                        detected_language
-                })
-
-
-        # ====================================================
-        # MEDIQ FALLBACK
-        # ====================================================
-
-        mediq_result = (
-            retrieve_mediq_answer(
-                analysis_text,
-                model_prediction
-            )
-        )
-
-
-        if mediq_result is not None:
-
-            answer = (
-                mediq_result[
-                    "answer"
-                ]
-            )
-
-            # Let Gemini explain the retrieved MEDIQ answer
-            # in the user's language while keeping MEDIQ as
-            # the factual source.
-
-            gemini_mediq_answer = (
-                generate_gemini_medical_response(
+                gemini_medical_answer = generate_gemini_medical_response(
                     user_text=text,
                     language=detected_language,
-                    medical_context=answer,
-                    conversation_context=conversation_context
+                    medical_context=medical_answer,
+                    conversation_context=conversation_context,
                 )
+
+            if gemini_medical_answer:
+                final_answer = gemini_medical_answer
+            elif medical_answer:
+                final_answer = localize_answer(medical_answer, detected_language)
+            else:
+                final_answer = None
+
+            if final_answer:
+                save_chat_message(session_id, "user", text, symptoms)
+                save_structured_memories(
+                    session_id=session_id, text=text, symptoms=symptoms, duration=duration
+                )
+                save_chat_message(session_id, "assistant", final_answer, symptoms)
+
+                return jsonify({
+                    "status": "success",
+                    "session_id": session_id,
+                    "question": text,
+                    "intent": final_intent,
+                    "confidence": round(confidence, 4),
+                    "symptoms": symptoms,
+                    "previous_symptoms": previous_symptoms,
+                    "duration": duration,
+                    "measurements": measurements,
+                    "medical_query": True,
+                    "answer": final_answer,
+                    "answer_similarity": 1.0,
+                    "source": "gemini" if gemini_medical_answer else "medical_knowledge",
+                    "language": detected_language,
+                })
+
+        # ----------------------------------------------------
+        # MEDIQ FALLBACK
+        # ----------------------------------------------------
+        mediq_result = retrieve_mediq_answer(analysis_text, model_prediction)
+
+        if mediq_result is not None:
+            answer = mediq_result["answer"]
+
+            gemini_mediq_answer = generate_gemini_medical_response(
+                user_text=text,
+                language=detected_language,
+                medical_context=answer,
+                conversation_context=conversation_context,
             )
 
             if gemini_mediq_answer:
                 answer = gemini_mediq_answer
-
+            else:
+                answer = localize_answer(answer, detected_language)
 
             save_structured_memories(
-                session_id=session_id,
-                text=text,
-                symptoms=symptoms,
-                duration=duration
+                session_id=session_id, text=text, symptoms=symptoms, duration=duration
             )
-
-
-            save_chat_message(
-                session_id,
-                "user",
-                text,
-                symptoms
-            )
-
-
-            save_chat_message(
-                session_id,
-                "assistant",
-                answer,
-                symptoms
-            )
-
+            save_chat_message(session_id, "user", text, symptoms)
+            save_chat_message(session_id, "assistant", answer, symptoms)
 
             return jsonify({
-
-                "status":
-                    "success",
-
-                "session_id":
-                    session_id,
-
-                "question":
-                    text,
-
-                "intent":
-                    final_intent,
-
-                "confidence":
-                    round(
-                        confidence,
-                        4
-                    ),
-
-                "symptoms":
-                    symptoms,
-
-                "previous_symptoms":
-                    previous_symptoms,
-
-                "duration":
-                    duration,
-
-                "measurements":
-                    measurements,
-
-                "medical_query":
-                    True,
-
-                "answer":
-                    answer,
-
-                "answer_similarity":
-                    mediq_result[
-                        "similarity"
-                    ],
-
-                "source":
-                    (
-                        "gemini"
-                        if gemini_mediq_answer
-                        else "mediq"
-                    ),
-
-                "language":
-                    detected_language
+                "status": "success",
+                "session_id": session_id,
+                "question": text,
+                "intent": final_intent,
+                "confidence": round(confidence, 4),
+                "symptoms": symptoms,
+                "previous_symptoms": previous_symptoms,
+                "duration": duration,
+                "measurements": measurements,
+                "medical_query": True,
+                "answer": answer,
+                "answer_similarity": mediq_result["similarity"],
+                "source": "gemini" if gemini_mediq_answer else "mediq",
+                "language": detected_language,
             })
 
-
-        # ====================================================
+        # ----------------------------------------------------
         # SAFE FALLBACK
-        # ====================================================
-
-        answer = (
-            "I could not find a suitable answer "
-            "in my current medical knowledge base. "
-            "Please consult a qualified healthcare "
-            "professional for personalized medical advice."
+        # ----------------------------------------------------
+        answer = localize_answer(
+            "I could not find a suitable answer in my current medical "
+            "knowledge base. Please consult a qualified healthcare "
+            "professional for personalized medical advice.",
+            detected_language,
         )
-
 
         save_structured_memories(
-            session_id=session_id,
-            text=text,
-            symptoms=symptoms,
-            duration=duration
+            session_id=session_id, text=text, symptoms=symptoms, duration=duration
         )
-
-
-        save_chat_message(
-            session_id,
-            "user",
-            text,
-            symptoms
-        )
-
-
-        save_chat_message(
-            session_id,
-            "assistant",
-            answer,
-            symptoms
-        )
-
+        save_chat_message(session_id, "user", text, symptoms)
+        save_chat_message(session_id, "assistant", answer, symptoms)
 
         return jsonify({
-
-            "status":
-                "success",
-
-            "session_id":
-                session_id,
-
-            "question":
-                text,
-
-            "intent":
-                final_intent,
-
-            "confidence":
-                round(
-                    confidence,
-                    4
-                ),
-
-            "symptoms":
-                symptoms,
-
-            "previous_symptoms":
-                previous_symptoms,
-
-            "medical_query":
-                True,
-
-            "answer":
-                answer,
-
-            "answer_similarity":
-                0.0,
-
-            "source":
-                "safe_fallback"
+            "status": "success",
+            "session_id": session_id,
+            "question": text,
+            "intent": final_intent,
+            "confidence": round(confidence, 4),
+            "symptoms": symptoms,
+            "previous_symptoms": previous_symptoms,
+            "medical_query": True,
+            "answer": answer,
+            "answer_similarity": 0.0,
+            "source": "safe_fallback",
+            "language": detected_language,
         })
 
-
     except Exception as e:
-
         return jsonify({
-
-            "status":
-                "error",
-
-            "message":
-                "Prediction failed",
-
-            "error":
-                str(e)
-
+            "status": "error",
+            "message": "Prediction failed",
+            "error": str(e),
         }), 500
 
 
 # ============================================================
-# START SERVER
+# LANGUAGE_SUPPORT_NOTES
 # ============================================================
+#
+# What "auto-detect and respond in that language" covers now:
+#
+# 1. detect_language() looks at every incoming message (script +
+#    Romanized word/phrase scoring) and returns "en" / "hi" / "mr".
+# 2. normalize_text() used to silently strip all Devanagari characters
+#    before symptom/intent detection ever saw them (its character
+#    filters only kept a-z0-9). That's fixed here, and the word-level
+#    substitution table now covers common symptom words in Devanagari
+#    as well as Romanized script, so single-word symptom mentions in
+#    either script are recognized correctly by extract_symptoms() /
+#    is_medical_query().
+# 3. localize_answer() is now applied to every hardcoded / knowledge-base
+#    / MEDIQ answer that ISN'T already generated by Gemini in the target
+#    language, so every JSON response's "language" field now matches the
+#    actual language of its "answer" text. Previously several branches
+#    (structured memory recall in particular) always answered in English
+#    regardless of detected_language, and a couple of others claimed a
+#    language in the response without actually translating the text.
+#
+# What this does NOT fully solve, honestly:
+#
+# - Free-form Devanagari or Romanized sentences beyond the recognized
+#   single symptom words still won't be understood by the ML classifier
+#   or MEDIQ's TF-IDF retrieval (both are trained on English text) —
+#   those paths still rely on Gemini to carry the conversation. If
+#   GEMINI_API_KEY isn't set, non-English input outside the exact
+#   phrase shortcuts / recognized symptom words will mostly land in
+#   general_fallback() or the safe fallback, just now at least
+#   correctly labeled/localized rather than silently English.
+# - localize_answer()'s Gemini path makes one extra API call for any
+#   fallback branch that hits it in a non-English conversation (mainly
+#   memory recall right now, since Gemini wasn't wired into those
+#   branches before) — a latency/cost tradeoff worth knowing about.
+# - The Devanagari/Romanized translations added throughout this file
+#   are limited to common symptom vocabulary and haven't been reviewed
+#   by a native speaker; worth a sanity check before this goes in front
+#   of real users.
+
 
 if __name__ == "__main__":
-
     print("----------------------------------------")
     print("MEDASSIST AI API")
     print("----------------------------------------")
-
-    print(
-        "Model        : Loaded"
-    )
-
-    print(
-        "MEDIQ        : Loaded"
-    )
-
-    print(
-        "Medical KB   : Loaded"
-    )
-
-    print(
-        "Chat Memory  : SQLite"
-    )
-
-    print(
-        "Chat DB      :",
-        CHAT_DB_FILE
-    )
-
-    print(
-        "MEDIQ Records:",
-        len(dataset)
-    )
-
-    print(
-        "Medical KB Records:",
-        len(medical_knowledge)
-    )
-
-    print(
-        "API Port     : 5000"
-    )
-
+    print("Model        : Loaded")
+    print("MEDIQ        : Loaded")
+    print("Medical KB   : Loaded")
+    print("Chat Memory  : SQLite")
+    print("Chat DB      :", CHAT_DB_FILE)
+    print("MEDIQ Records:", len(dataset))
+    print("Medical KB Records:", len(medical_knowledge))
+    print("API Port     : 5000")
     print("----------------------------------------")
 
-
-    app.run(
-        host="0.0.0.0",
-        port=5000,
-        debug=False
-    )
+    app.run(host="0.0.0.0", port=5000, debug=False)
