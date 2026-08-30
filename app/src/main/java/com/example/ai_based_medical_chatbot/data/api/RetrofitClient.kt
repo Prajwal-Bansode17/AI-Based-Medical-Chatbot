@@ -28,6 +28,7 @@ object RetrofitClient {
             while (attempt <= maxRetries) {
 
                 try {
+
                     return chain.proceed(
                         chain.request()
                     )
@@ -36,9 +37,10 @@ object RetrofitClient {
 
                     lastException = e
 
-                    // Retry only network/connection failures.
-                    // HTTP 4xx/5xx responses are not retried.
-                    if (e !is IOException || attempt == maxRetries) {
+                    if (
+                        e !is IOException ||
+                        attempt == maxRetries
+                    ) {
                         throw e
                     }
 
@@ -53,26 +55,30 @@ object RetrofitClient {
         }
     }
 
+    // =========================================================
+    // FLASK BACKEND CONFIGURATION
+    // =========================================================
+    //
+    // CHANGE ONLY THIS IP WHEN YOU RUN FLASK
+    //
+    // Hariom:
+    // 192.168.x.x
+    //
+    // Omkar:
+    // 192.168.x.x
+    //
+    // Prajwal:
+    // 192.168.x.x
+    //
+    // Port remains 5000.
+    // Phone and laptop must be on the same Wi-Fi.
+    // =========================================================
 
-    // =========================================================
-    // FLASK BACKEND
-    // =========================================================
-    //
-    // Current Flask server:
-    //
-    // Laptop IPv4 : 192.168.1.7
-    // Flask Port  : 5000
-    //
-    // Phone and laptop must be connected
-    // to the same Wi-Fi/network.
-    //
-    // Flask:
-    // http://192.168.1.7:5000/
-    // =========================================================
+    private const val FLASK_IP = "192.168.1.33"
+    private const val FLASK_PORT = 5000
 
     private const val BASE_URL =
-        "http://192.168.1.8:5000/"
-
+        "http://$FLASK_IP:$FLASK_PORT/"
 
     // =========================================================
     // HTTP CLIENT
@@ -85,32 +91,27 @@ object RetrofitClient {
                 RetryInterceptor()
             )
 
-            // Time allowed to establish connection
             .connectTimeout(
                 20,
                 TimeUnit.SECONDS
             )
 
-            // Time allowed to receive Flask response
             .readTimeout(
                 90,
                 TimeUnit.SECONDS
             )
 
-            // Time allowed to send request
             .writeTimeout(
                 20,
                 TimeUnit.SECONDS
             )
 
-            // Maximum total request time
             .callTimeout(
                 120,
                 TimeUnit.SECONDS
             )
 
             .build()
-
 
     // =========================================================
     // RETROFIT API SERVICE

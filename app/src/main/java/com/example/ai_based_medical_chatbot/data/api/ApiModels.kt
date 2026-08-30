@@ -3,7 +3,6 @@ package com.example.ai_based_medical_chatbot.data.api
 import com.google.gson.annotations.SerializedName
 
 data class PredictionRequest(
-
     @SerializedName("session_id")
     val sessionId: String,
 
@@ -11,9 +10,7 @@ data class PredictionRequest(
     val text: String
 )
 
-
 data class PredictionResponse(
-
     @SerializedName("status")
     val status: String = "",
 
@@ -54,9 +51,7 @@ data class PredictionResponse(
     val measurements: List<Measurement> = emptyList()
 )
 
-
 data class Measurement(
-
     @SerializedName("memory_type")
     val memoryType: String = "",
 
@@ -71,4 +66,41 @@ data class Measurement(
 
     @SerializedName("duration")
     val duration: String? = null
+)
+
+/*
+ * ============================================================
+ * CHAT HISTORY
+ * ============================================================
+ */
+
+data class ChatHistoryResponse(
+    @SerializedName("status")
+    val status: String = "",
+
+    @SerializedName("session_id")
+    val sessionId: String = "",
+
+    @SerializedName("history")
+    val history: List<ChatHistoryMessage> = emptyList(),
+
+    @SerializedName("message")
+    val message: String? = null
+)
+
+data class ChatHistoryMessage(
+    @SerializedName("role")
+    val role: String = "",
+
+    @SerializedName("message")
+    val message: String = "",
+
+    @SerializedName("symptoms")
+    val symptoms: String? = null,
+
+    @SerializedName("created_at")
+    val createdAt: String? = null,
+
+    @SerializedName("timestamp")
+    val timestamp: String? = null
 )

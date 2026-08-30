@@ -8,8 +8,6 @@ import android.widget.Toast
 import android.os.Handler
 import android.os.Looper
 import android.speech.RecognizerIntent
-import android.speech.tts.TextToSpeech
-import android.speech.tts.UtteranceProgressListener
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -203,43 +201,18 @@ fun ChatbotScreen(
     var speakNextResponse by remember { mutableStateOf(false) }
     var lastUserQuestion by remember { mutableStateOf("") }
 
-    val textToSpeech = remember(context) {
-        TextToSpeech(context) { status ->
-            if (status == TextToSpeech.SUCCESS) {
-                Log.d("MEDASSIST_TTS", "Text to speech initialized")
-            } else {
-                Log.e("MEDASSIST_TTS", "Text to speech initialization failed")
+    val voiceAssistant = remember(context) {
+        VoiceAssistant(context) { speaking ->
+            mainHandler.post {
+                isSpeaking = speaking
             }
         }
     }
 
-    fun speakResponse(text: String, locale: Locale, utteranceId: String = RESPONSE_UTTERANCE_ID) {
-        if (text.isBlank()) return
-
-        textToSpeech.stop()
-
-        val languageResult = textToSpeech.setLanguage(locale)
-        if (languageResult == TextToSpeech.LANG_MISSING_DATA ||
-            languageResult == TextToSpeech.LANG_NOT_SUPPORTED
-        ) {
-            // Try the language without the India region first. Some Android
-            // TTS engines provide hi/mr but not hi-IN/mr-IN.
-            val languageOnly = Locale.forLanguageTag(locale.language)
-            val languageOnlyResult = textToSpeech.setLanguage(languageOnly)
-
-            if (languageOnlyResult == TextToSpeech.LANG_MISSING_DATA ||
-                languageOnlyResult == TextToSpeech.LANG_NOT_SUPPORTED
-            ) {
-                Log.w(
-                    "MEDASSIST_TTS",
-                    "Voice for $locale is not installed/supported; falling back to English"
-                )
-                textToSpeech.setLanguage(Locale.US)
-            }
+    DisposableEffect(voiceAssistant) {
+        onDispose {
+            voiceAssistant.shutdown()
         }
-
-        isSpeaking = true
-        textToSpeech.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
     }
 
     val popularTopics = listOf(
@@ -327,8 +300,7 @@ fun ChatbotScreen(
         if (cleanText.isEmpty() || isTyping) return
 
         if (isSpeaking) {
-            textToSpeech.stop()
-            isSpeaking = false
+            voiceAssistant.stop()
         }
 
         isListening = false
@@ -388,7 +360,10 @@ fun ChatbotScreen(
                             "Backend response language = $responseLanguage, TTS locale = $responseLocale"
                         )
 
-                        speakResponse(finalAnswer, responseLocale)
+                        voiceAssistant.speak(
+                            finalAnswer,
+                            responseLocale
+                        )
                         speakNextResponse = false
                     }
                 } else {
@@ -480,47 +455,9 @@ fun ChatbotScreen(
         }
     }
 
-    // Keep UI state synchronized with the actual TTS engine.
-    fun onSpeechFinished(utteranceId: String?, completedNormally: Boolean) {
-        mainHandler.post {
-            isSpeaking = false
-        }
-    }
-
     fun startVoiceInput() {
         if (isTyping || isListening || isSpeaking) return
         launchSpeechRecognition()
-    }
-
-    // Keep the UI state synchronized with the actual TTS engine, and chain
-    // the greeting into listening once it finishes speaking. Without this,
-    // the voice button can stay stuck in the "speaking" state after the
-    // response has actually finished.
-    DisposableEffect(textToSpeech) {
-        textToSpeech.setOnUtteranceProgressListener(
-            object : UtteranceProgressListener() {
-                override fun onStart(utteranceId: String?) = Unit
-
-                override fun onDone(utteranceId: String?) {
-                    onSpeechFinished(utteranceId, completedNormally = true)
-                }
-
-                override fun onError(utteranceId: String?) {
-                    speakNextResponse = false
-                    onSpeechFinished(utteranceId, completedNormally = false)
-                }
-
-                override fun onStop(utteranceId: String?, interrupted: Boolean) {
-                    speakNextResponse = false
-                    onSpeechFinished(utteranceId, completedNormally = false)
-                }
-            }
-        )
-
-        onDispose {
-            textToSpeech.stop()
-            textToSpeech.shutdown()
-        }
     }
 
     // =========================================================
@@ -646,16 +583,14 @@ fun ChatbotScreen(
                     },
                     onSpeak = { aiMessage ->
                         if (isSpeaking) {
-                            textToSpeech.stop()
-                            isSpeaking = false
+                            voiceAssistant.stop()
                         } else {
                             val locale = localeForDetectedCode(
                                 normalizeResponseLanguage(aiMessage.language)
                             )
-                            speakResponse(
+                            voiceAssistant.speak(
                                 aiMessage.text,
-                                locale,
-                                "manual_${UUID.randomUUID()}"
+                                locale
                             )
                         }
                     }
@@ -718,8 +653,7 @@ fun ChatbotScreen(
                 IconButton(
                     onClick = {
                         if (isSpeaking) {
-                            textToSpeech.stop()
-                            isSpeaking = false
+                            voiceAssistant.stop()
                         } else if (!isListening) {
                             startVoiceInput()
                         }
@@ -1022,7 +956,7 @@ fun MessageBubble(
                         onClick = {
                             val clipboard =
                                 context.getSystemService(Context.CLIPBOARD_SERVICE)
-                                    as? ClipboardManager
+                                        as? ClipboardManager
 
                             clipboard?.setPrimaryClip(
                                 ClipData.newPlainText(
@@ -1135,7 +1069,7 @@ private fun FormattedMessageText(text: String, isUser: Boolean) {
 
     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
         lines.forEach { rawLine ->
-            val line = rawLine.trimEnd()
+            val line = rawLine.trim().trimEnd()
 
             if (line.isBlank()) {
                 Spacer(modifier = Modifier.height(2.dp))
@@ -1185,10 +1119,45 @@ private fun FormattedMessageText(text: String, isUser: Boolean) {
 
 private fun cleanMarkdown(text: String): String {
     return text
-        .replace(Regex("\\*\\*(.*?)\\*\\*"), "$1") // Bold
-        .replace(Regex("(?<!\\*)\\*(.*?)\\*(?!\\*)"), "$1") // Italic
-        .replace(Regex("^#{1,6}\\s*"), "") // Markdown headings
-        .replace("`", "") // Inline code
+        .replace("\r\n", "\n")
+        .replace("\r", "\n")
+        .lines()
+        .map { line ->
+            var cleaned = line.trim()
+
+            // Remove headings from every line: #, ##, ###, etc.
+            cleaned = cleaned.replace(
+                Regex("^\\s*#{1,6}\\s*"),
+                ""
+            )
+
+            // Remove Markdown bullet/list markers.
+            cleaned = cleaned.replace(
+                Regex("^\\s*[-*+•●◦▪·]+\\s*"),
+                ""
+            )
+
+            cleaned = cleaned.replace(
+                Regex("^\\s*\\d+[.)]\\s*"),
+                ""
+            )
+
+            // Remove formatting markers but preserve their text.
+            cleaned = cleaned
+                .replace("**", "")
+                .replace("__", "")
+                .replace("`", "")
+                .replace(
+                    Regex("(?<!\\*)\\*(?!\\*)"),
+                    ""
+                )
+
+            // Safety net: no heading marker should ever reach the UI.
+            cleaned = cleaned.replace("#", "")
+
+            cleaned
+        }
+        .joinToString("\n")
         .trim()
 }
 
