@@ -95,8 +95,6 @@ import java.util.Locale
 // Requires:
 // implementation("com.google.mlkit:language-id:17.0.6")
 
-private const val RESPONSE_UTTERANCE_ID = "medassist_response"
-
 private fun localeForDetectedCode(languageCode: String): Locale = when {
     languageCode.startsWith("hi", ignoreCase = true) -> Locale.forLanguageTag("hi-IN")
     languageCode.startsWith("mr", ignoreCase = true) -> Locale.forLanguageTag("mr-IN")
@@ -113,6 +111,47 @@ private fun normalizeResponseLanguage(languageCode: String?): String {
         languageCode?.startsWith("mr", ignoreCase = true) == true -> "mr"
         else -> "en"
     }
+}
+
+
+// =============================================================
+// CLEAN MARKDOWN FOR VOICE ASSISTANT
+// =============================================================
+
+/**
+ * Converts an AI Markdown response into simple text for text-to-speech.
+ * This is kept near the top of the file so all callers can resolve it
+ * without depending on declaration order or stale IDE indexing.
+ */
+private fun cleanMarkdownForSpeechText(text: String): String {
+    return text
+        .replace("\r\n", "\n")
+        .replace("\r", "\n")
+        .lines()
+        .map { rawLine ->
+            var line = rawLine.trim()
+
+            line = line.replace(Regex("^#{1,6}\\s*"), "")
+            line = line.replace(Regex("^>\\s*"), "")
+            line = line.replace(Regex("^[-*+•●◦▪·]\\s+"), "")
+            line = line.replace(Regex("^\\d+[.)]\\s+"), "")
+
+            line = line
+                .replace("**", "")
+                .replace("__", "")
+                .replace("`", "")
+                .replace(Regex("(?<!\\*)\\*(?!\\*)"), "")
+
+            line = line.replace(Regex("\\[([^]]+)]\\([^)]*\\)"), "\$1")
+            line = line.replace("#", "")
+            line = line.replace(Regex("\\s+"), " ").trim()
+
+            line
+        }
+        .filter { it.isNotBlank() }
+        .joinToString(". ")
+        .replace(Regex("\\.{2,}"), ".")
+        .trim()
 }
 
 // =============================================================
@@ -266,7 +305,7 @@ fun ChatbotScreen(
                             "• Diseases and conditions\n" +
                             "• Medicines and precautions\n" +
                             "• When medical attention may be needed\n\n" +
-                            "How can I help you today?",
+                            "Tell me what you're experiencing, and we'll go step by step.",
                     isUser = false
                 )
             )
@@ -368,7 +407,7 @@ fun ChatbotScreen(
                         )
 
                         voiceAssistant.speak(
-                            cleanMarkdownForSpeech(finalAnswer),
+                            cleanMarkdownForSpeechText(finalAnswer),
                             responseLocale
                         )
                         speakNextResponse = false
@@ -377,8 +416,7 @@ fun ChatbotScreen(
                     speakNextResponse = false
                     messages.add(
                         ChatMessage(
-                            text = "Sorry, I’m having trouble connecting to the medical AI service. " +
-                                    "Please check your internet connection and try again.",
+                            text = "I couldn't get a response from MedAssist right now. Please try again in a moment.",
                             isUser = false,
                             isError = true
                         )
@@ -390,8 +428,7 @@ fun ChatbotScreen(
                 speakNextResponse = false
                 messages.add(
                     ChatMessage(
-                        text = "Unable to connect to MedAssist AI right now.\n\n" +
-                                "Please make sure the server is running and try again.",
+                        text = "I couldn't reach the MedAssist server. Please make sure Flask is running on the laptop and that your phone and laptop are on the same Wi-Fi network, then try again.",
                         isUser = false,
                         isError = true
                     )
@@ -510,14 +547,22 @@ fun ChatbotScreen(
                         color = Color(0xFF17202A)
                     )
                     Text(
-                        text = if (isTyping) "MedAssist is thinking…" else "Your intelligent health companion",
+                        text = if (isTyping) {
+                            "MedAssist is thinking…"
+                        } else {
+                            "Your health assistant • Ask anything"
+                        },
                         fontSize = 12.sp,
                         color = Color(0xFF667085)
                     )
                 }
 
                 IconButton(
-                    onClick = { if (messages.size > 1) showClearDialog = true }
+                    onClick = {
+                        if (!isTyping && messages.size > 1) {
+                            showClearDialog = true
+                        }
+                    }
                 ) {
                     Icon(
                         imageVector = Icons.Default.Delete,
@@ -596,7 +641,7 @@ fun ChatbotScreen(
                                 normalizeResponseLanguage(aiMessage.language)
                             )
                             voiceAssistant.speak(
-                                cleanMarkdownForSpeech(aiMessage.text),
+                                cleanMarkdownForSpeechText(aiMessage.text),
                                 locale
                             )
                         }
@@ -1015,20 +1060,10 @@ fun MessageBubble(
                 }
             }
 
-            if (!message.isUser && !message.isError && message.intent.isNotBlank()) {
-                Row(
-                    modifier = Modifier.padding(start = 4.dp, top = 2.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Text(
-                        text = message.intent
-                            .replace("_", " ")
-                            .replaceFirstChar { it.uppercase() },
-                        fontSize = 9.sp,
-                        color = Color(0xFF98A2B3)
-                    )
-                }
-            }
+            // Internal intent/confidence are intentionally not shown to users.
+            // The conversation should feel like a natural assistant rather than
+            // an ML debugging screen. The values remain in ChatMessage for logging.
+
         }
     }
 }
@@ -1071,7 +1106,7 @@ private fun ActionIcon(
 
 @Composable
 private fun FormattedMessageText(text: String, isUser: Boolean) {
-    val textColor = if (isUser) Color.White else Color(0xFF344054)
+    val textColor = if (isUser) Color.White else Color(0xFF273444)
     val lines = text.replace("\r\n", "\n").split("\n")
 
     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -1097,8 +1132,8 @@ private fun FormattedMessageText(text: String, isUser: Boolean) {
                     Spacer(modifier = Modifier.width(7.dp))
                     Text(
                         text = cleanMarkdown(bulletText),
-                        fontSize = 14.sp,
-                        lineHeight = 20.sp,
+                        fontSize = 15.sp,
+                        lineHeight = 22.sp,
                         color = textColor,
                         modifier = Modifier.weight(1f)
                     )
@@ -1110,8 +1145,8 @@ private fun FormattedMessageText(text: String, isUser: Boolean) {
 
                 Text(
                     text = cleaned,
-                    fontSize = if (isHeading) 15.sp else 14.sp,
-                    lineHeight = 21.sp,
+                    fontSize = if (isHeading) 16.sp else 15.sp,
+                    lineHeight = 23.sp,
                     fontWeight = if (isHeading) FontWeight.SemiBold else FontWeight.Normal,
                     color = textColor
                 )
@@ -1167,81 +1202,6 @@ private fun cleanMarkdown(text: String): String {
         .joinToString("\n")
         .trim()
 }
-
-// =============================================================
-// CLEAN MARKDOWN FOR VOICE ASSISTANT
-// =============================================================
-
-/**
- * Converts the AI Markdown response into natural speech.
- * The UI keeps its formatting, while TTS receives clean plain text.
- */
-private fun cleanMarkdownForSpeech(text: String): String {
-    return text
-        .replace("\\r\\n", "\\n")
-        .replace("\\r", "\\n")
-        .lines()
-        .map { rawLine ->
-            var line = rawLine.trim()
-
-            // Markdown headings.
-            line = line.replace(Regex("^#{1,6}\\s*"), "")
-
-            // Markdown blockquotes.
-            line = line.replace(Regex("^>\\s*"), "")
-
-            // Bullets.
-            line = line.replace(Regex("^[-*+•●◦▪·]\\s+"), "")
-
-            // Numbered lists.
-            line = line.replace(Regex("^\\d+[.)]\\s+"), "")
-
-            // Bold, italic, underline and inline-code markers.
-            line = line
-                .replace("**", "")
-                .replace("__", "")
-                .replace("`", "")
-                .replace(Regex("(?<!\\*)\\*(?!\\*)"), "")
-
-            // Markdown links -> visible text only.
-            line = line.replace(
-                Regex("\\[([^]]+)]\\([^)]*\\)"),
-                "$1"
-            )
-
-            // Remove any remaining Markdown hash characters.
-            line = line.replace("#", "")
-
-            // Remove emoji/symbol characters without unsupported
-            // Unicode-regex syntax. This works with Kotlin/JVM safely.
-            line = line.filter { ch ->
-                val cp = ch.code
-                when {
-                    cp in 0x1F1E6..0x1F1FF -> false
-                    cp in 0x1F300..0x1F5FF -> false
-                    cp in 0x1F600..0x1F64F -> false
-                    cp in 0x1F680..0x1F6FF -> false
-                    cp in 0x1F700..0x1F77F -> false
-                    cp in 0x1F780..0x1F7FF -> false
-                    cp in 0x1F800..0x1F8FF -> false
-                    cp in 0x1F900..0x1F9FF -> false
-                    cp in 0x1FA00..0x1FAFF -> false
-                    cp in 0x2600..0x26FF -> false
-                    cp in 0x2700..0x27BF -> false
-                    else -> true
-                }
-            }
-
-            // Normalize whitespace.
-            line = line.replace(Regex("\\s+"), " ").trim()
-            line
-        }
-        .filter { it.isNotBlank() }
-        .joinToString(". ")
-        .replace(Regex("\\.{2,}"), ".")
-        .trim()
-}
-
 
 // =============================================================
 // TYPING INDICATOR
