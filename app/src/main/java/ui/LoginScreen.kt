@@ -100,21 +100,27 @@ fun LoginScreen(
     // COLORS
     // =========================================================
 
-    val backgroundTop = Color(0xFFEAF8FC)
+    // =========================================================
+    // MIDNIGHT AI PREMIUM PALETTE
+    // =========================================================
 
-    val backgroundBottom = Color(0xFFD8F0F6)
+    val backgroundTop = Color(0xFF080D18)
+    val backgroundBottom = Color(0xFF0D1422)
 
-    val primaryBlue = Color(0xFF087EA4)
+    val primaryBlue = Color(0xFF4F7CFF)
+    val darkBlue = Color(0xFFF8FAFC)
+    val lightBlue = Color(0xFF16233A)
 
-    val darkBlue = Color(0xFF123A56)
+    val textDark = Color(0xFFF8FAFC)
+    val textGray = Color(0xFF94A3B8)
 
-    val lightBlue = Color(0xFFE8F7FB)
+    val errorRed = Color(0xFFF87171)
 
-    val textDark = Color(0xFF163247)
-
-    val textGray = Color(0xFF71818C)
-
-    val errorRed = Color(0xFFD64545)
+    val cardColor = Color(0xFF111A2A)
+    val inputColor = Color(0xFF0D1422)
+    val borderColor = Color(0xFF26354A)
+    val accentCyan = Color(0xFF22D3EE)
+    val successGreen = Color(0xFF22C997)
 
 
     // =========================================================
@@ -143,7 +149,7 @@ fun LoginScreen(
                 .size(190.dp)
                 .align(Alignment.TopEnd)
                 .background(
-                    color = Color(0x22087EA4),
+                    color = Color(0x224F7CFF),
                     shape = CircleShape
                 )
         )
@@ -158,7 +164,7 @@ fun LoginScreen(
                 .size(120.dp)
                 .align(Alignment.BottomStart)
                 .background(
-                    color = Color(0x18087EA4),
+                    color = Color(0x184F7CFF),
                     shape = CircleShape
                 )
         )
@@ -194,12 +200,12 @@ fun LoginScreen(
                         shape = RoundedCornerShape(25.dp)
                     )
                     .background(
-                        color = Color.White,
+                        color = cardColor,
                         shape = RoundedCornerShape(25.dp)
                     )
                     .border(
                         width = 1.dp,
-                        color = Color(0xFFE1EEF2),
+                        color = borderColor,
                         shape = RoundedCornerShape(25.dp)
                     ),
 
@@ -287,7 +293,7 @@ fun LoginScreen(
                         shape = RoundedCornerShape(28.dp)
                     )
                     .background(
-                        color = Color.White,
+                        color = cardColor,
                         shape = RoundedCornerShape(28.dp)
                     )
                     .padding(23.dp)
@@ -384,7 +390,7 @@ fun LoginScreen(
                             Text(
                                 text = "Enter your email",
 
-                                color = Color(0xFF9AAAB3),
+                                color = Color(0xFF64748B),
 
                                 fontSize = 14.sp
                             )
@@ -408,11 +414,11 @@ fun LoginScreen(
 
                             focusedBorderColor = primaryBlue,
 
-                            unfocusedBorderColor = Color(0xFFD6E2E7),
+                            unfocusedBorderColor = borderColor,
 
-                            focusedContainerColor = Color(0xFFFAFDFE),
+                            focusedContainerColor = inputColor,
 
-                            unfocusedContainerColor = Color(0xFFFAFDFE),
+                            unfocusedContainerColor = inputColor,
 
                             cursorColor = primaryBlue,
 
@@ -533,7 +539,7 @@ fun LoginScreen(
                         Text(
                             text = "Enter your password",
 
-                            color = Color(0xFF9AAAB3),
+                            color = Color(0xFF64748B),
 
                             fontSize = 14.sp
                         )
@@ -594,11 +600,11 @@ fun LoginScreen(
 
                         focusedBorderColor = primaryBlue,
 
-                        unfocusedBorderColor = Color(0xFFD6E2E7),
+                        unfocusedBorderColor = borderColor,
 
-                        focusedContainerColor = Color(0xFFFAFDFE),
+                        focusedContainerColor = inputColor,
 
-                        unfocusedContainerColor = Color(0xFFFAFDFE),
+                        unfocusedContainerColor = inputColor,
 
                         cursorColor = primaryBlue,
 
@@ -918,7 +924,7 @@ fun LoginScreen(
                     Text(
                         text = "  OR  ",
 
-                        color = Color(0xFF9AAAB3),
+                        color = Color(0xFF64748B),
 
                         fontSize = 11.sp
                     )

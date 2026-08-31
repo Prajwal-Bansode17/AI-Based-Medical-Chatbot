@@ -531,7 +531,7 @@ fun ChatbotScreen(
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .background(Color(0xFFF7F9FC))
+            .background(Color(0xFF080D18))
     ) {
 
         // ----- PROFESSIONAL TOP BAR -----
@@ -539,7 +539,7 @@ fun ChatbotScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .statusBarsPadding(),
-            color = Color.White,
+            color = Color(0xFF111A2A),
             shadowElevation = 2.dp
         ) {
             Row(
@@ -552,7 +552,7 @@ fun ChatbotScreen(
                     modifier = Modifier
                         .size(44.dp)
                         .clip(CircleShape)
-                        .background(Color(0xFF1976D2)),
+                        .background(Color(0xFF4F7CFF)),
                     contentAlignment = Alignment.Center
                 ) {
                     Text("AI", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
@@ -565,7 +565,7 @@ fun ChatbotScreen(
                         text = "MedAssist AI",
                         fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
-                        color = Color(0xFF17202A)
+                        color = Color(0xFFF8FAFC)
                     )
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Box(
@@ -578,7 +578,7 @@ fun ChatbotScreen(
                         Text(
                             text = if (isTyping) "Thinking…" else "AI health assistant",
                             fontSize = 11.sp,
-                            color = Color(0xFF667085)
+                            color = Color(0xFF94A3B8)
                         )
                     }
                 }
@@ -590,7 +590,7 @@ fun ChatbotScreen(
                     Icon(
                         imageVector = Icons.Default.Delete,
                         contentDescription = "Clear conversation",
-                        tint = Color(0xFF667085)
+                        tint = Color(0xFF94A3B8)
                     )
                 }
             }
@@ -602,7 +602,7 @@ fun ChatbotScreen(
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp, vertical = 8.dp),
             shape = RoundedCornerShape(16.dp),
-            color = Color.White,
+            color = Color(0xFF111A2A),
             shadowElevation = 1.dp
         ) {
             Column(modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 9.dp)) {
@@ -610,7 +610,7 @@ fun ChatbotScreen(
                     text = "Common health questions",
                     fontSize = 12.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = Color(0xFF667085)
+                    color = Color(0xFF94A3B8)
                 )
 
                 Spacer(modifier = Modifier.height(7.dp))
@@ -683,7 +683,7 @@ fun ChatbotScreen(
                 .fillMaxWidth()
                 .imePadding()
                 .navigationBarsPadding(),
-            color = Color.White,
+            color = Color(0xFF111A2A),
             shadowElevation = 8.dp
         ) {
             Row(
@@ -695,8 +695,8 @@ fun ChatbotScreen(
                 Surface(
                     modifier = Modifier.weight(1f),
                     shape = RoundedCornerShape(28.dp),
-                    color = Color(0xFFF3F5F7),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE4E7EC))
+                    color = Color(0xFF0D1422),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFF26354A))
                 ) {
                     Row(
                         modifier = Modifier
@@ -714,7 +714,7 @@ fun ChatbotScreen(
                                 text = "+",
                                 fontSize = 30.sp,
                                 fontWeight = FontWeight.Light,
-                                color = Color(0xFF475467)
+                                color = Color(0xFF94A3B8)
                             )
                         }
 
@@ -724,7 +724,7 @@ fun ChatbotScreen(
                             modifier = Modifier.weight(1f),
                             textStyle = androidx.compose.ui.text.TextStyle(
                                 fontSize = 15.sp,
-                                color = Color(0xFF344054)
+                                color = Color(0xFFF8FAFC)
                             ),
                             singleLine = false,
                             maxLines = 4,
@@ -746,7 +746,7 @@ fun ChatbotScreen(
                                         Text(
                                             text = if (isListening) "Listening…" else "Ask MedAssist anything…",
                                             fontSize = 15.sp,
-                                            color = Color(0xFF98A2B3)
+                                            color = Color(0xFF64748B)
                                         )
                                     }
                                     innerTextField()
@@ -777,8 +777,8 @@ fun ChatbotScreen(
                                 },
                             shape = CircleShape,
                             color = when {
-                                isListening -> Color(0xFFFFEBEE)
-                                isSpeaking -> Color(0xFFE8F5E9)
+                                isListening -> Color(0xFF3A2024)
+                                isSpeaking -> Color(0xFF12352B)
                                 else -> Color.Transparent
                             }
                         ) {
@@ -788,19 +788,19 @@ fun ChatbotScreen(
                                         Text(
                                             text = "■",
                                             fontSize = 14.sp,
-                                            color = Color(0xFFD32F2F),
+                                            color = Color(0xFFF87171),
                                             fontWeight = FontWeight.Bold
                                         )
                                     }
                                     isSpeaking -> {
-                                        SpeakerIcon(tint = Color(0xFF188038))
+                                        SpeakerIcon(tint = Color(0xFF22C997))
                                     }
                                     else -> {
                                         MicIcon(
                                             tint = if (canVoice) {
-                                                Color(0xFF475467)
+                                                Color(0xFF94A3B8)
                                             } else {
-                                                Color(0xFF98A2B3)
+                                                Color(0xFF64748B)
                                             }
                                         )
                                     }
@@ -822,13 +822,13 @@ fun ChatbotScreen(
                             sendMessage(message)
                         },
                     shape = CircleShape,
-                    color = if (canSend) Color(0xFF1976D2) else Color(0xFFE4E7EC)
+                    color = if (canSend) Color(0xFF4F7CFF) else Color(0xFF26354A)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.Send,
                             contentDescription = "Send",
-                            tint = if (canSend) Color.White else Color(0xFF98A2B3),
+                            tint = if (canSend) Color(0xFF111A2A) else Color(0xFF64748B),
                             modifier = Modifier.size(22.dp)
                         )
                     }
@@ -887,14 +887,14 @@ fun QuickPrompt(text: String, onClick: () -> Unit) {
     Surface(
         modifier = Modifier.clickable { onClick() },
         shape = RoundedCornerShape(18.dp),
-        color = Color.White,
+        color = Color(0xFF111A2A),
         shadowElevation = 1.dp
     ) {
         Text(
             text = text,
             modifier = Modifier.padding(horizontal = 14.dp, vertical = 9.dp),
             fontSize = 12.sp,
-            color = Color(0xFF1976D2)
+            color = Color(0xFF4F7CFF)
         )
     }
 }
@@ -959,8 +959,8 @@ fun MessageBubble(
                     .size(34.dp)
                     .clip(CircleShape)
                     .background(
-                        if (message.isError) Color(0xFFD32F2F)
-                        else Color(0xFF1976D2)
+                        if (message.isError) Color(0xFFF87171)
+                        else Color(0xFF4F7CFF)
                     ),
                 contentAlignment = Alignment.Center
             ) {
@@ -996,9 +996,9 @@ fun MessageBubble(
                     )
                 },
                 color = when {
-                    message.isError -> Color(0xFFFFEBEE)
-                    message.isUser -> Color(0xFF1976D2)
-                    else -> Color.White
+                    message.isError -> Color(0xFF3A2024)
+                    message.isUser -> Color(0xFF4F7CFF)
+                    else -> Color(0xFF111A2A)
                 },
                 shadowElevation = if (message.isUser) 0.dp else 1.dp
             ) {
@@ -1126,11 +1126,11 @@ fun MessageBubble(
                                 contentDescription = "Read response aloud"
                             },
                         shape = CircleShape,
-                        color = Color(0xFFE8F5E9),
+                        color = Color(0xFF12352B),
                         shadowElevation = 1.dp
                     ) {
                         Box(contentAlignment = Alignment.Center) {
-                            SpeakerIcon(tint = Color(0xFF188038))
+                            SpeakerIcon(tint = Color(0xFF22C997))
                         }
                     }
                 }
@@ -1146,7 +1146,7 @@ fun MessageBubble(
                             .replace("_", " ")
                             .replaceFirstChar { it.uppercase() },
                         fontSize = 9.sp,
-                        color = Color(0xFF98A2B3)
+                        color = Color(0xFF64748B)
                     )
                 }
             }
@@ -1170,13 +1170,13 @@ private fun ActionIcon(
             Icon(
                 imageVector = icon,
                 contentDescription = description,
-                tint = if (active) Color(0xFF1976D2) else Color(0xFF667085),
+                tint = if (active) Color(0xFF4F7CFF) else Color(0xFF94A3B8),
                 modifier = Modifier.size(20.dp)
             )
         } else {
             Text(
                 text = textIcon ?: "",
-                color = if (active) Color(0xFF1976D2) else Color(0xFF667085),
+                color = if (active) Color(0xFF4F7CFF) else Color(0xFF94A3B8),
                 fontSize = 20.sp,
                 modifier = Modifier.semantics {
                     contentDescription = description
@@ -1192,7 +1192,7 @@ private fun ActionIcon(
 
 @Composable
 private fun FormattedMessageText(text: String, isUser: Boolean) {
-    val textColor = if (isUser) Color.White else Color(0xFF344054)
+    val textColor = if (isUser) Color.White else Color(0xFFF8FAFC)
     val lines = text.replace("\r\n", "\n").split("\n")
 
     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
@@ -1346,15 +1346,15 @@ fun TypingIndicator() {
             modifier = Modifier
                 .size(34.dp)
                 .clip(CircleShape)
-                .background(Color(0xFF1976D2)),
+                .background(Color(0xFF4F7CFF)),
             contentAlignment = Alignment.Center
         ) {
-            Text(text = "AI", color = Color.White, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+            Text(text = "AI", color = Color(0xFF111A2A), fontSize = 10.sp, fontWeight = FontWeight.Bold)
         }
 
         Spacer(modifier = Modifier.width(7.dp))
 
-        Surface(shape = RoundedCornerShape(18.dp), color = Color.White, shadowElevation = 1.dp) {
+        Surface(shape = RoundedCornerShape(18.dp), color = Color(0xFF111A2A), shadowElevation = 1.dp) {
             Row(
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
                 horizontalArrangement = Arrangement.spacedBy(5.dp),
@@ -1374,6 +1374,6 @@ private fun TypingDot() {
         modifier = Modifier
             .size(6.dp)
             .clip(CircleShape)
-            .background(Color(0xFF98A2B3))
+            .background(Color(0xFF64748B))
     )
 }

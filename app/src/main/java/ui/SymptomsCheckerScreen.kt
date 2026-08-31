@@ -196,12 +196,12 @@ fun SymptomsCheckerScreen(
      * ============================================================
      */
 
-    val primary = Color(0xFF087EA4)
-    val darkBlue = Color(0xFF123A56)
-    val gray = Color(0xFF71818C)
+    val primary = Color(0xFF4F7CFF)
+    val darkBlue = Color(0xFFF8FAFC)
+    val gray = Color(0xFF94A3B8)
 
-    val backgroundTop = Color(0xFFEAF8FC)
-    val backgroundBottom = Color(0xFFD8F0F6)
+    val backgroundTop = Color(0xFF080D18)
+    val backgroundBottom = Color(0xFF0D1422)
 
     /*
      * ============================================================
@@ -350,7 +350,7 @@ fun SymptomsCheckerScreen(
 
                             Text(
                                 text = "+",
-                                color = Color.White,
+                                color = Color(0xFF111A2A),
                                 fontSize = 38.sp,
                                 fontWeight = FontWeight.Light
                             )
@@ -364,7 +364,7 @@ fun SymptomsCheckerScreen(
 
                             Text(
                                 text = "How are you feeling?",
-                                color = Color.White,
+                                color = Color(0xFF111A2A),
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold
                             )
@@ -483,7 +483,7 @@ fun SymptomsCheckerScreen(
                                                 alpha = 0.18f
                                             )
                                         } else {
-                                            Color(0xFFE8F7FB)
+                                            Color(0xFF16233A)
                                         },
 
                                     shape =
@@ -607,7 +607,7 @@ fun SymptomsCheckerScreen(
                         ButtonDefaults.buttonColors(
                             containerColor = primary,
                             disabledContainerColor =
-                                Color(0xFFB7CBD1)
+                                Color(0xFF475569)
                         )
                 ) {
 

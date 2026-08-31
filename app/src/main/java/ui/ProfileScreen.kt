@@ -33,9 +33,9 @@ fun ProfileScreen(
     onLogoutClick: () -> Unit
 ) {
 
-    val primary = Color(0xFF087EA4)
-    val darkBlue = Color(0xFF123A56)
-    val gray = Color(0xFF71818C)
+    val primary = Color(0xFF4F7CFF)
+    val darkBlue = Color(0xFFF8FAFC)
+    val gray = Color(0xFF94A3B8)
 
     Box(
         modifier = Modifier
@@ -43,8 +43,8 @@ fun ProfileScreen(
             .background(
                 Brush.verticalGradient(
                     listOf(
-                        Color(0xFFEAF8FC),
-                        Color(0xFFD8F0F6)
+                        Color(0xFF080D18),
+                        Color(0xFF0D1422)
                     )
                 )
             )
@@ -92,7 +92,7 @@ fun ProfileScreen(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(28.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = Color.White
+                    containerColor = Color(0xFF111A2A)
                 ),
                 elevation = CardDefaults.cardElevation(
                     defaultElevation = 8.dp
@@ -167,7 +167,7 @@ fun ProfileScreen(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(23.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = Color.White
+                    containerColor = Color(0xFF111A2A)
                 ),
                 elevation = CardDefaults.cardElevation(
                     defaultElevation = 5.dp
@@ -234,7 +234,7 @@ fun ProfileScreen(
                     },
                 shape = RoundedCornerShape(23.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = Color.White
+                    containerColor = Color(0xFF111A2A)
                 ),
                 elevation = CardDefaults.cardElevation(
                     defaultElevation = 5.dp
@@ -348,7 +348,7 @@ private fun ProfileInfoRow(
             modifier = Modifier
                 .size(45.dp)
                 .background(
-                    Color(0xFFE8F7FB),
+                    Color(0xFF16233A),
                     RoundedCornerShape(14.dp)
                 ),
             contentAlignment =
@@ -363,7 +363,7 @@ private fun ProfileInfoRow(
 
             Text(
                 text = title,
-                color = Color(0xFF71818C),
+                color = Color(0xFF94A3B8),
                 fontSize = 11.sp
             )
 
@@ -371,7 +371,7 @@ private fun ProfileInfoRow(
 
             Text(
                 text = value,
-                color = Color(0xFF163247),
+                color = Color(0xFFF8FAFC),
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Medium
             )

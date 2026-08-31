@@ -48,10 +48,10 @@ import android.app.DatePickerDialog
 import java.util.Calendar
 import java.util.Locale
 
-private val ProfileGreen = Color(0xFF16A765)
-private val ProfileBackground = Color(0xFFF7FAF8)
-private val ProfileText = Color(0xFF17221C)
-private val ProfileSecondary = Color(0xFF68756E)
+private val ProfileGreen = Color(0xFF22C997)
+private val ProfileBackground = Color(0xFF080D18)
+private val ProfileText = Color(0xFFF8FAFC)
+private val ProfileSecondary = Color(0xFF94A3B8)
 
 @Composable
 fun HealthProfileScreen(
@@ -467,12 +467,12 @@ fun HealthProfileScreen(
                         androidx.compose.material3.OutlinedTextFieldDefaults.colors(
                             focusedTextColor = ProfileText,
                             unfocusedTextColor = ProfileText,
-                            focusedPlaceholderColor = Color(0xFF7A877F),
-                            unfocusedPlaceholderColor = Color(0xFF7A877F),
+                            focusedPlaceholderColor = Color(0xFF64748B),
+                            unfocusedPlaceholderColor = Color(0xFF64748B),
                             focusedLabelColor = ProfileGreen,
                             unfocusedLabelColor = ProfileSecondary,
                             focusedBorderColor = ProfileGreen,
-                            unfocusedBorderColor = Color(0xFF8A968F),
+                            unfocusedBorderColor = Color(0xFF334155),
                             cursorColor = ProfileGreen
                         ),
                     shape =
@@ -569,7 +569,7 @@ fun HealthProfileScreen(
                         placeholder = {
                             Text(
                                 text = "Select your date of birth",
-                                color = Color(0xFF68756E)
+                                color = Color(0xFF94A3B8)
                             )
                         },
                         trailingIcon = {
@@ -584,12 +584,12 @@ fun HealthProfileScreen(
                                 focusedTextColor = ProfileText,
                                 unfocusedTextColor = ProfileText,
                                 disabledTextColor = ProfileText,
-                                focusedPlaceholderColor = Color(0xFF68756E),
-                                unfocusedPlaceholderColor = Color(0xFF68756E),
-                                disabledPlaceholderColor = Color(0xFF68756E),
+                                focusedPlaceholderColor = Color(0xFF94A3B8),
+                                unfocusedPlaceholderColor = Color(0xFF94A3B8),
+                                disabledPlaceholderColor = Color(0xFF94A3B8),
                                 focusedBorderColor = ProfileGreen,
-                                unfocusedBorderColor = Color(0xFF8A968F),
-                                disabledBorderColor = Color(0xFF8A968F),
+                                unfocusedBorderColor = Color(0xFF334155),
+                                disabledBorderColor = Color(0xFF334155),
                                 cursorColor = ProfileGreen
                             ),
                         shape = RoundedCornerShape(14.dp)
@@ -693,12 +693,12 @@ fun HealthProfileScreen(
                         androidx.compose.material3.OutlinedTextFieldDefaults.colors(
                             focusedTextColor = ProfileText,
                             unfocusedTextColor = ProfileText,
-                            focusedPlaceholderColor = Color(0xFF7A877F),
-                            unfocusedPlaceholderColor = Color(0xFF7A877F),
+                            focusedPlaceholderColor = Color(0xFF64748B),
+                            unfocusedPlaceholderColor = Color(0xFF64748B),
                             focusedLabelColor = ProfileGreen,
                             unfocusedLabelColor = ProfileSecondary,
                             focusedBorderColor = ProfileGreen,
-                            unfocusedBorderColor = Color(0xFF8A968F),
+                            unfocusedBorderColor = Color(0xFF334155),
                             cursorColor = ProfileGreen
                         ),
                     shape =
@@ -755,12 +755,12 @@ fun HealthProfileScreen(
                         androidx.compose.material3.OutlinedTextFieldDefaults.colors(
                             focusedTextColor = ProfileText,
                             unfocusedTextColor = ProfileText,
-                            focusedPlaceholderColor = Color(0xFF7A877F),
-                            unfocusedPlaceholderColor = Color(0xFF7A877F),
+                            focusedPlaceholderColor = Color(0xFF64748B),
+                            unfocusedPlaceholderColor = Color(0xFF64748B),
                             focusedLabelColor = ProfileGreen,
                             unfocusedLabelColor = ProfileSecondary,
                             focusedBorderColor = ProfileGreen,
-                            unfocusedBorderColor = Color(0xFF8A968F),
+                            unfocusedBorderColor = Color(0xFF334155),
                             cursorColor = ProfileGreen
                         ),
                     shape =
@@ -793,7 +793,7 @@ fun HealthProfileScreen(
                     Text(
                         text = errorMessage,
                         color =
-                            Color(0xFFB3261E),
+                            Color(0xFFF87171),
                         fontSize = 14.sp
                     )
                 }
@@ -931,7 +931,7 @@ private fun GenderButton(
                 if (selected) {
                     ProfileGreen
                 } else {
-                    Color(0xFFD7DED9)
+                    Color(0xFF334155)
                 }
             )
     ) {

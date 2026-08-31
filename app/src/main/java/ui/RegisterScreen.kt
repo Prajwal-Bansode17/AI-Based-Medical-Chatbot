@@ -106,14 +106,14 @@ fun RegisterScreen(
     // MEDASSIST AI THEME
     // ============================================================
 
-    val primary = Color(0xFF087EA4)
-    val darkBlue = Color(0xFF123A56)
-    val gray = Color(0xFF71818C)
+    val primary = Color(0xFF4F7CFF)
+    val darkBlue = Color(0xFFF8FAFC)
+    val gray = Color(0xFF94A3B8)
 
-    val backgroundTop = Color(0xFFEAF8FC)
-    val backgroundBottom = Color(0xFFD8F0F6)
+    val backgroundTop = Color(0xFF080D18)
+    val backgroundBottom = Color(0xFF0D1422)
 
-    val lightPrimary = Color(0xFFE8F7FB)
+    val lightPrimary = Color(0xFF16233A)
 
     // ============================================================
     // MAIN SCREEN
@@ -155,7 +155,7 @@ fun RegisterScreen(
                 modifier = Modifier
                     .size(82.dp)
                     .background(
-                        Color.White,
+                        Color(0xFF111A2A),
                         CircleShape
                     ),
 
@@ -224,7 +224,7 @@ fun RegisterScreen(
                 shape = RoundedCornerShape(28.dp),
 
                 colors = CardDefaults.cardColors(
-                    containerColor = Color.White
+                    containerColor = Color(0xFF111A2A)
                 ),
 
                 elevation = CardDefaults.cardElevation(
@@ -456,7 +456,7 @@ fun RegisterScreen(
                                             ) {
                                                 primary
                                             } else {
-                                                Color(0xFFB7CBD1)
+                                                Color(0xFF475569)
                                             },
 
                                         shape =
@@ -730,7 +730,7 @@ fun RegisterScreen(
                                     primary,
 
                                 disabledContainerColor =
-                                    Color(0xFFB7CBD1)
+                                    Color(0xFF475569)
                             )
                     ) {
 
@@ -742,7 +742,7 @@ fun RegisterScreen(
                                     Modifier.size(21.dp),
 
                                 color =
-                                    Color.White,
+                                    Color(0xFF111A2A),
 
                                 strokeWidth =
                                     2.dp
