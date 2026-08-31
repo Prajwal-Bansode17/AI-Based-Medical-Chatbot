@@ -36,6 +36,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.os.Handler
+import android.os.Looper
+import org.json.JSONObject
+import java.io.BufferedReader
+import java.io.InputStreamReader
+import java.io.OutputStreamWriter
+import java.net.HttpURLConnection
+import java.net.URL
 
 @Composable
 fun SymptomsCheckerScreen(
@@ -70,6 +78,116 @@ fun SymptomsCheckerScreen(
 
     var showResult by remember {
         mutableStateOf(false)
+    }
+
+    var isLoading by remember { mutableStateOf(false) }
+    var predictionResult by remember { mutableStateOf("") }
+    var errorMessage by remember { mutableStateOf("") }
+
+    // IP address of the laptop running Flask.
+    val flaskBaseUrl = "http://192.168.1.7:5000"
+
+    fun checkSymptomsWithFlask(symptomList: List<String>) {
+        if (symptomList.isEmpty()) return
+
+        isLoading = true
+        showResult = true
+        predictionResult = ""
+        errorMessage = ""
+
+        val userText = "I have " + symptomList.joinToString(", ") {
+            it.lowercase()
+        }
+
+        Thread {
+            var connection: HttpURLConnection? = null
+
+            try {
+                connection = (URL("$flaskBaseUrl/predict").openConnection()
+                    as HttpURLConnection).apply {
+                    requestMethod = "POST"
+                    connectTimeout = 10000
+                    readTimeout = 20000
+                    doOutput = true
+                    setRequestProperty(
+                        "Content-Type",
+                        "application/json; charset=UTF-8"
+                    )
+                    setRequestProperty("Accept", "application/json")
+                }
+
+                val requestJson = JSONObject().apply {
+                    put("text", userText)
+                    put("session_id", "symptoms_checker")
+                }
+
+                OutputStreamWriter(
+                    connection.outputStream,
+                    Charsets.UTF_8
+                ).use { writer ->
+                    writer.write(requestJson.toString())
+                    writer.flush()
+                }
+
+                val responseCode = connection.responseCode
+                val stream = if (responseCode in 200..299) {
+                    connection.inputStream
+                } else {
+                    connection.errorStream
+                }
+
+                val responseText = stream?.let {
+                    BufferedReader(
+                        InputStreamReader(it, Charsets.UTF_8)
+                    ).use { reader -> reader.readText() }
+                } ?: ""
+
+                val json = if (responseText.isNotBlank()) {
+                    JSONObject(responseText)
+                } else {
+                    JSONObject()
+                }
+
+                Handler(Looper.getMainLooper()).post {
+                    if (responseCode in 200..299 &&
+                        json.optString("status") == "success"
+                    ) {
+                        predictionResult = json.optString(
+                            "answer",
+                            "No result was returned by the medical model."
+                        )
+                        isLoading = false
+                    } else {
+                        errorMessage = json.optString(
+                            "message",
+                            "Flask server returned an error."
+                        ) + " (HTTP $responseCode)"
+                        isLoading = false
+                    }
+                }
+            } catch (e: java.net.SocketTimeoutException) {
+                Handler(Looper.getMainLooper()).post {
+                    errorMessage =
+                        "Flask server request timed out. Please try again."
+                    isLoading = false
+                }
+            } catch (e: java.net.ConnectException) {
+                Handler(Looper.getMainLooper()).post {
+                    errorMessage =
+                        "Unable to connect to Flask server at $flaskBaseUrl"
+                    isLoading = false
+                }
+            } catch (e: Exception) {
+                Handler(Looper.getMainLooper()).post {
+                    errorMessage =
+                        "Could not process the Flask response: " +
+                        (e.message ?: "Unknown error")
+                    isLoading = false
+                }
+            } finally {
+                connection?.disconnect()
+            }
+        }.start()
     }
 
     /*
@@ -320,6 +438,8 @@ fun SymptomsCheckerScreen(
                             }
 
                             showResult = false
+                            predictionResult = ""
+                            errorMessage = ""
                         },
 
                     shape = RoundedCornerShape(
@@ -468,11 +588,13 @@ fun SymptomsCheckerScreen(
 
                 Button(
                     onClick = {
-                        showResult = true
+                        checkSymptomsWithFlask(
+                            selectedSymptoms.toList()
+                        )
                     },
 
                     enabled =
-                        selectedSymptoms.isNotEmpty(),
+                        selectedSymptoms.isNotEmpty() && !isLoading,
 
                     modifier = Modifier
                         .fillMaxWidth()
@@ -569,19 +691,34 @@ fun SymptomsCheckerScreen(
                                     Modifier.height(12.dp)
                             )
 
-                            Text(
-                                text =
-                                    "AI-based symptom prediction will be available after the medical model is integrated.",
+                            when {
+                                isLoading -> {
+                                    Text(
+                                        text = "Checking your symptoms...",
+                                        color = primary,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
 
-                                color =
-                                    gray,
+                                errorMessage.isNotBlank() -> {
+                                    Text(
+                                        text = errorMessage,
+                                        color = Color(0xFFB3261E),
+                                        fontSize = 13.sp,
+                                        lineHeight = 19.sp
+                                    )
+                                }
 
-                                fontSize =
-                                    12.sp,
-
-                                lineHeight =
-                                    18.sp
-                            )
+                                predictionResult.isNotBlank() -> {
+                                    Text(
+                                        text = predictionResult,
+                                        color = darkBlue,
+                                        fontSize = 13.sp,
+                                        lineHeight = 20.sp
+                                    )
+                                }
+                            }
                         }
                     }
                 }
