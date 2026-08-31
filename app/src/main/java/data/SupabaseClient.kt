@@ -17,6 +17,17 @@ data class SupabaseUser(
     val fullName: String
 )
 
+data class HealthProfile(
+    val id: String,
+    val name: String? = null,
+    val gender: String? = null,
+    val dateOfBirth: String? = null,
+    val bloodGroup: String? = null,
+    val heightCm: Double? = null,
+    val weightKg: Double? = null,
+    val bmi: Double? = null
+)
+
 object SupabaseClient {
 
     private const val SUPABASE_URL =
@@ -37,60 +48,44 @@ object SupabaseClient {
     private const val KEY_FULL_NAME =
         "full_name"
 
+    private const val KEY_ACCESS_TOKEN =
+        "access_token"
+
     private val jsonMediaType =
         "application/json; charset=utf-8".toMediaType()
 
-    /*
-     * Supabase login is intentionally handled with OkHttp.
-     *
-     * The project already contains OkHttp 4.12.0 in build.gradle.kts.
-     * This avoids the Ktor Android-engine timeout that was happening
-     * during the Supabase Auth request.
-     */
     private val httpClient =
         OkHttpClient.Builder()
-            .connectTimeout(
-                30,
-                TimeUnit.SECONDS
-            )
-            .readTimeout(
-                30,
-                TimeUnit.SECONDS
-            )
-            .writeTimeout(
-                30,
-                TimeUnit.SECONDS
-            )
-            .callTimeout(
-                35,
-                TimeUnit.SECONDS
-            )
+            .connectTimeout(30, TimeUnit.SECONDS)
+            .readTimeout(30, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .callTimeout(35, TimeUnit.SECONDS)
             .retryOnConnectionFailure(true)
             .build()
 
     private fun saveUser(
         context: Context,
-        user: SupabaseUser
+        user: SupabaseUser,
+        accessToken: String? = null
     ) {
-        context
+        val editor = context
             .getSharedPreferences(
                 PREFS_NAME,
                 Context.MODE_PRIVATE
             )
             .edit()
-            .putString(
-                KEY_USER_ID,
-                user.id
+            .putString(KEY_USER_ID, user.id)
+            .putString(KEY_EMAIL, user.email)
+            .putString(KEY_FULL_NAME, user.fullName)
+
+        if (!accessToken.isNullOrBlank()) {
+            editor.putString(
+                KEY_ACCESS_TOKEN,
+                accessToken
             )
-            .putString(
-                KEY_EMAIL,
-                user.email
-            )
-            .putString(
-                KEY_FULL_NAME,
-                user.fullName
-            )
-            .apply()
+        }
+
+        editor.apply()
     }
 
     fun getSavedUser(
@@ -104,16 +99,10 @@ object SupabaseClient {
             )
 
         val id =
-            preferences.getString(
-                KEY_USER_ID,
-                null
-            )
+            preferences.getString(KEY_USER_ID, null)
 
         val email =
-            preferences.getString(
-                KEY_EMAIL,
-                null
-            )
+            preferences.getString(KEY_EMAIL, null)
 
         val fullName =
             preferences.getString(
@@ -135,6 +124,20 @@ object SupabaseClient {
         )
     }
 
+    private fun getAccessToken(
+        context: Context
+    ): String? {
+        return context
+            .getSharedPreferences(
+                PREFS_NAME,
+                Context.MODE_PRIVATE
+            )
+            .getString(
+                KEY_ACCESS_TOKEN,
+                null
+            )
+    }
+
     fun getChatSessionId(
         context: Context
     ): String? {
@@ -146,12 +149,6 @@ object SupabaseClient {
         return "supabase_user_${user.id}"
     }
 
-    /*
-     * Persistent login:
-     * MainActivity can call this when the application starts.
-     * The saved user is returned immediately, so reopening the app
-     * does not force the user to enter the password again.
-     */
     suspend fun restoreSessionUser(
         context: Context
     ): SupabaseUser? =
@@ -159,10 +156,6 @@ object SupabaseClient {
             getSavedUser(context)
         }
 
-    /*
-     * Local logout. This is deliberately non-suspend because it only
-     * clears SharedPreferences and MainActivity can call it directly.
-     */
     fun clearSession(
         context: Context
     ) {
@@ -189,11 +182,8 @@ object SupabaseClient {
     ): Result<String> =
         withContext(Dispatchers.IO) {
 
-            val cleanEmail =
-                email.trim()
-
-            val cleanName =
-                fullName.trim()
+            val cleanEmail = email.trim()
+            val cleanName = fullName.trim()
 
             if (cleanEmail.isBlank()) {
                 return@withContext Result.failure(
@@ -223,14 +213,8 @@ object SupabaseClient {
 
                 val body =
                     JSONObject().apply {
-                        put(
-                            "email",
-                            cleanEmail
-                        )
-                        put(
-                            "password",
-                            password
-                        )
+                        put("email", cleanEmail)
+                        put("password", password)
                         put(
                             "data",
                             JSONObject().apply {
@@ -289,8 +273,29 @@ object SupabaseClient {
                             )
                         }
 
+                        /*
+                         * If email confirmation is disabled,
+                         * Supabase may return an access token and
+                         * an authenticated user immediately.
+                         *
+                         * If confirmation is enabled, there may
+                         * be no token. The normal login flow will
+                         * still work after email verification.
+                         */
+                        val json =
+                            JSONObject(responseText)
+
+                        val accessToken =
+                            json.optString(
+                                "access_token",
+                                ""
+                            )
+
+                        val user =
+                            json.optJSONObject("user")
+
                         Result.success(
-                            "Registration successful. Please verify your email before logging in."
+                            "Registration successful."
                         )
                     }
 
@@ -331,8 +336,7 @@ object SupabaseClient {
     ): Result<SupabaseUser> =
         withContext(Dispatchers.IO) {
 
-            val cleanEmail =
-                email.trim()
+            val cleanEmail = email.trim()
 
             if (cleanEmail.isBlank()) {
                 return@withContext Result.failure(
@@ -354,14 +358,8 @@ object SupabaseClient {
 
                 val body =
                     JSONObject().apply {
-                        put(
-                            "email",
-                            cleanEmail
-                        )
-                        put(
-                            "password",
-                            password
-                        )
+                        put("email", cleanEmail)
+                        put("password", password)
                     }
 
                 val request =
@@ -412,14 +410,10 @@ object SupabaseClient {
                         }
 
                         val json =
-                            JSONObject(
-                                responseText
-                            )
+                            JSONObject(responseText)
 
                         val user =
-                            json.optJSONObject(
-                                "user"
-                            )
+                            json.optJSONObject("user")
                                 ?: return@withContext Result.failure(
                                     Exception(
                                         "Login failed: user information was not returned."
@@ -427,9 +421,7 @@ object SupabaseClient {
                                 )
 
                         val userId =
-                            user.optString(
-                                "id"
-                            )
+                            user.optString("id")
 
                         if (userId.isBlank()) {
                             return@withContext Result.failure(
@@ -463,9 +455,16 @@ object SupabaseClient {
                                 fullName = fullName
                             )
 
+                        val accessToken =
+                            json.optString(
+                                "access_token",
+                                ""
+                            )
+
                         saveUser(
-                            context,
-                            loggedInUser
+                            context = context,
+                            user = loggedInUser,
+                            accessToken = accessToken
                         )
 
                         Result.success(
@@ -503,6 +502,342 @@ object SupabaseClient {
             }
         }
 
+    /*
+     * Load the authenticated user's profile.
+     */
+    suspend fun getHealthProfile(
+        context: Context
+    ): Result<HealthProfile?> =
+        withContext(Dispatchers.IO) {
+
+            val user =
+                getSavedUser(context)
+                    ?: return@withContext Result.success(null)
+
+            val token =
+                getAccessToken(context)
+                    ?: return@withContext Result.failure(
+                        Exception(
+                            "Your session has expired. Please login again."
+                        )
+                    )
+
+            try {
+
+                val request =
+                    Request.Builder()
+                        .url(
+                            "$SUPABASE_URL/rest/v1/profiles" +
+                                    "?id=eq.${user.id}" +
+                                    "&select=id,name,gender,date_of_birth,blood_group,height_cm,weight_kg,bmi"
+                        )
+                        .get()
+                        .header(
+                            "apikey",
+                            SUPABASE_KEY
+                        )
+                        .header(
+                            "Authorization",
+                            "Bearer $token"
+                        )
+                        .header(
+                            "Accept",
+                            "application/json"
+                        )
+                        .build()
+
+                httpClient
+                    .newCall(request)
+                    .execute()
+                    .use { response ->
+
+                        val responseText =
+                            response.body
+                                ?.string()
+                                .orEmpty()
+
+                        if (!response.isSuccessful) {
+                            return@withContext Result.failure(
+                                Exception(
+                                    buildString {
+                                        append("Unable to load personal information. Server error: ${response.code}")
+                                        if (responseText.isNotBlank()) {
+                                            append(" - ")
+                                            append(responseText)
+                                        }
+                                    }
+                                )
+                            )
+                        }
+
+                        val array =
+                            org.json.JSONArray(
+                                responseText
+                            )
+
+                        if (array.length() == 0) {
+                            return@withContext Result.success(
+                                null
+                            )
+                        }
+
+                        val json =
+                            array.getJSONObject(0)
+
+                        Result.success(
+                            healthProfileFromJson(json)
+                        )
+                    }
+
+            } catch (e: IOException) {
+
+                Result.failure(
+                    Exception(
+                        "Unable to connect to Supabase. Please check your internet connection."
+                    )
+                )
+
+            } catch (e: Exception) {
+
+                Result.failure(
+                    Exception(
+                        e.message
+                            ?: "Unable to load personal information."
+                    )
+                )
+            }
+        }
+
+    /*
+     * Create/update the authenticated user's profile.
+     * All health fields are optional.
+     */
+    suspend fun saveHealthProfile(
+        context: Context,
+        profile: HealthProfile
+    ): Result<HealthProfile> =
+        withContext(Dispatchers.IO) {
+
+            val user =
+                getSavedUser(context)
+                    ?: return@withContext Result.failure(
+                        Exception(
+                            "Please login before saving personal information."
+                        )
+                    )
+
+            val token =
+                getAccessToken(context)
+                    ?: return@withContext Result.failure(
+                        Exception(
+                            "Your session has expired. Please login again."
+                        )
+                    )
+
+            try {
+
+                val body =
+                    JSONObject().apply {
+                        put("id", user.id)
+                        putNullable("name", profile.name)
+                        putNullable("gender", profile.gender)
+                        putNullable(
+                            "date_of_birth",
+                            profile.dateOfBirth
+                        )
+                        putNullable(
+                            "blood_group",
+                            profile.bloodGroup
+                        )
+                        putNullable(
+                            "height_cm",
+                            profile.heightCm
+                        )
+                        putNullable(
+                            "weight_kg",
+                            profile.weightKg
+                        )
+                        putNullable(
+                            "bmi",
+                            profile.bmi
+                        )
+                    }
+
+                val request =
+                    Request.Builder()
+                        .url(
+                            "$SUPABASE_URL/rest/v1/profiles?on_conflict=id"
+                        )
+                        .post(
+                            body
+                                .toString()
+                                .toRequestBody(
+                                    jsonMediaType
+                                )
+                        )
+                        .header(
+                            "apikey",
+                            SUPABASE_KEY
+                        )
+                        .header(
+                            "Authorization",
+                            "Bearer $token"
+                        )
+                        .header(
+                            "Prefer",
+                            "resolution=merge-duplicates,return=representation"
+                        )
+                        .header(
+                            "Content-Type",
+                            "application/json"
+                        )
+                        .header(
+                            "Accept",
+                            "application/json"
+                        )
+                        .build()
+
+                httpClient
+                    .newCall(request)
+                    .execute()
+                    .use { response ->
+
+                        val responseText =
+                            response.body
+                                ?.string()
+                                .orEmpty()
+
+                        if (!response.isSuccessful) {
+                            return@withContext Result.failure(
+                                Exception(
+                                    buildString {
+                                        append("Unable to save personal information. Server error: ${response.code}")
+                                        if (responseText.isNotBlank()) {
+                                            append(" - ")
+                                            append(responseText)
+                                        }
+                                    }
+                                )
+                            )
+                        }
+
+                        val array =
+                            org.json.JSONArray(
+                                responseText
+                            )
+
+                        if (array.length() == 0) {
+                            return@withContext Result.success(
+                                profile.copy(
+                                    id = user.id
+                                )
+                            )
+                        }
+
+                        Result.success(
+                            healthProfileFromJson(
+                                array.getJSONObject(0)
+                            )
+                        )
+                    }
+
+            } catch (e: IOException) {
+
+                Result.failure(
+                    Exception(
+                        "Unable to connect to Supabase. Please check your internet connection."
+                    )
+                )
+
+            } catch (e: Exception) {
+
+                Result.failure(
+                    Exception(
+                        e.message
+                            ?: "Unable to save personal information."
+                    )
+                )
+            }
+        }
+
+    private fun JSONObject.putNullable(
+        key: String,
+        value: Any?
+    ) {
+        put(
+            key,
+            value ?: JSONObject.NULL
+        )
+    }
+
+    private fun healthProfileFromJson(
+        json: JSONObject
+    ): HealthProfile {
+
+        return HealthProfile(
+            id = json.optString("id"),
+            name = json.optNullableString("name"),
+            gender = json.optNullableString("gender"),
+            dateOfBirth =
+                json.optNullableString(
+                    "date_of_birth"
+                ),
+            bloodGroup =
+                json.optNullableString(
+                    "blood_group"
+                ),
+            heightCm =
+                json.optNullableDouble(
+                    "height_cm"
+                ),
+            weightKg =
+                json.optNullableDouble(
+                    "weight_kg"
+                ),
+            bmi =
+                json.optNullableDouble(
+                    "bmi"
+                )
+        )
+    }
+
+    private fun JSONObject.optNullableString(
+        key: String
+    ): String? {
+
+        if (
+            isNull(key)
+        ) {
+            return null
+        }
+
+        return optString(
+            key,
+            ""
+        ).takeIf {
+            it.isNotBlank()
+        }
+    }
+
+    private fun JSONObject.optNullableDouble(
+        key: String
+    ): Double? {
+
+        if (isNull(key)) {
+            return null
+        }
+
+        val value =
+            optDouble(
+                key,
+                Double.NaN
+            )
+
+        return value.takeIf {
+            !it.isNaN()
+        }
+    }
+
     private fun extractAuthError(
         response: String,
         isLogin: Boolean
@@ -519,9 +854,7 @@ object SupabaseClient {
         return try {
 
             val json =
-                JSONObject(
-                    response
-                )
+                JSONObject(response)
 
             val errorCode =
                 json.optString(

@@ -77,6 +77,16 @@ fun ChatHistoryScreen(
             isLoading = true
             errorMessage = ""
 
+            val currentUser =
+                SupabaseClient.getSavedUser(context)
+
+            if (currentUser == null) {
+                history = emptyList()
+                errorMessage = "Please login to view your chat history."
+                isLoading = false
+                return
+            }
+
             val sessionId =
                 SupabaseClient.getChatSessionId(context)
                     ?: ""
@@ -377,6 +387,16 @@ fun ChatHistoryScreen(
                         scope.launch {
 
                             try {
+
+                                val currentUser =
+                                    SupabaseClient.getSavedUser(context)
+
+                                if (currentUser == null) {
+                                    history = emptyList()
+                                    errorMessage =
+                                        "Please login to clear your chat history."
+                                    return@launch
+                                }
 
                                 val sessionId =
                                     SupabaseClient

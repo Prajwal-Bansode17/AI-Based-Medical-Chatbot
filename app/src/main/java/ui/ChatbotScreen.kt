@@ -73,6 +73,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ai_based_medical_chatbot.data.SupabaseClient
 import com.example.ai_based_medical_chatbot.data.api.Measurement
 import com.example.ai_based_medical_chatbot.data.api.PredictionRequest
 import com.example.ai_based_medical_chatbot.data.api.RetrofitClient
@@ -81,7 +82,6 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
-import java.util.UUID
 
 // =============================================================
 // VOICE LANGUAGE SUPPORT
@@ -161,16 +161,10 @@ fun ChatbotScreen(
         if (!initialSessionId.isNullOrBlank()) {
             initialSessionId.trim()
         } else {
-            val preferences = context.getSharedPreferences(
-                "medassist_preferences",
-                Context.MODE_PRIVATE
-            )
-
-            preferences.getString("session_id", null) ?: run {
-                val newSession = "android_${UUID.randomUUID()}"
-                preferences.edit().putString("session_id", newSession).apply()
-                newSession
-            }
+            // Chat sessions are now tied to the authenticated Supabase user.
+            // This keeps chat history separated between users.
+            SupabaseClient.getChatSessionId(context)
+                ?: "unauthenticated"
         }
     }
 
@@ -299,6 +293,19 @@ fun ChatbotScreen(
         val cleanText = text.trim()
         if (cleanText.isEmpty() || isTyping) return
 
+        // Chatbot access is expected to happen after authentication.
+        // Never send an anonymous/shared session to the backend.
+        if (SupabaseClient.getSavedUser(context) == null) {
+            messages.add(
+                ChatMessage(
+                    text = "Please login to use MedAssist AI.",
+                    isUser = false,
+                    isError = true
+                )
+            )
+            return
+        }
+
         if (isSpeaking) {
             voiceAssistant.stop()
         }
@@ -361,7 +368,7 @@ fun ChatbotScreen(
                         )
 
                         voiceAssistant.speak(
-                            finalAnswer,
+                            cleanMarkdownForSpeech(finalAnswer),
                             responseLocale
                         )
                         speakNextResponse = false
@@ -589,7 +596,7 @@ fun ChatbotScreen(
                                 normalizeResponseLanguage(aiMessage.language)
                             )
                             voiceAssistant.speak(
-                                aiMessage.text,
+                                cleanMarkdownForSpeech(aiMessage.text),
                                 locale
                             )
                         }
@@ -1160,6 +1167,81 @@ private fun cleanMarkdown(text: String): String {
         .joinToString("\n")
         .trim()
 }
+
+// =============================================================
+// CLEAN MARKDOWN FOR VOICE ASSISTANT
+// =============================================================
+
+/**
+ * Converts the AI Markdown response into natural speech.
+ * The UI keeps its formatting, while TTS receives clean plain text.
+ */
+private fun cleanMarkdownForSpeech(text: String): String {
+    return text
+        .replace("\\r\\n", "\\n")
+        .replace("\\r", "\\n")
+        .lines()
+        .map { rawLine ->
+            var line = rawLine.trim()
+
+            // Markdown headings.
+            line = line.replace(Regex("^#{1,6}\\s*"), "")
+
+            // Markdown blockquotes.
+            line = line.replace(Regex("^>\\s*"), "")
+
+            // Bullets.
+            line = line.replace(Regex("^[-*+•●◦▪·]\\s+"), "")
+
+            // Numbered lists.
+            line = line.replace(Regex("^\\d+[.)]\\s+"), "")
+
+            // Bold, italic, underline and inline-code markers.
+            line = line
+                .replace("**", "")
+                .replace("__", "")
+                .replace("`", "")
+                .replace(Regex("(?<!\\*)\\*(?!\\*)"), "")
+
+            // Markdown links -> visible text only.
+            line = line.replace(
+                Regex("\\[([^]]+)]\\([^)]*\\)"),
+                "$1"
+            )
+
+            // Remove any remaining Markdown hash characters.
+            line = line.replace("#", "")
+
+            // Remove emoji/symbol characters without unsupported
+            // Unicode-regex syntax. This works with Kotlin/JVM safely.
+            line = line.filter { ch ->
+                val cp = ch.code
+                when {
+                    cp in 0x1F1E6..0x1F1FF -> false
+                    cp in 0x1F300..0x1F5FF -> false
+                    cp in 0x1F600..0x1F64F -> false
+                    cp in 0x1F680..0x1F6FF -> false
+                    cp in 0x1F700..0x1F77F -> false
+                    cp in 0x1F780..0x1F7FF -> false
+                    cp in 0x1F800..0x1F8FF -> false
+                    cp in 0x1F900..0x1F9FF -> false
+                    cp in 0x1FA00..0x1FAFF -> false
+                    cp in 0x2600..0x26FF -> false
+                    cp in 0x2700..0x27BF -> false
+                    else -> true
+                }
+            }
+
+            // Normalize whitespace.
+            line = line.replace(Regex("\\s+"), " ").trim()
+            line
+        }
+        .filter { it.isNotBlank() }
+        .joinToString(". ")
+        .replace(Regex("\\.{2,}"), ".")
+        .trim()
+}
+
 
 // =============================================================
 // TYPING INDICATOR

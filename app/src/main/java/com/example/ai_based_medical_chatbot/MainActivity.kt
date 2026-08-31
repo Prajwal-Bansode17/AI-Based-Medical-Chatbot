@@ -20,6 +20,7 @@ import ui.ChatbotScreen
 import ui.DashboardScreen
 import ui.ForgotPasswordScreen
 import ui.HealthTipsScreen
+import ui.HealthProfileScreen
 import ui.LoginScreen
 import ui.MedicineDetailScreen
 import ui.MedicineInfoScreen
@@ -91,6 +92,16 @@ private fun MedicalChatbotNavigation() {
     }
 
     // =========================================================
+    // CHATBOT ACCESS STATE
+    // =========================================================
+
+    // True when the user requested the chatbot and must return
+    // to the chatbot after authentication/profile setup.
+    var pendingChatbotAccess by remember {
+        mutableStateOf(false)
+    }
+
+    // =========================================================
     // SELECTED MEDICINE
     // =========================================================
 
@@ -103,7 +114,7 @@ private fun MedicalChatbotNavigation() {
     // =========================================================
 
     val currentScreen =
-        screenStack.lastOrNull() ?: "login"
+        screenStack.lastOrNull() ?: "dashboard"
 
     // =========================================================
     // NAVIGATION FUNCTIONS
@@ -174,8 +185,11 @@ private fun MedicalChatbotNavigation() {
 
                     } else {
 
+                        // Login is intentionally NOT required at app startup.
+                        // Users can explore the dashboard and authenticate only
+                        // when they choose to open the chatbot.
                         screenStack.add(
-                            "login"
+                            "dashboard"
                         )
                     }
                 }
@@ -234,12 +248,22 @@ private fun MedicalChatbotNavigation() {
                                 loginLoading = false
                                 loginError = ""
 
-                                // Go to Dashboard
+                                // If login was requested because the user
+                                // wanted the chatbot, continue to the optional
+                                // personal-health profile first.
                                 screenStack.clear()
 
-                                screenStack.add(
-                                    "dashboard"
-                                )
+                                if (pendingChatbotAccess) {
+                                    screenStack.add(
+                                        "healthProfile"
+                                    )
+                                } else {
+                                    screenStack.add(
+                                        "dashboard"
+                                    )
+                                }
+
+                                pendingChatbotAccess = false
                             }
 
                             // =================================
@@ -381,9 +405,29 @@ private fun MedicalChatbotNavigation() {
 
                 onChatbotClick = {
 
-                    navigateTo(
-                        "chatbot"
-                    )
+                    val savedUser =
+                        SupabaseClient.getSavedUser(context)
+
+                    if (savedUser == null) {
+
+                        // Authentication is required only when the
+                        // user chooses to access the chatbot.
+                        pendingChatbotAccess = true
+
+                        navigateTo(
+                            "login"
+                        )
+
+                    } else {
+
+                        // Existing users go through the optional
+                        // personal-information page before entering chat.
+                        pendingChatbotAccess = true
+
+                        navigateTo(
+                            "healthProfile"
+                        )
+                    }
                 },
 
                 onSymptomsClick = {
@@ -445,10 +489,41 @@ private fun MedicalChatbotNavigation() {
                     loginError = ""
                     loginLoading = false
 
+                    pendingChatbotAccess = false
+
                     screenStack.clear()
 
                     screenStack.add(
-                        "login"
+                        "dashboard"
+                    )
+                }
+            )
+        }
+
+        // =====================================================
+        // PERSONAL HEALTH PROFILE
+        // =====================================================
+
+        "healthProfile" -> {
+
+            HealthProfileScreen(
+
+                onBack = {
+
+                    pendingChatbotAccess = false
+                    navigateBack()
+                },
+
+                onContinue = {
+
+                    pendingChatbotAccess = false
+
+                    screenStack.removeAll {
+                        it == "healthProfile"
+                    }
+
+                    screenStack.add(
+                        "chatbot"
                     )
                 }
             )
