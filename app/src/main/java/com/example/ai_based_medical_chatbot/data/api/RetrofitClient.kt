@@ -74,9 +74,9 @@ object RetrofitClient {
     // Phone and laptop must be on the same Wi-Fi.
     // =========================================================
 
-    private const val FLASK_IP = "192.168.1.33"
+    private const val FLASK_IP = "192.168.1.7"
     private const val FLASK_PORT = 5000
-    private const val BASE_URL = "http://192.168.1.51:5000/"
+    private const val BASE_URL = "http://192.168.1.7:5000/"
 
     // =========================================================
     // HTTP CLIENT

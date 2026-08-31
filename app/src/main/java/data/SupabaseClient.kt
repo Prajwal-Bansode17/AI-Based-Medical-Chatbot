@@ -31,10 +31,10 @@ data class HealthProfile(
 object SupabaseClient {
 
     private const val SUPABASE_URL =
-        "https://zjpquzefbtvcortpzkts.supabase.co"
+        "https://pdqbptnodhqxwdriypxi.supabase.co"
 
     private const val SUPABASE_KEY =
-        "sb_publishable_OkgH1qAH5aEY-b1D7wq0bQ_Vo_O0BHk"
+        "sb_publishable_pdpU_5XNz-thcx0bv3UPYg_iEulHfsa"
 
     private const val PREFS_NAME =
         "medassist_auth"
