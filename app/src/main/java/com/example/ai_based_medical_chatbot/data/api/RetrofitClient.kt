@@ -76,9 +76,7 @@ object RetrofitClient {
 
     private const val FLASK_IP = "192.168.1.33"
     private const val FLASK_PORT = 5000
-
-    private const val BASE_URL =
-        "http://$FLASK_IP:$FLASK_PORT/"
+    private const val BASE_URL = "http://192.168.1.51:5000/"
 
     // =========================================================
     // HTTP CLIENT
