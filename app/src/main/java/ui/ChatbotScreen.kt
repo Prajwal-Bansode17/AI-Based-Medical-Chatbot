@@ -8,10 +8,13 @@ import android.widget.Toast
 import android.os.Handler
 import android.os.Looper
 import android.speech.RecognizerIntent
+import android.speech.tts.TextToSpeech
+import android.speech.tts.UtteranceProgressListener
 import android.util.Log
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
@@ -36,6 +39,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.Send
 import androidx.compose.material.icons.filled.Delete
@@ -45,10 +49,8 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material.icons.filled.MoreVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -65,6 +67,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.semantics.contentDescription
@@ -73,7 +76,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ai_based_medical_chatbot.data.SupabaseClient
 import com.example.ai_based_medical_chatbot.data.api.Measurement
 import com.example.ai_based_medical_chatbot.data.api.PredictionRequest
 import com.example.ai_based_medical_chatbot.data.api.RetrofitClient
@@ -82,6 +84,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.util.Locale
+import java.util.UUID
 
 // =============================================================
 // VOICE LANGUAGE SUPPORT
@@ -94,6 +97,8 @@ import java.util.Locale
 //
 // Requires:
 // implementation("com.google.mlkit:language-id:17.0.6")
+
+private const val RESPONSE_UTTERANCE_ID = "medassist_response"
 
 private fun localeForDetectedCode(languageCode: String): Locale = when {
     languageCode.startsWith("hi", ignoreCase = true) -> Locale.forLanguageTag("hi-IN")
@@ -111,47 +116,6 @@ private fun normalizeResponseLanguage(languageCode: String?): String {
         languageCode?.startsWith("mr", ignoreCase = true) == true -> "mr"
         else -> "en"
     }
-}
-
-
-// =============================================================
-// CLEAN MARKDOWN FOR VOICE ASSISTANT
-// =============================================================
-
-/**
- * Converts an AI Markdown response into simple text for text-to-speech.
- * This is kept near the top of the file so all callers can resolve it
- * without depending on declaration order or stale IDE indexing.
- */
-private fun cleanMarkdownForSpeechText(text: String): String {
-    return text
-        .replace("\r\n", "\n")
-        .replace("\r", "\n")
-        .lines()
-        .map { rawLine ->
-            var line = rawLine.trim()
-
-            line = line.replace(Regex("^#{1,6}\\s*"), "")
-            line = line.replace(Regex("^>\\s*"), "")
-            line = line.replace(Regex("^[-*+•●◦▪·]\\s+"), "")
-            line = line.replace(Regex("^\\d+[.)]\\s+"), "")
-
-            line = line
-                .replace("**", "")
-                .replace("__", "")
-                .replace("`", "")
-                .replace(Regex("(?<!\\*)\\*(?!\\*)"), "")
-
-            line = line.replace(Regex("\\[([^]]+)]\\([^)]*\\)"), "\$1")
-            line = line.replace("#", "")
-            line = line.replace(Regex("\\s+"), " ").trim()
-
-            line
-        }
-        .filter { it.isNotBlank() }
-        .joinToString(". ")
-        .replace(Regex("\\.{2,}"), ".")
-        .trim()
 }
 
 // =============================================================
@@ -200,10 +164,16 @@ fun ChatbotScreen(
         if (!initialSessionId.isNullOrBlank()) {
             initialSessionId.trim()
         } else {
-            // Chat sessions are now tied to the authenticated Supabase user.
-            // This keeps chat history separated between users.
-            SupabaseClient.getChatSessionId(context)
-                ?: "unauthenticated"
+            val preferences = context.getSharedPreferences(
+                "medassist_preferences",
+                Context.MODE_PRIVATE
+            )
+
+            preferences.getString("session_id", null) ?: run {
+                val newSession = "android_${UUID.randomUUID()}"
+                preferences.edit().putString("session_id", newSession).apply()
+                newSession
+            }
         }
     }
 
@@ -234,18 +204,43 @@ fun ChatbotScreen(
     var speakNextResponse by remember { mutableStateOf(false) }
     var lastUserQuestion by remember { mutableStateOf("") }
 
-    val voiceAssistant = remember(context) {
-        VoiceAssistant(context) { speaking ->
-            mainHandler.post {
-                isSpeaking = speaking
+    val textToSpeech = remember(context) {
+        TextToSpeech(context) { status ->
+            if (status == TextToSpeech.SUCCESS) {
+                Log.d("MEDASSIST_TTS", "Text to speech initialized")
+            } else {
+                Log.e("MEDASSIST_TTS", "Text to speech initialization failed")
             }
         }
     }
 
-    DisposableEffect(voiceAssistant) {
-        onDispose {
-            voiceAssistant.shutdown()
+    fun speakResponse(text: String, locale: Locale, utteranceId: String = RESPONSE_UTTERANCE_ID) {
+        if (text.isBlank()) return
+
+        textToSpeech.stop()
+
+        val languageResult = textToSpeech.setLanguage(locale)
+        if (languageResult == TextToSpeech.LANG_MISSING_DATA ||
+            languageResult == TextToSpeech.LANG_NOT_SUPPORTED
+        ) {
+            // Try the language without the India region first. Some Android
+            // TTS engines provide hi/mr but not hi-IN/mr-IN.
+            val languageOnly = Locale.forLanguageTag(locale.language)
+            val languageOnlyResult = textToSpeech.setLanguage(languageOnly)
+
+            if (languageOnlyResult == TextToSpeech.LANG_MISSING_DATA ||
+                languageOnlyResult == TextToSpeech.LANG_NOT_SUPPORTED
+            ) {
+                Log.w(
+                    "MEDASSIST_TTS",
+                    "Voice for $locale is not installed/supported; falling back to English"
+                )
+                textToSpeech.setLanguage(Locale.US)
+            }
         }
+
+        isSpeaking = true
+        textToSpeech.speak(text, TextToSpeech.QUEUE_FLUSH, null, utteranceId)
     }
 
     val popularTopics = listOf(
@@ -305,7 +300,7 @@ fun ChatbotScreen(
                             "• Diseases and conditions\n" +
                             "• Medicines and precautions\n" +
                             "• When medical attention may be needed\n\n" +
-                            "Tell me what you're experiencing, and we'll go step by step.",
+                            "How can I help you today?",
                     isUser = false
                 )
             )
@@ -332,21 +327,9 @@ fun ChatbotScreen(
         val cleanText = text.trim()
         if (cleanText.isEmpty() || isTyping) return
 
-        // Chatbot access is expected to happen after authentication.
-        // Never send an anonymous/shared session to the backend.
-        if (SupabaseClient.getSavedUser(context) == null) {
-            messages.add(
-                ChatMessage(
-                    text = "Please login to use MedAssist AI.",
-                    isUser = false,
-                    isError = true
-                )
-            )
-            return
-        }
-
         if (isSpeaking) {
-            voiceAssistant.stop()
+            textToSpeech.stop()
+            isSpeaking = false
         }
 
         isListening = false
@@ -406,17 +389,15 @@ fun ChatbotScreen(
                             "Backend response language = $responseLanguage, TTS locale = $responseLocale"
                         )
 
-                        voiceAssistant.speak(
-                            cleanMarkdownForSpeechText(finalAnswer),
-                            responseLocale
-                        )
+                        speakResponse(finalAnswer, responseLocale)
                         speakNextResponse = false
                     }
                 } else {
                     speakNextResponse = false
                     messages.add(
                         ChatMessage(
-                            text = "I couldn't get a response from MedAssist right now. Please try again in a moment.",
+                            text = "Sorry, I’m having trouble connecting to the medical AI service. " +
+                                    "Please check your internet connection and try again.",
                             isUser = false,
                             isError = true
                         )
@@ -428,7 +409,8 @@ fun ChatbotScreen(
                 speakNextResponse = false
                 messages.add(
                     ChatMessage(
-                        text = "I couldn't reach the MedAssist server. Please make sure Flask is running on the laptop and that your phone and laptop are on the same Wi-Fi network, then try again.",
+                        text = "Unable to connect to MedAssist AI right now.\n\n" +
+                                "Please make sure the server is running and try again.",
                         isUser = false,
                         isError = true
                     )
@@ -499,9 +481,47 @@ fun ChatbotScreen(
         }
     }
 
+    // Keep UI state synchronized with the actual TTS engine.
+    fun onSpeechFinished(utteranceId: String?, completedNormally: Boolean) {
+        mainHandler.post {
+            isSpeaking = false
+        }
+    }
+
     fun startVoiceInput() {
         if (isTyping || isListening || isSpeaking) return
         launchSpeechRecognition()
+    }
+
+    // Keep the UI state synchronized with the actual TTS engine, and chain
+    // the greeting into listening once it finishes speaking. Without this,
+    // the voice button can stay stuck in the "speaking" state after the
+    // response has actually finished.
+    DisposableEffect(textToSpeech) {
+        textToSpeech.setOnUtteranceProgressListener(
+            object : UtteranceProgressListener() {
+                override fun onStart(utteranceId: String?) = Unit
+
+                override fun onDone(utteranceId: String?) {
+                    onSpeechFinished(utteranceId, completedNormally = true)
+                }
+
+                override fun onError(utteranceId: String?) {
+                    speakNextResponse = false
+                    onSpeechFinished(utteranceId, completedNormally = false)
+                }
+
+                override fun onStop(utteranceId: String?, interrupted: Boolean) {
+                    speakNextResponse = false
+                    onSpeechFinished(utteranceId, completedNormally = false)
+                }
+            }
+        )
+
+        onDispose {
+            textToSpeech.stop()
+            textToSpeech.shutdown()
+        }
     }
 
     // =========================================================
@@ -514,65 +534,64 @@ fun ChatbotScreen(
             .background(Color(0xFFF7F9FC))
     ) {
 
-        // ----- TOP BAR -----
+        // ----- PROFESSIONAL TOP BAR -----
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
                 .statusBarsPadding(),
-            shadowElevation = 4.dp
+            color = Color.White,
+            shadowElevation = 2.dp
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(start = 16.dp, end = 16.dp, top = 18.dp, bottom = 14.dp),
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Box(
                     modifier = Modifier
-                        .size(42.dp)
+                        .size(44.dp)
                         .clip(CircleShape)
                         .background(Color(0xFF1976D2)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(text = "AI", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
+                    Text("AI", color = Color.White, fontWeight = FontWeight.Bold, fontSize = 13.sp)
                 }
 
-                Spacer(modifier = Modifier.width(12.dp))
+                Spacer(Modifier.width(12.dp))
 
-                Column(modifier = Modifier.weight(1f)) {
+                Column(Modifier.weight(1f)) {
                     Text(
                         text = "MedAssist AI",
-                        fontSize = 19.sp,
+                        fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFF17202A)
                     )
-                    Text(
-                        text = if (isTyping) {
-                            "MedAssist is thinking…"
-                        } else {
-                            "Your health assistant • Ask anything"
-                        },
-                        fontSize = 12.sp,
-                        color = Color(0xFF667085)
-                    )
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            Modifier
+                                .size(7.dp)
+                                .clip(CircleShape)
+                                .background(Color(0xFF22C55E))
+                        )
+                        Spacer(Modifier.width(6.dp))
+                        Text(
+                            text = if (isTyping) "Thinking…" else "AI health assistant",
+                            fontSize = 11.sp,
+                            color = Color(0xFF667085)
+                        )
+                    }
                 }
 
                 IconButton(
-                    onClick = {
-                        if (!isTyping && messages.size > 1) {
-                            showClearDialog = true
-                        }
-                    }
+                    onClick = { if (!isTyping && messages.size > 1) showClearDialog = true },
+                    enabled = !isTyping
                 ) {
                     Icon(
                         imageVector = Icons.Default.Delete,
-                        contentDescription = "Clear chat",
+                        contentDescription = "Clear conversation",
                         tint = Color(0xFF667085)
                     )
-                }
-
-                if (isTyping) {
-                    CircularProgressIndicator(modifier = Modifier.size(24.dp), strokeWidth = 2.dp)
                 }
             }
         }
@@ -635,14 +654,16 @@ fun ChatbotScreen(
                     },
                     onSpeak = { aiMessage ->
                         if (isSpeaking) {
-                            voiceAssistant.stop()
+                            textToSpeech.stop()
+                            isSpeaking = false
                         } else {
                             val locale = localeForDetectedCode(
                                 normalizeResponseLanguage(aiMessage.language)
                             )
-                            voiceAssistant.speak(
-                                cleanMarkdownForSpeechText(aiMessage.text),
-                                locale
+                            speakResponse(
+                                aiMessage.text,
+                                locale,
+                                "manual_${UUID.randomUUID()}"
                             )
                         }
                     }
@@ -656,107 +677,161 @@ fun ChatbotScreen(
             item { Spacer(modifier = Modifier.height(8.dp)) }
         }
 
-        // ----- INPUT AREA -----
+        // ----- GEMINI-STYLE INPUT AREA -----
         Surface(
             modifier = Modifier
                 .fillMaxWidth()
                 .imePadding()
                 .navigationBarsPadding(),
+            color = Color.White,
             shadowElevation = 8.dp
         ) {
             Row(
-                modifier = Modifier.fillMaxWidth().padding(10.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                OutlinedTextField(
-                    value = message,
-                    onValueChange = { message = it },
+                Surface(
                     modifier = Modifier.weight(1f),
-                    placeholder = {
-                        Text(
-                            if (isListening) {
-                                "Listening…"
-                            } else {
-                                "Ask MedAssist anything..."
+                    shape = RoundedCornerShape(28.dp),
+                    color = Color(0xFFF3F5F7),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, Color(0xFFE4E7EC))
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(start = 4.dp, end = 6.dp, top = 4.dp, bottom = 4.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        IconButton(
+                            onClick = {
+                                Toast.makeText(context, "More options coming soon", Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier.size(44.dp)
+                        ) {
+                            Text(
+                                text = "+",
+                                fontSize = 30.sp,
+                                fontWeight = FontWeight.Light,
+                                color = Color(0xFF475467)
+                            )
+                        }
+
+                        BasicTextField(
+                            value = message,
+                            onValueChange = { message = it },
+                            modifier = Modifier.weight(1f),
+                            textStyle = androidx.compose.ui.text.TextStyle(
+                                fontSize = 15.sp,
+                                color = Color(0xFF344054)
+                            ),
+                            singleLine = false,
+                            maxLines = 4,
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                            keyboardActions = KeyboardActions(
+                                onSend = {
+                                    speakNextResponse = false
+                                    sendMessage(message)
+                                }
+                            ),
+                            decorationBox = { innerTextField ->
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 6.dp, vertical = 9.dp),
+                                    contentAlignment = Alignment.CenterStart
+                                ) {
+                                    if (message.isEmpty()) {
+                                        Text(
+                                            text = if (isListening) "Listening…" else "Ask MedAssist anything…",
+                                            fontSize = 15.sp,
+                                            color = Color(0xFF98A2B3)
+                                        )
+                                    }
+                                    innerTextField()
+                                }
                             }
                         )
-                    },
-                    keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-                    keyboardActions = KeyboardActions(
-                        onSend = {
+
+                        val canVoice = !isTyping
+                        Surface(
+                            modifier = Modifier
+                                .size(42.dp)
+                                .clip(CircleShape)
+                                .clickable(enabled = canVoice) {
+                                    when {
+                                        isSpeaking -> {
+                                            textToSpeech.stop()
+                                            isSpeaking = false
+                                        }
+                                        !isListening -> startVoiceInput()
+                                    }
+                                }
+                                .semantics {
+                                    contentDescription = when {
+                                        isListening -> "Stop listening"
+                                        isSpeaking -> "Stop speaking"
+                                        else -> "Start voice input"
+                                    }
+                                },
+                            shape = CircleShape,
+                            color = when {
+                                isListening -> Color(0xFFFFEBEE)
+                                isSpeaking -> Color(0xFFE8F5E9)
+                                else -> Color.Transparent
+                            }
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                when {
+                                    isListening -> {
+                                        Text(
+                                            text = "■",
+                                            fontSize = 14.sp,
+                                            color = Color(0xFFD32F2F),
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                    isSpeaking -> {
+                                        SpeakerIcon(tint = Color(0xFF188038))
+                                    }
+                                    else -> {
+                                        MicIcon(
+                                            tint = if (canVoice) {
+                                                Color(0xFF475467)
+                                            } else {
+                                                Color(0xFF98A2B3)
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                Spacer(Modifier.width(8.dp))
+
+                val canSend = message.trim().isNotEmpty() && !isTyping
+                Surface(
+                    modifier = Modifier
+                        .size(50.dp)
+                        .clip(CircleShape)
+                        .clickable(enabled = canSend) {
                             speakNextResponse = false
                             sendMessage(message)
-                        }
-                    ),
-                    maxLines = 4,
-                    shape = RoundedCornerShape(22.dp)
-                )
-
-                Spacer(modifier = Modifier.width(6.dp))
-
-                // ----- VOICE BUTTON -----
-                val canVoice = !isTyping
-                val voiceDescription = when {
-                    isListening -> "Stop listening"
-                    isSpeaking -> "Stop speaking"
-                    else -> "Start voice input"
-                }
-
-                IconButton(
-                    onClick = {
-                        if (isSpeaking) {
-                            voiceAssistant.stop()
-                        } else if (!isListening) {
-                            startVoiceInput()
-                        }
-                    },
-                    enabled = canVoice,
-                    modifier = Modifier
-                        .size(50.dp)
-                        .clip(CircleShape)
-                        .background(
-                            when {
-                                isListening -> Color(0xFFD32F2F)
-                                isSpeaking -> Color(0xFF43A047)
-                                canVoice -> Color(0xFF1976D2)
-                                else -> Color(0xFFB0BEC5)
-                            }
-                        )
-                        .semantics { contentDescription = voiceDescription }
-                ) {
-                    Text(
-                        text = when {
-                            isListening -> "●"
-                            isSpeaking -> "■"
-                            else -> "🎙️"
                         },
-                        color = Color.White,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                Spacer(modifier = Modifier.width(6.dp))
-
-                // ----- SEND BUTTON -----
-                val canSend = message.trim().isNotEmpty() && !isTyping
-
-                IconButton(
-                    onClick = {
-                        speakNextResponse = false
-                        sendMessage(message)
-                    },
-                    enabled = canSend,
-                    modifier = Modifier
-                        .size(50.dp)
-                        .clip(CircleShape)
-                        .background(if (canSend) Color(0xFF1976D2) else Color(0xFFB0BEC5))
+                    shape = CircleShape,
+                    color = if (canSend) Color(0xFF1976D2) else Color(0xFFE4E7EC)
                 ) {
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Filled.Send,
-                        contentDescription = "Send",
-                        tint = Color.White
-                    )
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.Send,
+                            contentDescription = "Send",
+                            tint = if (canSend) Color.White else Color(0xFF98A2B3),
+                            modifier = Modifier.size(22.dp)
+                        )
+                    }
                 }
             }
         }
@@ -940,13 +1015,15 @@ fun MessageBubble(
                 }
             }
 
-            // Gemini-style response action bar.
-            // Only AI responses get these actions; user bubbles remain unchanged.
+            // Professional Gemini-style response action bar.
+            // User messages remain unchanged.
             if (!message.isUser && !message.isError) {
-                Spacer(modifier = Modifier.height(3.dp))
+                Spacer(modifier = Modifier.height(4.dp))
 
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 2.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     ActionIcon(
@@ -1008,7 +1085,7 @@ fun MessageBubble(
                         onClick = {
                             val clipboard =
                                 context.getSystemService(Context.CLIPBOARD_SERVICE)
-                                        as? ClipboardManager
+                                    as? ClipboardManager
 
                             clipboard?.setPrimaryClip(
                                 ClipData.newPlainText(
@@ -1039,31 +1116,40 @@ fun MessageBubble(
 
                     Spacer(modifier = Modifier.weight(1f))
 
-                    // Speaker action is separated to the right, matching
-                    // the Gemini-style layout from the reference image.
-                    Box(
+                    // Dedicated response speaker button.
+                    Surface(
                         modifier = Modifier
-                            .size(38.dp)
+                            .size(40.dp)
                             .clip(CircleShape)
-                            .background(Color(0xFF2E7D32))
-                            .clickable { onSpeak(message) },
-                        contentAlignment = Alignment.Center
+                            .clickable { onSpeak(message) }
+                            .semantics {
+                                contentDescription = "Read response aloud"
+                            },
+                        shape = CircleShape,
+                        color = Color(0xFFE8F5E9),
+                        shadowElevation = 1.dp
                     ) {
-                        Text(
-                            text = "🔊",
-                            fontSize = 20.sp,
-                            modifier = Modifier.semantics {
-                                contentDescription = "Speak response"
-                            }
-                        )
+                        Box(contentAlignment = Alignment.Center) {
+                            SpeakerIcon(tint = Color(0xFF188038))
+                        }
                     }
                 }
             }
 
-            // Internal intent/confidence are intentionally not shown to users.
-            // The conversation should feel like a natural assistant rather than
-            // an ML debugging screen. The values remain in ChatMessage for logging.
-
+            if (!message.isUser && !message.isError && message.intent.isNotBlank()) {
+                Row(
+                    modifier = Modifier.padding(start = 4.dp, top = 2.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = message.intent
+                            .replace("_", " ")
+                            .replaceFirstChar { it.uppercase() },
+                        fontSize = 9.sp,
+                        color = Color(0xFF98A2B3)
+                    )
+                }
+            }
         }
     }
 }
@@ -1106,12 +1192,12 @@ private fun ActionIcon(
 
 @Composable
 private fun FormattedMessageText(text: String, isUser: Boolean) {
-    val textColor = if (isUser) Color.White else Color(0xFF273444)
+    val textColor = if (isUser) Color.White else Color(0xFF344054)
     val lines = text.replace("\r\n", "\n").split("\n")
 
     Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
         lines.forEach { rawLine ->
-            val line = rawLine.trim().trimEnd()
+            val line = rawLine.trimEnd()
 
             if (line.isBlank()) {
                 Spacer(modifier = Modifier.height(2.dp))
@@ -1132,8 +1218,8 @@ private fun FormattedMessageText(text: String, isUser: Boolean) {
                     Spacer(modifier = Modifier.width(7.dp))
                     Text(
                         text = cleanMarkdown(bulletText),
-                        fontSize = 15.sp,
-                        lineHeight = 22.sp,
+                        fontSize = 14.sp,
+                        lineHeight = 20.sp,
                         color = textColor,
                         modifier = Modifier.weight(1f)
                     )
@@ -1145,8 +1231,8 @@ private fun FormattedMessageText(text: String, isUser: Boolean) {
 
                 Text(
                     text = cleaned,
-                    fontSize = if (isHeading) 16.sp else 15.sp,
-                    lineHeight = 23.sp,
+                    fontSize = if (isHeading) 15.sp else 14.sp,
+                    lineHeight = 21.sp,
                     fontWeight = if (isHeading) FontWeight.SemiBold else FontWeight.Normal,
                     color = textColor
                 )
@@ -1161,46 +1247,92 @@ private fun FormattedMessageText(text: String, isUser: Boolean) {
 
 private fun cleanMarkdown(text: String): String {
     return text
-        .replace("\r\n", "\n")
-        .replace("\r", "\n")
-        .lines()
-        .map { line ->
-            var cleaned = line.trim()
-
-            // Remove headings from every line: #, ##, ###, etc.
-            cleaned = cleaned.replace(
-                Regex("^\\s*#{1,6}\\s*"),
-                ""
-            )
-
-            // Remove Markdown bullet/list markers.
-            cleaned = cleaned.replace(
-                Regex("^\\s*[-*+•●◦▪·]+\\s*"),
-                ""
-            )
-
-            cleaned = cleaned.replace(
-                Regex("^\\s*\\d+[.)]\\s*"),
-                ""
-            )
-
-            // Remove formatting markers but preserve their text.
-            cleaned = cleaned
-                .replace("**", "")
-                .replace("__", "")
-                .replace("`", "")
-                .replace(
-                    Regex("(?<!\\*)\\*(?!\\*)"),
-                    ""
-                )
-
-            // Safety net: no heading marker should ever reach the UI.
-            cleaned = cleaned.replace("#", "")
-
-            cleaned
-        }
-        .joinToString("\n")
+        .replace(Regex("\\*\\*(.*?)\\*\\*"), "$1") // Bold
+        .replace(Regex("(?<!\\*)\\*(.*?)\\*(?!\\*)"), "$1") // Italic
+        .replace(Regex("^#{1,6}\\s*"), "") // Markdown headings
+        .replace("`", "") // Inline code
         .trim()
+}
+
+// =============================================================
+// CUSTOM VOICE ICONS
+// =============================================================
+
+@Composable
+private fun MicIcon(tint: Color) {
+    Canvas(modifier = Modifier.size(22.dp)) {
+        val w = size.width
+        val h = size.height
+        drawRoundRect(
+            color = tint,
+            topLeft = androidx.compose.ui.geometry.Offset(w * 0.36f, h * 0.08f),
+            size = androidx.compose.ui.geometry.Size(w * 0.28f, h * 0.52f),
+            cornerRadius = androidx.compose.ui.geometry.CornerRadius(w * 0.14f, w * 0.14f)
+        )
+        drawArc(
+            color = tint,
+            startAngle = 0f,
+            sweepAngle = 180f,
+            useCenter = false,
+            topLeft = androidx.compose.ui.geometry.Offset(w * 0.22f, h * 0.30f),
+            size = androidx.compose.ui.geometry.Size(w * 0.56f, h * 0.48f),
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = 1.8.dp.toPx(), cap = StrokeCap.Round)
+        )
+        drawLine(
+            color = tint,
+            start = androidx.compose.ui.geometry.Offset(w * 0.50f, h * 0.78f),
+            end = androidx.compose.ui.geometry.Offset(w * 0.50f, h * 0.92f),
+            strokeWidth = 1.8.dp.toPx(),
+            cap = StrokeCap.Round
+        )
+        drawLine(
+            color = tint,
+            start = androidx.compose.ui.geometry.Offset(w * 0.35f, h * 0.92f),
+            end = androidx.compose.ui.geometry.Offset(w * 0.65f, h * 0.92f),
+            strokeWidth = 1.8.dp.toPx(),
+            cap = StrokeCap.Round
+        )
+    }
+}
+
+@Composable
+private fun SpeakerIcon(tint: Color) {
+    Canvas(modifier = Modifier.size(22.dp)) {
+        val w = size.width
+        val h = size.height
+        val stroke = 1.8.dp.toPx()
+        drawRect(
+            color = tint,
+            topLeft = androidx.compose.ui.geometry.Offset(w * 0.12f, h * 0.40f),
+            size = androidx.compose.ui.geometry.Size(w * 0.18f, h * 0.20f)
+        )
+        val path = androidx.compose.ui.graphics.Path().apply {
+            moveTo(w * 0.30f, h * 0.40f)
+            lineTo(w * 0.48f, h * 0.22f)
+            lineTo(w * 0.48f, h * 0.78f)
+            lineTo(w * 0.30f, h * 0.60f)
+            close()
+        }
+        drawPath(path = path, color = tint)
+        drawArc(
+            color = tint,
+            startAngle = -45f,
+            sweepAngle = 90f,
+            useCenter = false,
+            topLeft = androidx.compose.ui.geometry.Offset(w * 0.43f, h * 0.26f),
+            size = androidx.compose.ui.geometry.Size(w * 0.36f, h * 0.48f),
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke, cap = StrokeCap.Round)
+        )
+        drawArc(
+            color = tint,
+            startAngle = -45f,
+            sweepAngle = 90f,
+            useCenter = false,
+            topLeft = androidx.compose.ui.geometry.Offset(w * 0.50f, h * 0.14f),
+            size = androidx.compose.ui.geometry.Size(w * 0.48f, h * 0.72f),
+            style = androidx.compose.ui.graphics.drawscope.Stroke(width = stroke, cap = StrokeCap.Round)
+        )
+    }
 }
 
 // =============================================================
