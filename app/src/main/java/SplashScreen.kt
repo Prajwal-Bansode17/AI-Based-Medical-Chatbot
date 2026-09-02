@@ -14,7 +14,9 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -31,8 +33,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -48,6 +50,32 @@ fun SplashScreen(
 ) {
 
     // =========================================================
+    // MEDASSIST AI COLORS
+    // =========================================================
+
+    val backgroundTop =
+        Color(0xFFF7FCFF)
+
+    val backgroundBottom =
+        Color(0xFFE2F4F9)
+
+    val primaryBlue =
+        Color(0xFF1976D2)
+
+    val primaryBlueDark =
+        Color(0xFF123A56)
+
+    val teal =
+        Color(0xFF009688)
+
+    val textGray =
+        Color(0xFF71818C)
+
+    val borderColor =
+        Color(0xFFDDECEF)
+
+
+    // =========================================================
     // ANIMATION STATE
     // =========================================================
 
@@ -57,14 +85,21 @@ fun SplashScreen(
 
 
     val logoScale by animateFloatAsState(
-        targetValue = if (showContent) 1f else 0.65f,
 
-        animationSpec = tween(
-            durationMillis = 750,
-            easing = FastOutSlowInEasing
-        ),
+        targetValue =
+            if (showContent) {
+                1f
+            } else {
+                0.72f
+            },
 
-        label = "logoScale"
+        animationSpec =
+            tween(
+                durationMillis = 700,
+                easing = FastOutSlowInEasing
+            ),
+
+        label = "Splash Logo Scale"
     )
 
 
@@ -83,31 +118,10 @@ fun SplashScreen(
 
 
     // =========================================================
-    // LOGIN SCREEN THEME COLORS
-    // =========================================================
-
-    val backgroundTop =
-        Color(0xFFEAF8FC)
-
-    val backgroundBottom =
-        Color(0xFFD8F0F6)
-
-    val primaryBlue =
-        Color(0xFF087EA4)
-
-    val darkBlue =
-        Color(0xFF123A56)
-
-    val textGray =
-        Color(0xFF71818C)
-
-
-    // =========================================================
-    // BACKGROUND
+    // ROOT
     // =========================================================
 
     Box(
-
         modifier = Modifier
             .fillMaxSize()
             .background(
@@ -117,39 +131,43 @@ fun SplashScreen(
                         backgroundBottom
                     )
                 )
-            ),
-
-        contentAlignment = Alignment.Center
+            )
+            .statusBarsPadding()
+            .navigationBarsPadding()
     ) {
 
 
         // =====================================================
-        // DECORATIVE TOP RIGHT CIRCLE
+        // TOP RIGHT DECORATIVE CIRCLE
         // =====================================================
 
         Box(
-
             modifier = Modifier
-                .size(230.dp)
+                .size(235.dp)
                 .align(Alignment.TopEnd)
                 .background(
-                    color = Color(0x22087EA4),
+                    color =
+                        primaryBlue.copy(
+                            alpha = 0.065f
+                        ),
                     shape = CircleShape
                 )
         )
 
 
         // =====================================================
-        // DECORATIVE BOTTOM LEFT CIRCLE
+        // BOTTOM LEFT DECORATIVE CIRCLE
         // =====================================================
 
         Box(
-
             modifier = Modifier
-                .size(160.dp)
+                .size(175.dp)
                 .align(Alignment.BottomStart)
                 .background(
-                    color = Color(0x18087EA4),
+                    color =
+                        teal.copy(
+                            alpha = 0.055f
+                        ),
                     shape = CircleShape
                 )
         )
@@ -161,6 +179,10 @@ fun SplashScreen(
 
         Column(
 
+            modifier = Modifier
+                .fillMaxSize()
+                .align(Alignment.Center),
+
             horizontalAlignment =
                 Alignment.CenterHorizontally,
 
@@ -170,7 +192,7 @@ fun SplashScreen(
 
 
             // =================================================
-            // LOGO ANIMATION
+            // MEDASSIST LOGO
             // =================================================
 
             AnimatedVisibility(
@@ -180,23 +202,19 @@ fun SplashScreen(
                 enter =
                     fadeIn(
                         animationSpec =
-                            tween(700)
+                            tween(650)
                     ) +
                             scaleIn(
-                                initialScale = 0.65f,
+                                initialScale = 0.72f,
 
                                 animationSpec =
                                     tween(
                                         durationMillis = 700,
-                                        easing = FastOutSlowInEasing
+                                        easing =
+                                            FastOutSlowInEasing
                                     )
                             )
             ) {
-
-
-                // =============================================
-                // LOGO CARD
-                // =============================================
 
                 Box(
 
@@ -204,17 +222,19 @@ fun SplashScreen(
                         .size(112.dp)
                         .scale(logoScale)
                         .shadow(
-                            elevation = 18.dp,
-                            shape = RoundedCornerShape(32.dp)
+                            elevation = 16.dp,
+                            shape =
+                                RoundedCornerShape(30.dp)
                         )
                         .background(
-                            color = Color.White,
-                            shape = RoundedCornerShape(32.dp)
+                            Color.White,
+                            RoundedCornerShape(30.dp)
                         )
                         .border(
                             width = 1.dp,
-                            color = Color(0xFFDDECEF),
-                            shape = RoundedCornerShape(32.dp)
+                            color = borderColor,
+                            shape =
+                                RoundedCornerShape(30.dp)
                         ),
 
                     contentAlignment =
@@ -222,23 +242,29 @@ fun SplashScreen(
                 ) {
 
 
-                    // =========================================
-                    // BLUE CIRCLE
-                    // =========================================
+                    // -----------------------------------------
+                    // Brand Circle
+                    // -----------------------------------------
 
                     Box(
 
                         modifier = Modifier
                             .size(70.dp)
                             .background(
-                                color = primaryBlue,
-                                shape = CircleShape
+
+                                Brush.linearGradient(
+                                    colors = listOf(
+                                        primaryBlue,
+                                        teal
+                                    )
+                                ),
+
+                                CircleShape
                             ),
 
                         contentAlignment =
                             Alignment.Center
                     ) {
-
 
                         Icon(
 
@@ -246,7 +272,7 @@ fun SplashScreen(
                                 Icons.Default.Favorite,
 
                             contentDescription =
-                                "MedAssist AI",
+                                "MEDASSIST AI",
 
                             tint =
                                 Color.White,
@@ -261,7 +287,7 @@ fun SplashScreen(
 
             Spacer(
                 modifier =
-                    Modifier.height(28.dp)
+                    Modifier.height(25.dp)
             )
 
 
@@ -271,61 +297,81 @@ fun SplashScreen(
 
             AnimatedVisibility(
 
-                visible = showContent,
+                visible =
+                    showContent,
 
                 enter =
                     fadeIn(
                         animationSpec =
                             tween(
-                                durationMillis = 700,
+                                durationMillis = 650,
+                                delayMillis = 150
+                            )
+                    )
+            ) {
+
+                Text(
+
+                    text =
+                        "MEDASSIST AI",
+
+                    color =
+                        primaryBlueDark,
+
+                    fontSize =
+                        31.sp,
+
+                    fontWeight =
+                        FontWeight.Bold,
+
+                    letterSpacing =
+                        0.3.sp,
+
+                    textAlign =
+                        TextAlign.Center
+                )
+            }
+
+
+            Spacer(
+                modifier =
+                    Modifier.height(7.dp)
+            )
+
+
+            // =================================================
+            // TAGLINE
+            // =================================================
+
+            AnimatedVisibility(
+
+                visible =
+                    showContent,
+
+                enter =
+                    fadeIn(
+                        animationSpec =
+                            tween(
+                                durationMillis = 650,
                                 delayMillis = 250
                             )
                     )
             ) {
 
-                Column(
+                Text(
 
-                    horizontalAlignment =
-                        Alignment.CenterHorizontally
-                ) {
+                    text =
+                        "Your intelligent health companion",
 
-                    Text(
+                    color =
+                        textGray,
 
-                        text =
-                            "MedAssist AI",
+                    fontSize =
+                        14.sp,
 
-                        color =
-                            darkBlue,
-
-                        fontSize =
-                            31.sp,
-
-                        fontWeight =
-                            FontWeight.Bold
-                    )
-
-
-                    Spacer(
-                        modifier =
-                            Modifier.height(7.dp)
-                    )
-
-
-                    Text(
-
-                        text =
-                            "Your intelligent health companion",
-
-                        color =
-                            textGray,
-
-                        fontSize =
-                            14.sp,
-
-                        textAlign =
-                            TextAlign.Center
-                    )
-                }
+                    textAlign =
+                        TextAlign.Center
+                )
             }
 
 
@@ -336,19 +382,20 @@ fun SplashScreen(
 
 
             // =================================================
-            // LOADING BAR
+            // LOADING SECTION
             // =================================================
 
             AnimatedVisibility(
 
-                visible = showContent,
+                visible =
+                    showContent,
 
                 enter =
                     fadeIn(
                         animationSpec =
                             tween(
-                                durationMillis = 700,
-                                delayMillis = 500
+                                durationMillis = 650,
+                                delayMillis = 400
                             )
                     )
             ) {
@@ -360,11 +407,15 @@ fun SplashScreen(
                 ) {
 
 
+                    // -----------------------------------------
+                    // Progress Bar
+                    // -----------------------------------------
+
                     LinearProgressIndicator(
 
                         modifier =
                             Modifier.size(
-                                width = 110.dp,
+                                width = 120.dp,
                                 height = 4.dp
                             ),
 
@@ -373,7 +424,7 @@ fun SplashScreen(
 
                         trackColor =
                             Color.White.copy(
-                                alpha = 0.8f
+                                alpha = 0.85f
                             )
                     )
 
@@ -393,7 +444,10 @@ fun SplashScreen(
                             textGray,
 
                         fontSize =
-                            11.sp
+                            11.sp,
+
+                        textAlign =
+                            TextAlign.Center
                     )
                 }
             }
@@ -401,24 +455,25 @@ fun SplashScreen(
 
             Spacer(
                 modifier =
-                    Modifier.height(38.dp)
+                    Modifier.height(40.dp)
             )
 
 
             // =================================================
-            // SECURITY TEXT
+            // SECURITY BADGE
             // =================================================
 
             AnimatedVisibility(
 
-                visible = showContent,
+                visible =
+                    showContent,
 
                 enter =
                     fadeIn(
                         animationSpec =
                             tween(
-                                durationMillis = 700,
-                                delayMillis = 650
+                                durationMillis = 650,
+                                delayMillis = 550
                             )
                     )
             ) {
@@ -429,25 +484,42 @@ fun SplashScreen(
                         Alignment.CenterHorizontally
                 ) {
 
-                    Icon(
 
-                        imageVector =
-                            Icons.Default.Lock,
+                    Box(
 
-                        contentDescription =
-                            "Secure",
+                        modifier = Modifier
+                            .size(34.dp)
+                            .background(
+                                Color.White.copy(
+                                    alpha = 0.9f
+                                ),
+                                CircleShape
+                            ),
 
-                        tint =
-                            primaryBlue,
+                        contentAlignment =
+                            Alignment.Center
+                    ) {
 
-                        modifier =
-                            Modifier.size(17.dp)
-                    )
+                        Icon(
+
+                            imageVector =
+                                Icons.Default.Lock,
+
+                            contentDescription =
+                                "Secure",
+
+                            tint =
+                                primaryBlue,
+
+                            modifier =
+                                Modifier.size(16.dp)
+                        )
+                    }
 
 
                     Spacer(
                         modifier =
-                            Modifier.height(5.dp)
+                            Modifier.height(6.dp)
                     )
 
 

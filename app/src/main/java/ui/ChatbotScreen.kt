@@ -5,6 +5,8 @@ import android.content.Context
 import android.util.Log
 
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -18,6 +20,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -67,6 +70,7 @@ import com.example.ai_based_medical_chatbot.data.api.PredictionRequest
 import com.example.ai_based_medical_chatbot.data.api.RetrofitClient
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -194,6 +198,56 @@ fun ChatbotScreen(
 
     val listState =
         rememberLazyListState()
+
+    val topicScrollState =
+        rememberScrollState()
+
+    val popularTopics = listOf(
+        "🌡️ I have fever",
+        "🤢 I have vomiting",
+        "🦴 I have back pain",
+        "🤕 I have headache",
+        "🤧 I have cold",
+        "😷 I have cough",
+        "🫃 I have stomach pain",
+        "😴 I feel weak",
+        "💪 I have body pain",
+        "👄 I have sore throat",
+        "😵 I feel dizzy",
+        "🔥 I have acidity"
+    )
+
+    // =========================================================
+    // CONTINUOUS TOPIC SLIDER
+    // =========================================================
+
+    LaunchedEffect(Unit) {
+
+        while (true) {
+
+            delay(2200)
+
+            val maxScroll =
+                topicScrollState.maxValue
+
+            if (maxScroll > 0) {
+
+                val nextPosition =
+                    topicScrollState.value + 170
+
+                if (nextPosition >= maxScroll) {
+
+                    topicScrollState.scrollTo(0)
+
+                } else {
+
+                    topicScrollState.animateScrollTo(
+                        nextPosition
+                    )
+                }
+            }
+        }
+    }
 
 
     // =========================================================
@@ -504,488 +558,285 @@ fun ChatbotScreen(
     // =========================================================
 
     Column(
-
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .background(
-                    Color(0xFFF7F9FC)
-                )
+        modifier = Modifier
+            .fillMaxSize()
+            .background(Color(0xFFF5F9FD))
     ) {
 
-
         // =====================================================
-        // TOP BAR
+        // MEDASSIST TOP BAR
         // =====================================================
 
         Surface(
-
-            modifier =
-                Modifier.fillMaxWidth(),
-
-            shadowElevation =
-                4.dp
+            modifier = Modifier
+                .fillMaxWidth()
+                .statusBarsPadding(),
+            color = Color.White,
+            shadowElevation = 3.dp
         ) {
-
             Row(
-
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(
-                            horizontal = 16.dp,
-                            vertical = 12.dp
-                        ),
-
-                verticalAlignment =
-                    Alignment.CenterVertically
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        start = 8.dp,
+                        end = 10.dp,
+                        top = 8.dp,
+                        bottom = 10.dp
+                    ),
+                verticalAlignment = Alignment.CenterVertically
             ) {
 
-
-                // =================================================
-                // AI LOGO
-                // =================================================
+                IconButton(
+                    onClick = onBack,
+                    modifier = Modifier.size(44.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.ArrowBack,
+                        contentDescription = "Back",
+                        tint = Color(0xFF173B56)
+                    )
+                }
 
                 Box(
-
-                    modifier =
-                        Modifier
-                            .size(42.dp)
-                            .clip(CircleShape)
-                            .background(
-                                Color(0xFF1976D2)
-                            ),
-
-                    contentAlignment =
-                        Alignment.Center
+                    modifier = Modifier
+                        .size(42.dp)
+                        .clip(RoundedCornerShape(13.dp))
+                        .background(Color(0xFFE8F6FB)),
+                    contentAlignment = Alignment.Center
                 ) {
-
-                    Text(
-
-                        text =
-                            "AI",
-
-                        color =
-                            Color.White,
-
-                        fontWeight =
-                            FontWeight.Bold,
-
-                        fontSize =
-                            13.sp
-                    )
+                    Box(
+                        modifier = Modifier
+                            .size(31.dp)
+                            .background(
+                                Color(0xFF1976D2),
+                                CircleShape
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Favorite,
+                            contentDescription = "MEDASSIST AI",
+                            tint = Color.White,
+                            modifier = Modifier.size(19.dp)
+                        )
+                    }
                 }
 
-
-                Spacer(
-                    modifier =
-                        Modifier.width(12.dp)
-                )
-
-
-                // =================================================
-                // TITLE
-                // =================================================
+                Spacer(modifier = Modifier.width(10.dp))
 
                 Column(
-
-                    modifier =
-                        Modifier.weight(1f)
+                    modifier = Modifier.weight(1f)
                 ) {
-
                     Text(
-
-                        text =
-                            "MedAssist AI",
-
-                        fontSize =
-                            19.sp,
-
-                        fontWeight =
-                            FontWeight.Bold,
-
-                        color =
-                            Color(0xFF17202A)
+                        text = "MEDASSIST AI",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color(0xFF173B56)
                     )
 
-
                     Text(
-
-                        text =
-                            if (isTyping)
-                                "MedAssist is thinking…"
-                            else
-                                "Your intelligent health companion",
-
-                        fontSize =
-                            12.sp,
-
-                        color =
-                            Color(0xFF667085)
+                        text = if (isTyping)
+                            "Thinking about your question…"
+                        else
+                            "Your intelligent health companion",
+                        fontSize = 11.sp,
+                        color = Color(0xFF71818C)
                     )
                 }
-
-
-                // =================================================
-                // CLEAR CHAT
-                // =================================================
 
                 IconButton(
-
                     onClick = {
-
-                        if (
-                            messages.size > 1
-                        ) {
-
+                        if (messages.size > 1) {
                             showClearDialog = true
                         }
-                    }
+                    },
+                    enabled = messages.size > 1,
+                    modifier = Modifier.size(42.dp)
                 ) {
-
                     Icon(
                         imageVector = Icons.Default.Delete,
-                        contentDescription = "Clear chat",
-                        tint = Color(0xFF667085)
-                    )
-
-                }
-
-
-                // =================================================
-                // TYPING INDICATOR
-                // =================================================
-
-                if (isTyping) {
-
-                    CircularProgressIndicator(
-
-                        modifier =
-                            Modifier.size(24.dp),
-
-                        strokeWidth =
-                            2.dp
+                        contentDescription = "Clear conversation",
+                        tint = if (messages.size > 1)
+                            Color(0xFF607D8B)
+                        else
+                            Color(0xFFB8C6CE)
                     )
                 }
             }
         }
 
+        // =====================================================
+        // QUICK PROMPTS
+        // =====================================================
+
+        Surface(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(
+                    horizontal = 14.dp,
+                    vertical = 10.dp
+                ),
+            shape = RoundedCornerShape(20.dp),
+            color = Color.White,
+            shadowElevation = 1.dp
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        horizontal = 12.dp,
+                        vertical = 10.dp
+                    )
+            ) {
+                Text(
+                    text = "Quick health questions",
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF536977)
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(topicScrollState),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    popularTopics.forEach { topic ->
+                        QuickPrompt(
+                            text = topic,
+                            onClick = {
+                                val query = topic.replace(
+                                    Regex("^[^A-Za-z]+"),
+                                    ""
+                                )
+                                sendMessage(query)
+                            }
+                        )
+                    }
+                }
+            }
+        }
 
         // =====================================================
         // CHAT AREA
         // =====================================================
 
         LazyColumn(
-
-            state =
-                listState,
-
-            modifier =
-                Modifier
-                    .weight(1f)
-                    .fillMaxWidth()
-                    .padding(
-                        horizontal = 12.dp
-                    ),
-
-            verticalArrangement =
-                Arrangement.spacedBy(
-                    10.dp
-                )
+            state = listState,
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp),
+            verticalArrangement = Arrangement.spacedBy(11.dp)
         ) {
-
-
             item {
-
-                Spacer(
-                    modifier =
-                        Modifier.height(8.dp)
-                )
+                Spacer(modifier = Modifier.height(2.dp))
             }
 
-
-            // =================================================
-            // QUICK PROMPTS
-            // =================================================
-
-            if (
-                messages.size == 1 &&
-                !isTyping
-            ) {
-
-                item {
-
-                    Column(
-
-                        modifier =
-                            Modifier.fillMaxWidth()
-                    ) {
-
-                        Text(
-
-                            text =
-                                "Try asking",
-
-                            fontSize =
-                                13.sp,
-
-                            fontWeight =
-                                FontWeight.SemiBold,
-
-                            color =
-                                Color(0xFF667085)
-                        )
-
-
-                        Spacer(
-                            modifier =
-                                Modifier.height(8.dp)
-                        )
-
-
-                        Row(
-
-                            modifier =
-                                Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(
-                                        rememberScrollState()
-                                    ),
-
-                            horizontalArrangement =
-                                Arrangement.spacedBy(
-                                    8.dp
-                                )
-                        ) {
-
-
-                            QuickPrompt(
-
-                                text =
-                                    "I have fever"
-                            ) {
-
-                                message =
-                                    "I have fever"
-                            }
-
-
-                            QuickPrompt(
-
-                                text =
-                                    "I have a headache"
-                            ) {
-
-                                message =
-                                    "I have a headache"
-                            }
-
-
-                            QuickPrompt(
-
-                                text =
-                                    "I feel weak"
-                            ) {
-
-                                message =
-                                    "I feel weak"
-                            }
-                        }
-                    }
-                }
+            items(messages) { chatMessage ->
+                MessageBubble(message = chatMessage)
             }
-
-
-            // =================================================
-            // MESSAGES
-            // =================================================
-
-            items(
-
-                items =
-                    messages
-            ) {
-
-                    chatMessage ->
-
-                MessageBubble(
-
-                    message =
-                        chatMessage
-                )
-            }
-
-
-            // =================================================
-            // TYPING
-            // =================================================
 
             if (isTyping) {
-
                 item {
-
                     TypingIndicator()
                 }
             }
 
-
             item {
-
-                Spacer(
-                    modifier =
-                        Modifier.height(8.dp)
-                )
+                Spacer(modifier = Modifier.height(6.dp))
             }
         }
-
 
         // =====================================================
         // INPUT AREA
         // =====================================================
 
         Surface(
-
-            modifier =
-                Modifier
-                    .fillMaxWidth()
-                    .imePadding()
-                    .navigationBarsPadding(),
-
-            shadowElevation =
-                8.dp
+            modifier = Modifier
+                .fillMaxWidth()
+                .imePadding()
+                .navigationBarsPadding(),
+            color = Color.White,
+            shadowElevation = 8.dp
         ) {
-
             Row(
-
-                modifier =
-                    Modifier
-                        .fillMaxWidth()
-                        .padding(10.dp),
-
-                verticalAlignment =
-                    Alignment.CenterVertically
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(
+                        start = 12.dp,
+                        end = 12.dp,
+                        top = 9.dp,
+                        bottom = 9.dp
+                    ),
+                verticalAlignment = Alignment.Bottom
             ) {
 
-
-                // =================================================
-                // TEXT FIELD
-                // =================================================
-
                 OutlinedTextField(
-
-                    value =
-                        message,
-
-                    onValueChange = {
-
-                        message = it
-                    },
-
-                    modifier =
-                        Modifier.weight(1f),
-
+                    value = message,
+                    onValueChange = { message = it },
+                    modifier = Modifier.weight(1f),
                     placeholder = {
-
                         Text(
-                            "Ask MedAssist anything..."
+                            text = "Ask MEDASSIST anything…",
+                            fontSize = 13.sp,
+                            color = Color(0xFF8A9BA6)
                         )
                     },
-
-                    keyboardOptions =
-                        KeyboardOptions(
-                            imeAction =
-                                ImeAction.Send
-                        ),
-
-                    keyboardActions =
-                        KeyboardActions(
-
-                            onSend = {
-
-                                sendMessage(
-                                    message
-                                )
-                            }
-                        ),
-
-                    maxLines =
-                        4,
-
-                    shape =
-                        RoundedCornerShape(
-                            22.dp
-                        )
+                    keyboardOptions = KeyboardOptions(
+                        imeAction = ImeAction.Send
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onSend = {
+                            sendMessage(message)
+                        }
+                    ),
+                    maxLines = 4,
+                    shape = RoundedCornerShape(20.dp),
+                    colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Color(0xFF1976D2),
+                        unfocusedBorderColor = Color(0xFFD9E6F0),
+                        focusedContainerColor = Color(0xFFFBFDFE),
+                        unfocusedContainerColor = Color(0xFFFBFDFE),
+                        cursorColor = Color(0xFF1976D2),
+                        focusedTextColor = Color(0xFF172B4D),
+                        unfocusedTextColor = Color(0xFF172B4D)
+                    )
                 )
 
+                Spacer(modifier = Modifier.width(9.dp))
 
-                Spacer(
-                    modifier =
-                        Modifier.width(8.dp)
-                )
-
-
-                // =================================================
-                // SEND BUTTON
-                // =================================================
-
-                val canSend =
-
-                    message
-                        .trim()
-                        .isNotEmpty() &&
-                            !isTyping
-
+                val canSend = message.trim().isNotEmpty() && !isTyping
 
                 IconButton(
-
                     onClick = {
-
-                        sendMessage(
-                            message
-                        )
+                        sendMessage(message)
                     },
-
-                    enabled =
-                        canSend,
-
-                    modifier =
-                        Modifier
-                            .size(50.dp)
-                            .clip(CircleShape)
-                            .background(
-
-                                if (canSend)
-
-                                    Color(
-                                        0xFF1976D2
-                                    )
-
-                                else
-
-                                    Color(
-                                        0xFFB0BEC5
-                                    )
-                            )
+                    enabled = canSend,
+                    modifier = Modifier
+                        .size(52.dp)
+                        .clip(CircleShape)
+                        .background(
+                            if (canSend)
+                                Color(0xFF1976D2)
+                            else
+                                Color(0xFFD4E0E6)
+                        )
                 ) {
-
                     Icon(
-
-                        imageVector =
-                            Icons.AutoMirrored.Filled.Send,
-
-                        contentDescription =
-                            "Send",
-
-                        tint =
-                            Color.White
+                        imageVector = Icons.AutoMirrored.Filled.Send,
+                        contentDescription = "Send message",
+                        tint = Color.White,
+                        modifier = Modifier.size(22.dp)
                     )
                 }
             }
         }
     }
 
-
-    // =========================================================
+// =========================================================
     // CLEAR CHAT DIALOG
     // =========================================================
 
@@ -1273,254 +1124,118 @@ private fun fixMeasurementFormatting(
 
 @Composable
 fun MessageBubble(
-
     message: ChatMessage
-
 ) {
-
     Row(
-
-        modifier =
-            Modifier.fillMaxWidth(),
-
-        horizontalArrangement =
-
-            if (
-                message.isUser
-            )
-
-                Arrangement.End
-
-            else
-
-                Arrangement.Start,
-
-        verticalAlignment =
-            Alignment.Bottom
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = if (message.isUser)
+            Arrangement.End
+        else
+            Arrangement.Start,
+        verticalAlignment = Alignment.Bottom
     ) {
 
-
-        // =====================================================
-        // AI ICON
-        // =====================================================
-
-        if (
-            !message.isUser
-        ) {
-
+        if (!message.isUser) {
             Box(
-
-                modifier =
-                    Modifier
-                        .size(34.dp)
-                        .clip(
-                            CircleShape
-                        )
-                        .background(
-
-                            if (
-                                message.isError
-                            )
-
-                                Color(
-                                    0xFFD32F2F
-                                )
-
-                            else
-
-                                Color(
-                                    0xFF1976D2
-                                )
-                        ),
-
-                contentAlignment =
-                    Alignment.Center
+                modifier = Modifier
+                    .size(34.dp)
+                    .clip(RoundedCornerShape(11.dp))
+                    .background(Color(0xFFE8F6FB)),
+                contentAlignment = Alignment.Center
             ) {
-
-                Text(
-
-                    text =
-                        "AI",
-
-                    color =
-                        Color.White,
-
-                    fontSize =
-                        10.sp,
-
-                    fontWeight =
-                        FontWeight.Bold
-                )
+                Box(
+                    modifier = Modifier
+                        .size(27.dp)
+                        .background(
+                            if (message.isError)
+                                Color(0xFFD32F2F)
+                            else
+                                Color(0xFF1976D2),
+                            CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Favorite,
+                        contentDescription = "MEDASSIST AI",
+                        tint = Color.White,
+                        modifier = Modifier.size(16.dp)
+                    )
+                }
             }
 
-
-            Spacer(
-
-                modifier =
-                    Modifier.width(
-                        7.dp
-                    )
-            )
+            Spacer(modifier = Modifier.width(8.dp))
         }
 
-
-        // =====================================================
-        // MESSAGE COLUMN
-        // =====================================================
-
         Column(
-
-            modifier =
-                Modifier.fillMaxWidth(
-                    0.86f
-                ),
-
-            horizontalAlignment =
-
-                if (
-                    message.isUser
-                )
-
-                    Alignment.End
-
-                else
-
-                    Alignment.Start
+            modifier = Modifier.fillMaxWidth(0.88f),
+            horizontalAlignment = if (message.isUser)
+                Alignment.End
+            else
+                Alignment.Start
         ) {
 
+            if (!message.isUser && !message.isError) {
+                Text(
+                    text = "MEDASSIST AI",
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = Color(0xFF1976D2),
+                    modifier = Modifier.padding(
+                        start = 5.dp,
+                        bottom = 3.dp
+                    )
+                )
+            }
 
             Surface(
-
-                shape =
-
-                    if (
-                        message.isUser
+                shape = if (message.isUser) {
+                    RoundedCornerShape(
+                        topStart = 20.dp,
+                        topEnd = 20.dp,
+                        bottomStart = 20.dp,
+                        bottomEnd = 5.dp
                     )
-
-                        RoundedCornerShape(
-                            topStart = 20.dp,
-                            topEnd = 20.dp,
-                            bottomStart = 20.dp,
-                            bottomEnd = 5.dp
-                        )
-
-                    else
-
-                        RoundedCornerShape(
-                            topStart = 5.dp,
-                            topEnd = 20.dp,
-                            bottomStart = 20.dp,
-                            bottomEnd = 20.dp
-                        ),
-
-                color =
-
-                    when {
-
-                        message.isError ->
-
-                            Color(
-                                0xFFFFEBEE
-                            )
-
-                        message.isUser ->
-
-                            Color(
-                                0xFF1976D2
-                            )
-
-                        else ->
-
-                            Color.White
-                    },
-
-                shadowElevation =
-
-                    if (
-                        message.isUser
+                } else {
+                    RoundedCornerShape(
+                        topStart = 5.dp,
+                        topEnd = 20.dp,
+                        bottomStart = 20.dp,
+                        bottomEnd = 20.dp
                     )
-
-                        0.dp
-
-                    else
-
-                        1.dp
+                },
+                color = when {
+                    message.isError -> Color(0xFFFFEBEE)
+                    message.isUser -> Color(0xFF1976D2)
+                    else -> Color.White
+                },
+                shadowElevation = if (message.isUser) 0.dp else 2.dp
             ) {
-
                 Column(
-
-                    modifier =
-                        Modifier.padding(
-                            horizontal = 14.dp,
-                            vertical = 11.dp
-                        )
+                    modifier = Modifier.padding(
+                        horizontal = 15.dp,
+                        vertical = 12.dp
+                    )
                 ) {
-
-                    // =================================================
-                    // FORMATTED MESSAGE
-                    // =================================================
-
                     FormattedMessageText(
-
-                        text =
-                            message.text,
-
-                        isUser =
-                            message.isUser
+                        text = message.text,
+                        isUser = message.isUser
                     )
                 }
             }
 
-
-            // =====================================================
-            // AI RESPONSE META
-            // =====================================================
-
-            if (
-                !message.isUser &&
-                !message.isError
-            ) {
-
-                Row(
-
-                    modifier =
-                        Modifier.padding(
-                            start = 4.dp,
-                            top = 4.dp
-                        ),
-
-                    horizontalArrangement =
-                        Arrangement.spacedBy(
-                            8.dp
-                        )
-                ) {
-
-                    if (
-                        message.intent.isNotBlank()
-                    ) {
-
-                        Text(
-
-                            text =
-                                message.intent
-                                    .replace(
-                                        "_",
-                                        " "
-                                    )
-                                    .replaceFirstChar {
-                                        it.uppercase()
-                                    },
-
-                            fontSize =
-                                9.sp,
-
-                            color =
-                                Color(
-                                    0xFF98A2B3
-                                )
-                        )
-                    }
-                }
+            if (!message.isUser && !message.isError && message.intent.isNotBlank()) {
+                Text(
+                    text = message.intent
+                        .replace("_", " ")
+                        .replaceFirstChar { it.uppercase() },
+                    fontSize = 9.sp,
+                    color = Color(0xFF8A9BA6),
+                    modifier = Modifier.padding(
+                        start = 5.dp,
+                        top = 4.dp
+                    )
+                )
             }
         }
     }
@@ -1823,95 +1538,52 @@ private fun cleanMarkdown(
 
 @Composable
 fun TypingIndicator() {
-
     Row(
-
-        modifier =
-            Modifier.fillMaxWidth(),
-
-        verticalAlignment =
-            Alignment.Bottom
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.Bottom
     ) {
-
         Box(
-
-            modifier =
-                Modifier
-                    .size(34.dp)
-                    .clip(
-                        CircleShape
-                    )
-                    .background(
-                        Color(
-                            0xFF1976D2
-                        )
-                    ),
-
-            contentAlignment =
-                Alignment.Center
+            modifier = Modifier
+                .size(34.dp)
+                .clip(RoundedCornerShape(11.dp))
+                .background(Color(0xFFE8F6FB)),
+            contentAlignment = Alignment.Center
         ) {
-
-            Text(
-
-                text =
-                    "AI",
-
-                color =
-                    Color.White,
-
-                fontSize =
-                    10.sp,
-
-                fontWeight =
-                    FontWeight.Bold
-            )
+            Box(
+                modifier = Modifier
+                    .size(27.dp)
+                    .background(
+                        Color(0xFF1976D2),
+                        CircleShape
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Favorite,
+                    contentDescription = "MEDASSIST AI",
+                    tint = Color.White,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
         }
 
-
-        Spacer(
-
-            modifier =
-                Modifier.width(
-                    7.dp
-                )
-        )
-
+        Spacer(modifier = Modifier.width(8.dp))
 
         Surface(
-
-            shape =
-                RoundedCornerShape(
-                    18.dp
-                ),
-
-            color =
-                Color.White,
-
-            shadowElevation =
-                1.dp
+            shape = RoundedCornerShape(5.dp, 20.dp, 20.dp, 20.dp),
+            color = Color.White,
+            shadowElevation = 2.dp
         ) {
-
             Row(
-
-                modifier =
-                    Modifier.padding(
-                        horizontal = 16.dp,
-                        vertical = 12.dp
-                    ),
-
-                horizontalArrangement =
-                    Arrangement.spacedBy(
-                        5.dp
-                    ),
-
-                verticalAlignment =
-                    Alignment.CenterVertically
+                modifier = Modifier.padding(
+                    horizontal = 16.dp,
+                    vertical = 13.dp
+                ),
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
-
                 TypingDot()
-
                 TypingDot()
-
                 TypingDot()
             }
         }
@@ -1925,20 +1597,11 @@ fun TypingIndicator() {
 
 @Composable
 private fun TypingDot() {
-
     Box(
-
-        modifier =
-            Modifier
-                .size(6.dp)
-                .clip(
-                    CircleShape
-                )
-                .background(
-                    Color(
-                        0xFF98A2B3
-                    )
-                )
+        modifier = Modifier
+            .size(6.dp)
+            .clip(CircleShape)
+            .background(Color(0xFF8A9BA6))
     )
 }
 

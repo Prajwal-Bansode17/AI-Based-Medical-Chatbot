@@ -1,29 +1,53 @@
 package ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
+
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+
 
 @Composable
 fun ProfileScreen(
@@ -33,32 +57,124 @@ fun ProfileScreen(
     onLogoutClick: () -> Unit
 ) {
 
-    val primary = Color(0xFF087EA4)
-    val darkBlue = Color(0xFF123A56)
-    val gray = Color(0xFF71818C)
+    // =========================================================
+    // MEDASSIST COLORS
+    // =========================================================
+
+    val backgroundTop = Color(0xFFF7FCFF)
+    val backgroundBottom = Color(0xFFE5F5FA)
+
+    val primaryBlue = Color(0xFF1976D2)
+    val primaryDark = Color(0xFF123A56)
+    val teal = Color(0xFF009688)
+
+    val textPrimary = Color(0xFF172B4D)
+    val textSecondary = Color(0xFF71818C)
+
+    val surface = Color.White
+    val surfaceVariant = Color(0xFFEAF6FA)
+
+    val borderColor = Color(0xFFDCE8EE)
+
+    val logoutBackground = Color(0xFFFFF3F2)
+    val logoutBorder = Color(0xFFFFD9D5)
+    val logoutText = Color(0xFFD32F2F)
+
+
+    // =========================================================
+    // PASSWORD UI STATE
+    // =========================================================
+
+    var passwordVisible by remember {
+        mutableStateOf(false)
+    }
+
+
+    // =========================================================
+    // USER VALUES
+    // =========================================================
+
+    val displayName =
+        userName.trim().ifBlank {
+            "MedAssist User"
+        }
+
+    val displayEmail =
+        userEmail.trim().ifBlank {
+            "Email not available"
+        }
+
+
+    // =========================================================
+    // ROOT
+    // =========================================================
 
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(
                 Brush.verticalGradient(
-                    listOf(
-                        Color(0xFFEAF8FC),
-                        Color(0xFFD8F0F6)
+                    colors = listOf(
+                        backgroundTop,
+                        backgroundBottom
                     )
                 )
             )
     ) {
 
+        // =====================================================
+        // TOP RIGHT DECORATION
+        // =====================================================
+
+        Box(
+            modifier = Modifier
+                .size(210.dp)
+                .align(Alignment.TopEnd)
+                .background(
+                    primaryBlue.copy(alpha = 0.06f),
+                    CircleShape
+                )
+        )
+
+
+        // =====================================================
+        // BOTTOM LEFT DECORATION
+        // =====================================================
+
+        Box(
+            modifier = Modifier
+                .size(155.dp)
+                .align(Alignment.BottomStart)
+                .background(
+                    teal.copy(alpha = 0.055f),
+                    CircleShape
+                )
+        )
+
+
+        // =====================================================
+        // MAIN CONTENT
+        // =====================================================
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(horizontal = 20.dp)
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .verticalScroll(
+                    rememberScrollState()
+                )
+                .padding(
+                    horizontal = 20.dp,
+                    vertical = 12.dp
+                )
         ) {
 
-            Spacer(Modifier.height(18.dp))
 
+            // =================================================
             // HEADER
+            // =================================================
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
@@ -67,314 +183,966 @@ fun ProfileScreen(
                 IconButton(
                     onClick = onBackClick
                 ) {
+
                     Icon(
                         imageVector =
                             Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back",
-                        tint = darkBlue
+
+                        contentDescription =
+                            "Back",
+
+                        tint =
+                            primaryDark,
+
+                        modifier =
+                            Modifier.size(25.dp)
                     )
                 }
 
-                Spacer(Modifier.width(4.dp))
+                Spacer(
+                    modifier =
+                        Modifier.width(5.dp)
+                )
 
                 Text(
                     text = "My Profile",
-                    color = darkBlue,
-                    fontSize = 23.sp,
-                    fontWeight = FontWeight.Bold
+
+                    color =
+                        primaryDark,
+
+                    fontSize =
+                        22.sp,
+
+                    fontWeight =
+                        FontWeight.Bold
                 )
             }
 
-            Spacer(Modifier.height(25.dp))
 
-            // PROFILE CARD
+            Spacer(
+                modifier =
+                    Modifier.height(22.dp)
+            )
+
+
+            // =================================================
+            // PROFILE HEADER CARD
+            // =================================================
+
             Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(28.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = Color.White
-                ),
-                elevation = CardDefaults.cardElevation(
-                    defaultElevation = 8.dp
-                )
+
+                modifier =
+                    Modifier.fillMaxWidth(),
+
+                shape =
+                    RoundedCornerShape(27.dp),
+
+                colors =
+                    CardDefaults.cardColors(
+                        containerColor =
+                            surface
+                    ),
+
+                elevation =
+                    CardDefaults.cardElevation(
+                        defaultElevation =
+                            5.dp
+                    )
             ) {
 
                 Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(25.dp),
+
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(22.dp),
+
                     horizontalAlignment =
                         Alignment.CenterHorizontally
                 ) {
 
+
+                    // -----------------------------------------
+                    // AVATAR
+                    // -----------------------------------------
+
                     Box(
-                        modifier = Modifier
-                            .size(105.dp)
-                            .shadow(
-                                elevation = 10.dp,
-                                shape = CircleShape
-                            )
-                            .background(
-                                primary,
-                                CircleShape
-                            ),
+
+                        modifier =
+                            Modifier
+                                .size(92.dp)
+                                .shadow(
+                                    elevation = 9.dp,
+                                    shape = CircleShape
+                                )
+                                .background(
+                                    Brush.linearGradient(
+                                        colors = listOf(
+                                            primaryBlue,
+                                            teal
+                                        )
+                                    ),
+                                    CircleShape
+                                ),
+
                         contentAlignment =
                             Alignment.Center
                     ) {
 
                         Icon(
+
                             imageVector =
                                 Icons.Default.Person,
+
                             contentDescription =
                                 "Profile",
-                            tint = Color.White,
+
+                            tint =
+                                Color.White,
+
                             modifier =
-                                Modifier.size(55.dp)
+                                Modifier.size(48.dp)
                         )
                     }
 
-                    Spacer(Modifier.height(17.dp))
 
-                    Text(
-                        text =
-                            if (userName.isBlank())
-                                "MedAssist User"
-                            else
-                                userName,
-                        color = darkBlue,
-                        fontSize = 24.sp,
-                        fontWeight = FontWeight.Bold
+                    Spacer(
+                        modifier =
+                            Modifier.height(13.dp)
                     )
 
-                    Spacer(Modifier.height(5.dp))
+
+                    // -----------------------------------------
+                    // NAME
+                    // -----------------------------------------
 
                     Text(
+
                         text =
-                            if (userEmail.isBlank())
-                                "Email not available"
-                            else
-                                userEmail,
-                        color = gray,
-                        fontSize = 13.sp
+                            displayName,
+
+                        color =
+                            textPrimary,
+
+                        fontSize =
+                            22.sp,
+
+                        fontWeight =
+                            FontWeight.Bold,
+
+                        maxLines =
+                            1,
+
+                        overflow =
+                            TextOverflow.Ellipsis
                     )
+
+
+                    Spacer(
+                        modifier =
+                            Modifier.height(5.dp)
+                    )
+
+
+                    // -----------------------------------------
+                    // EMAIL
+                    // -----------------------------------------
+
+                    Text(
+
+                        text =
+                            displayEmail,
+
+                        color =
+                            textSecondary,
+
+                        fontSize =
+                            12.sp,
+
+                        maxLines =
+                            1,
+
+                        overflow =
+                            TextOverflow.Ellipsis
+                    )
+
+
+                    Spacer(
+                        modifier =
+                            Modifier.height(13.dp)
+                    )
+
+
+                    // -----------------------------------------
+                    // SECURE BADGE
+                    // -----------------------------------------
+
+                    Row(
+
+                        modifier =
+                            Modifier
+                                .background(
+                                    surfaceVariant,
+                                    RoundedCornerShape(50.dp)
+                                )
+                                .padding(
+                                    horizontal = 12.dp,
+                                    vertical = 7.dp
+                                ),
+
+                        verticalAlignment =
+                            Alignment.CenterVertically
+                    ) {
+
+                        Icon(
+
+                            imageVector =
+                                Icons.Default.Lock,
+
+                            contentDescription =
+                                "Secure",
+
+                            tint =
+                                primaryBlue,
+
+                            modifier =
+                                Modifier.size(14.dp)
+                        )
+
+                        Spacer(
+                            modifier =
+                                Modifier.width(6.dp)
+                        )
+
+                        Text(
+
+                            text =
+                                "Secure account",
+
+                            color =
+                                primaryBlue,
+
+                            fontSize =
+                                10.sp,
+
+                            fontWeight =
+                                FontWeight.SemiBold
+                        )
+                    }
                 }
             }
 
-            Spacer(Modifier.height(20.dp))
 
-            // ACCOUNT INFORMATION
+            Spacer(
+                modifier =
+                    Modifier.height(25.dp)
+            )
+
+
+            // =================================================
+            // ACCOUNT SECTION
+            // =================================================
+
+            Text(
+
+                text =
+                    "Account",
+
+                color =
+                    textPrimary,
+
+                fontSize =
+                    19.sp,
+
+                fontWeight =
+                    FontWeight.Bold
+            )
+
+
+            Spacer(
+                modifier =
+                    Modifier.height(11.dp)
+            )
+
+
             Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(23.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = Color.White
-                ),
-                elevation = CardDefaults.cardElevation(
-                    defaultElevation = 5.dp
-                )
+
+                modifier =
+                    Modifier.fillMaxWidth(),
+
+                shape =
+                    RoundedCornerShape(22.dp),
+
+                colors =
+                    CardDefaults.cardColors(
+                        containerColor =
+                            surface
+                    ),
+
+                elevation =
+                    CardDefaults.cardElevation(
+                        defaultElevation =
+                            3.dp
+                    )
             ) {
 
                 Column(
-                    modifier = Modifier.padding(20.dp)
+                    modifier =
+                        Modifier.fillMaxWidth()
                 ) {
 
-                    Text(
-                        text = "Account Information",
-                        color = darkBlue,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold
-                    )
 
-                    Spacer(Modifier.height(18.dp))
+                    // -----------------------------------------
+                    // PROFILE
+                    // -----------------------------------------
 
                     ProfileInfoRow(
-                        icon = {
-                            Icon(
-                                Icons.Default.Person,
-                                contentDescription = null,
-                                tint = primary
-                            )
-                        },
-                        title = "Full Name",
-                        value =
-                            if (userName.isBlank())
-                                "MedAssist User"
-                            else
-                                userName
+
+                        icon =
+                            Icons.Default.Person,
+
+                        title =
+                            "Profile",
+
+                        subtitle =
+                            "Your MEDASSIST account",
+
+                        iconColor =
+                            primaryBlue
                     )
 
-                    Spacer(Modifier.height(16.dp))
+
+                    ProfileDivider()
+
+
+                    // -----------------------------------------
+                    // EMAIL
+                    // -----------------------------------------
 
                     ProfileInfoRow(
-                        icon = {
-                            Icon(
-                                Icons.Default.Email,
-                                contentDescription = null,
-                                tint = primary
-                            )
-                        },
-                        title = "Email Address",
-                        value =
-                            if (userEmail.isBlank())
-                                "Not available"
-                            else
-                                userEmail
+
+                        icon =
+                            Icons.Default.Email,
+
+                        title =
+                            "Email",
+
+                        subtitle =
+                            displayEmail,
+
+                        iconColor =
+                            teal
                     )
+
+
+                    ProfileDivider()
+
+
+                    // -----------------------------------------
+                    // PASSWORD
+                    // -----------------------------------------
+
+                    Row(
+
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(
+                                    start = 16.dp,
+                                    end = 8.dp,
+                                    top = 16.dp,
+                                    bottom = 16.dp
+                                ),
+
+                        verticalAlignment =
+                            Alignment.CenterVertically
+                    ) {
+
+
+                        // -------------------------------------
+                        // PASSWORD ICON
+                        // -------------------------------------
+
+                        Box(
+
+                            modifier =
+                                Modifier
+                                    .size(44.dp)
+                                    .background(
+                                        Color(0xFFEAF6FA),
+                                        RoundedCornerShape(13.dp)
+                                    ),
+
+                            contentAlignment =
+                                Alignment.Center
+                        ) {
+
+                            Icon(
+
+                                imageVector =
+                                    Icons.Default.Lock,
+
+                                contentDescription =
+                                    "Password",
+
+                                tint =
+                                    primaryBlue,
+
+                                modifier =
+                                    Modifier.size(21.dp)
+                            )
+                        }
+
+
+                        Spacer(
+                            modifier =
+                                Modifier.width(12.dp)
+                        )
+
+
+                        // -------------------------------------
+                        // PASSWORD TEXT
+                        // -------------------------------------
+
+                        Column(
+                            modifier =
+                                Modifier.weight(1f)
+                        ) {
+
+                            Text(
+
+                                text =
+                                    "Password",
+
+                                color =
+                                    textPrimary,
+
+                                fontSize =
+                                    13.sp,
+
+                                fontWeight =
+                                    FontWeight.SemiBold
+                            )
+
+
+                            Spacer(
+                                modifier =
+                                    Modifier.height(3.dp)
+                            )
+
+
+                            Text(
+
+                                text =
+                                    if (passwordVisible) {
+                                        "Password protected"
+                                    } else {
+                                        "••••••••"
+                                    },
+
+                                color =
+                                    textSecondary,
+
+                                fontSize =
+                                    13.sp,
+
+                                fontWeight =
+                                    if (passwordVisible) {
+                                        FontWeight.Medium
+                                    } else {
+                                        FontWeight.Normal
+                                    }
+                            )
+                        }
+
+
+                        // -------------------------------------
+                        // HIDE / UNHIDE BUTTON
+                        // -------------------------------------
+
+                        IconButton(
+                            onClick = {
+                                passwordVisible = !passwordVisible
+                            }
+                        ) {
+                            Text(
+                                text = if (passwordVisible) "◉" else "◌",
+                                color = primaryBlue,
+                                fontSize = 22.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
                 }
             }
 
-            Spacer(Modifier.height(18.dp))
 
-            // LOGOUT
+            Spacer(
+                modifier =
+                    Modifier.height(24.dp)
+            )
+
+
+            // =================================================
+            // MEDASSIST AI SECTION
+            // =================================================
+
+            Text(
+
+                text =
+                    "MEDASSIST AI",
+
+                color =
+                    textPrimary,
+
+                fontSize =
+                    19.sp,
+
+                fontWeight =
+                    FontWeight.Bold
+            )
+
+
+            Spacer(
+                modifier =
+                    Modifier.height(11.dp)
+            )
+
+
             Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable {
-                        onLogoutClick()
-                    },
-                shape = RoundedCornerShape(23.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = Color.White
-                ),
-                elevation = CardDefaults.cardElevation(
-                    defaultElevation = 5.dp
-                )
+
+                modifier =
+                    Modifier.fillMaxWidth(),
+
+                shape =
+                    RoundedCornerShape(22.dp),
+
+                colors =
+                    CardDefaults.cardColors(
+                        containerColor =
+                            surface
+                    ),
+
+                elevation =
+                    CardDefaults.cardElevation(
+                        defaultElevation =
+                            3.dp
+                    )
             ) {
 
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(18.dp),
+
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(17.dp),
+
                     verticalAlignment =
                         Alignment.CenterVertically
                 ) {
 
+
+                    // -----------------------------------------
+                    // BRAND ICON
+                    // -----------------------------------------
+
                     Box(
-                        modifier = Modifier
-                            .size(50.dp)
-                            .background(
-                                Color(0xFFFFEEEE),
-                                RoundedCornerShape(15.dp)
-                            ),
+
+                        modifier =
+                            Modifier
+                                .size(50.dp)
+                                .background(
+                                    surfaceVariant,
+                                    RoundedCornerShape(16.dp)
+                                ),
+
+                        contentAlignment =
+                            Alignment.Center
+                    ) {
+
+                        Icon(
+
+                            imageVector =
+                                Icons.Default.Favorite,
+
+                            contentDescription =
+                                "MEDASSIST AI",
+
+                            tint =
+                                primaryBlue,
+
+                            modifier =
+                                Modifier.size(27.dp)
+                        )
+                    }
+
+
+                    Spacer(
+                        modifier =
+                            Modifier.width(13.dp)
+                    )
+
+
+                    Column(
+                        modifier =
+                            Modifier.weight(1f)
+                    ) {
+
+                        Text(
+
+                            text =
+                                "Your intelligent health companion",
+
+                            color =
+                                textPrimary,
+
+                            fontSize =
+                                14.sp,
+
+                            fontWeight =
+                                FontWeight.SemiBold
+                        )
+
+
+                        Spacer(
+                            modifier =
+                                Modifier.height(3.dp)
+                        )
+
+
+                        Text(
+
+                            text =
+                                "Get general health information and guidance with MEDASSIST AI.",
+
+                            color =
+                                textSecondary,
+
+                            fontSize =
+                                11.sp,
+
+                            lineHeight =
+                                16.sp
+                        )
+                    }
+                }
+            }
+
+
+            Spacer(
+                modifier =
+                    Modifier.height(25.dp)
+            )
+
+
+            // =================================================
+            // SIGN OUT
+            // =================================================
+
+            Card(
+
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            onLogoutClick()
+                        }
+                        .border(
+                            width = 1.dp,
+                            color = logoutBorder,
+                            shape =
+                                RoundedCornerShape(20.dp)
+                        ),
+
+                shape =
+                    RoundedCornerShape(20.dp),
+
+                colors =
+                    CardDefaults.cardColors(
+                        containerColor =
+                            logoutBackground
+                    )
+            ) {
+
+                Row(
+
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(17.dp),
+
+                    verticalAlignment =
+                        Alignment.CenterVertically
+                ) {
+
+
+                    // -----------------------------------------
+                    // LOGOUT ICON
+                    // -----------------------------------------
+
+                    Box(
+
+                        modifier =
+                            Modifier
+                                .size(46.dp)
+                                .background(
+                                    Color(0xFFFFE3E0),
+                                    RoundedCornerShape(14.dp)
+                                ),
+
                         contentAlignment =
                             Alignment.Center
                     ) {
 
                         Text(
-                            text = "↪",
-                            color = Color(0xFFD95C5C),
-                            fontSize = 28.sp,
-                            fontWeight = FontWeight.Bold
+
+                            text =
+                                "↪",
+
+                            color =
+                                logoutText,
+
+                            fontSize =
+                                26.sp,
+
+                            fontWeight =
+                                FontWeight.Bold
                         )
                     }
 
-                    Spacer(Modifier.width(14.dp))
+
+                    Spacer(
+                        modifier =
+                            Modifier.width(13.dp)
+                    )
+
 
                     Column(
-                        modifier = Modifier.weight(1f)
+                        modifier =
+                            Modifier.weight(1f)
                     ) {
 
                         Text(
-                            text = "Sign Out",
-                            color = Color(0xFFB74747),
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold
+
+                            text =
+                                "Sign Out",
+
+                            color =
+                                logoutText,
+
+                            fontSize =
+                                15.sp,
+
+                            fontWeight =
+                                FontWeight.Bold
                         )
 
-                        Spacer(Modifier.height(3.dp))
+
+                        Spacer(
+                            modifier =
+                                Modifier.height(3.dp)
+                        )
+
 
                         Text(
+
                             text =
-                                "Safely sign out of this account",
-                            color = gray,
-                            fontSize = 12.sp
+                                "Sign out safely from this device",
+
+                            color =
+                                textSecondary,
+
+                            fontSize =
+                                11.sp
                         )
                     }
 
+
                     Text(
-                        text = "›",
-                        color = Color(0xFFD95C5C),
-                        fontSize = 30.sp
+
+                        text =
+                            "›",
+
+                        color =
+                            logoutText,
+
+                        fontSize =
+                            27.sp
                     )
                 }
             }
 
-            Spacer(Modifier.weight(1f))
 
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = 15.dp),
-                horizontalArrangement =
-                    Arrangement.Center,
-                verticalAlignment =
-                    Alignment.CenterVertically
-            ) {
+            Spacer(
+                modifier =
+                    Modifier.height(20.dp)
+            )
 
-                Icon(
-                    imageVector = Icons.Default.Lock,
-                    contentDescription = "Secure",
-                    tint = primary,
-                    modifier = Modifier.size(15.dp)
-                )
 
-                Spacer(Modifier.width(6.dp))
+            // =================================================
+            // FOOTER
+            // =================================================
 
-                Text(
-                    text =
-                        "Your account information is handled securely.",
-                    color = gray,
-                    fontSize = 10.sp
-                )
-            }
+            Text(
+
+                text =
+                    "MEDASSIST AI  •  Secure • Simple • Intelligent",
+
+                modifier =
+                    Modifier.fillMaxWidth(),
+
+                color =
+                    textSecondary,
+
+                fontSize =
+                    9.sp,
+
+                textAlign =
+                    TextAlign.Center
+            )
+
+
+            Spacer(
+                modifier =
+                    Modifier.height(12.dp)
+            )
         }
     }
 }
 
 
+// =============================================================
+// PROFILE INFO ROW
+// =============================================================
+
 @Composable
 private fun ProfileInfoRow(
-    icon: @Composable () -> Unit,
+
+    icon:
+    androidx.compose.ui.graphics.vector.ImageVector,
+
     title: String,
-    value: String
+
+    subtitle: String,
+
+    iconColor: Color
 ) {
 
     Row(
+
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(16.dp),
+
         verticalAlignment =
             Alignment.CenterVertically
     ) {
 
         Box(
-            modifier = Modifier
-                .size(45.dp)
-                .background(
-                    Color(0xFFE8F7FB),
-                    RoundedCornerShape(14.dp)
-                ),
+
+            modifier =
+                Modifier
+                    .size(44.dp)
+                    .background(
+                        Color(0xFFEAF6FA),
+                        RoundedCornerShape(13.dp)
+                    ),
+
             contentAlignment =
                 Alignment.Center
         ) {
-            icon()
+
+            Icon(
+
+                imageVector =
+                    icon,
+
+                contentDescription =
+                    title,
+
+                tint =
+                    iconColor,
+
+                modifier =
+                    Modifier.size(21.dp)
+            )
         }
 
-        Spacer(Modifier.width(13.dp))
 
-        Column {
+        Spacer(
+            modifier =
+                Modifier.width(12.dp)
+        )
+
+
+        Column(
+            modifier =
+                Modifier.weight(1f)
+        ) {
 
             Text(
-                text = title,
-                color = Color(0xFF71818C),
-                fontSize = 11.sp
+
+                text =
+                    title,
+
+                color =
+                    Color(0xFF172B4D),
+
+                fontSize =
+                    13.sp,
+
+                fontWeight =
+                    FontWeight.SemiBold
             )
 
-            Spacer(Modifier.height(3.dp))
+
+            Spacer(
+                modifier =
+                    Modifier.height(3.dp)
+            )
+
 
             Text(
-                text = value,
-                color = Color(0xFF163247),
-                fontSize = 14.sp,
-                fontWeight = FontWeight.Medium
+
+                text =
+                    subtitle,
+
+                color =
+                    Color(0xFF71818C),
+
+                fontSize =
+                    11.sp,
+
+                maxLines =
+                    1,
+
+                overflow =
+                    TextOverflow.Ellipsis
             )
         }
     }
+}
+
+
+// =============================================================
+// DIVIDER
+// =============================================================
+
+@Composable
+private fun ProfileDivider() {
+
+    Box(
+
+        modifier =
+            Modifier
+                .fillMaxWidth()
+                .padding(
+                    horizontal = 16.dp
+                )
+                .height(1.dp)
+                .background(
+                    Color(0xFFE8EEF2)
+                )
+    )
 }
