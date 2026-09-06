@@ -5,8 +5,8 @@ import android.content.Context
 import android.util.Log
 
 import androidx.compose.material.icons.filled.Delete
-import androidx.compose.material.icons.filled.ArrowBack
-import androidx.compose.material.icons.filled.Favorite
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -60,12 +60,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
+import androidx.compose.ui.res.painterResource
+
+import com.example.ai_based_medical_chatbot.R
 import com.example.ai_based_medical_chatbot.data.api.PredictionRequest
 import com.example.ai_based_medical_chatbot.data.api.RetrofitClient
 
@@ -591,7 +595,7 @@ fun ChatbotScreen(
                     modifier = Modifier.size(44.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.ArrowBack,
+                        imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = "Back",
                         tint = Color(0xFF173B56)
                     )
@@ -604,22 +608,12 @@ fun ChatbotScreen(
                         .background(Color(0xFFE8F6FB)),
                     contentAlignment = Alignment.Center
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(31.dp)
-                            .background(
-                                Color(0xFF1976D2),
-                                CircleShape
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Favorite,
-                            contentDescription = "MEDASSIST AI",
-                            tint = Color.White,
-                            modifier = Modifier.size(19.dp)
-                        )
-                    }
+                    Image(
+                        painter = painterResource(id = R.drawable.medassist_logo),
+                        contentDescription = "MEDASSIST AI",
+                        modifier = Modifier.size(34.dp),
+                        contentScale = ContentScale.Fit
+                    )
                 }
 
                 Spacer(modifier = Modifier.width(10.dp))
@@ -1146,20 +1140,20 @@ fun MessageBubble(
                 Box(
                     modifier = Modifier
                         .size(27.dp)
+                        .clip(CircleShape)
                         .background(
                             if (message.isError)
                                 Color(0xFFD32F2F)
                             else
-                                Color(0xFF1976D2),
-                            CircleShape
+                                Color(0xFF1976D2)
                         ),
                     contentAlignment = Alignment.Center
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Favorite,
+                    Image(
+                        painter = painterResource(id = R.drawable.medassist_logo),
                         contentDescription = "MEDASSIST AI",
-                        tint = Color.White,
-                        modifier = Modifier.size(16.dp)
+                        modifier = Modifier.size(25.dp),
+                        contentScale = ContentScale.Fit
                     )
                 }
             }
@@ -1552,17 +1546,15 @@ fun TypingIndicator() {
             Box(
                 modifier = Modifier
                     .size(27.dp)
-                    .background(
-                        Color(0xFF1976D2),
-                        CircleShape
-                    ),
+                    .clip(CircleShape)
+                    .background(Color(0xFF1976D2)),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(
-                    imageVector = Icons.Default.Favorite,
+                Image(
+                    painter = painterResource(id = R.drawable.medassist_logo),
                     contentDescription = "MEDASSIST AI",
-                    tint = Color.White,
-                    modifier = Modifier.size(16.dp)
+                    modifier = Modifier.size(25.dp),
+                    contentScale = ContentScale.Fit
                 )
             }
         }

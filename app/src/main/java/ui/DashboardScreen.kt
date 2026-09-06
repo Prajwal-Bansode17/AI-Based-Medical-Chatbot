@@ -4,6 +4,7 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.slideInVertically
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -18,11 +19,12 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Person
@@ -43,11 +45,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ai_based_medical_chatbot.R
 import com.example.ai_based_medical_chatbot.ui.theme.DarkBackground
 import com.example.ai_based_medical_chatbot.ui.theme.MedicalBackground
 import com.example.ai_based_medical_chatbot.ui.theme.MedicalBlue
@@ -121,7 +126,10 @@ fun DashboardScreen(
         )
 
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding(),
             contentPadding = PaddingValues(
                 start = 20.dp,
                 end = 20.dp,
@@ -294,11 +302,11 @@ fun DashboardScreen(
                                     contentAlignment = Alignment.Center
                                 ) {
 
-                                    Icon(
-                                        imageVector = Icons.Default.Favorite,
+                                    Image(
+                                        painter = painterResource(id = R.drawable.medassist_logo),
                                         contentDescription = "MEDASSIST AI",
-                                        tint = MedicalBlue,
-                                        modifier = Modifier.size(31.dp)
+                                        modifier = Modifier.size(46.dp),
+                                        contentScale = ContentScale.Fit
                                     )
                                 }
 
@@ -447,7 +455,7 @@ fun DashboardScreen(
                         subtitle = "Check symptoms",
                         icon = {
                             Icon(
-                                imageVector = Icons.Default.Favorite,
+                                imageVector = Icons.Default.Info,
                                 contentDescription = "Symptoms",
                                 tint = MedicalTeal,
                                 modifier = Modifier.size(27.dp)
@@ -492,7 +500,7 @@ fun DashboardScreen(
                         subtitle = "Healthy lifestyle",
                         icon = {
                             Icon(
-                                imageVector = Icons.Default.Favorite,
+                                imageVector = Icons.Default.Face,
                                 contentDescription = "Health Tips",
                                 tint = MedicalTeal,
                                 modifier = Modifier.size(27.dp)
@@ -555,11 +563,11 @@ fun DashboardScreen(
                             contentAlignment = Alignment.Center
                         ) {
 
-                            Icon(
-                                imageVector = Icons.Default.Favorite,
-                                contentDescription = "Health",
-                                tint = MedicalBlue,
-                                modifier = Modifier.size(25.dp)
+                            Image(
+                                painter = painterResource(id = R.drawable.medassist_logo),
+                                contentDescription = "MEDASSIST AI",
+                                modifier = Modifier.size(34.dp),
+                                contentScale = ContentScale.Fit
                             )
                         }
 
@@ -737,4 +745,3 @@ private fun DashboardActionCard(
 // =============================================================
 // Small offset helpers
 // =============================================================
-

@@ -17,10 +17,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Favorite
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material3.Icon
 import androidx.compose.material3.LinearProgressIndicator
@@ -37,10 +37,13 @@ import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ai_based_medical_chatbot.R
 import kotlinx.coroutines.delay
 
 
@@ -146,10 +149,7 @@ fun SplashScreen(
                 .size(235.dp)
                 .align(Alignment.TopEnd)
                 .background(
-                    color =
-                        primaryBlue.copy(
-                            alpha = 0.065f
-                        ),
+                    color = primaryBlue.copy(alpha = 0.065f),
                     shape = CircleShape
                 )
         )
@@ -164,10 +164,7 @@ fun SplashScreen(
                 .size(175.dp)
                 .align(Alignment.BottomStart)
                 .background(
-                    color =
-                        teal.copy(
-                            alpha = 0.055f
-                        ),
+                    color = teal.copy(alpha = 0.055f),
                     shape = CircleShape
                 )
         )
@@ -192,7 +189,7 @@ fun SplashScreen(
 
 
             // =================================================
-            // MEDASSIST LOGO
+            // MEDASSIST AI LOGO
             // =================================================
 
             AnimatedVisibility(
@@ -210,8 +207,7 @@ fun SplashScreen(
                                 animationSpec =
                                     tween(
                                         durationMillis = 700,
-                                        easing =
-                                            FastOutSlowInEasing
+                                        easing = FastOutSlowInEasing
                                     )
                             )
             ) {
@@ -219,75 +215,50 @@ fun SplashScreen(
                 Box(
 
                     modifier = Modifier
-                        .size(112.dp)
+                        .size(185.dp)
                         .scale(logoScale)
                         .shadow(
-                            elevation = 16.dp,
-                            shape =
-                                RoundedCornerShape(30.dp)
+                            elevation = 14.dp,
+                            shape = RoundedCornerShape(28.dp)
                         )
                         .background(
                             Color.White,
-                            RoundedCornerShape(30.dp)
+                            RoundedCornerShape(28.dp)
                         )
                         .border(
                             width = 1.dp,
                             color = borderColor,
-                            shape =
-                                RoundedCornerShape(30.dp)
+                            shape = RoundedCornerShape(28.dp)
                         ),
 
                     contentAlignment =
                         Alignment.Center
                 ) {
 
+                    androidx.compose.foundation.Image(
 
-                    // -----------------------------------------
-                    // Brand Circle
-                    // -----------------------------------------
-
-                    Box(
-
-                        modifier = Modifier
-                            .size(70.dp)
-                            .background(
-
-                                Brush.linearGradient(
-                                    colors = listOf(
-                                        primaryBlue,
-                                        teal
-                                    )
-                                ),
-
-                                CircleShape
+                        painter =
+                            painterResource(
+                                id = R.drawable.medassist_logo
                             ),
 
-                        contentAlignment =
-                            Alignment.Center
-                    ) {
+                        contentDescription =
+                            "MEDASSIST AI Logo",
 
-                        Icon(
+                        contentScale =
+                            ContentScale.Fit,
 
-                            imageVector =
-                                Icons.Default.Favorite,
-
-                            contentDescription =
-                                "MEDASSIST AI",
-
-                            tint =
-                                Color.White,
-
-                            modifier =
-                                Modifier.size(40.dp)
-                        )
-                    }
+                        modifier =
+                            Modifier
+                                .size(175.dp)
+                    )
                 }
             }
 
 
             Spacer(
                 modifier =
-                    Modifier.height(25.dp)
+                    Modifier.height(22.dp)
             )
 
 
@@ -319,7 +290,7 @@ fun SplashScreen(
                         primaryBlueDark,
 
                     fontSize =
-                        31.sp,
+                        30.sp,
 
                     fontWeight =
                         FontWeight.Bold,
@@ -414,10 +385,9 @@ fun SplashScreen(
                     LinearProgressIndicator(
 
                         modifier =
-                            Modifier.size(
-                                width = 120.dp,
-                                height = 4.dp
-                            ),
+                            Modifier
+                                .width(120.dp)
+                                .height(4.dp),
 
                         color =
                             primaryBlue,
@@ -487,14 +457,15 @@ fun SplashScreen(
 
                     Box(
 
-                        modifier = Modifier
-                            .size(34.dp)
-                            .background(
-                                Color.White.copy(
-                                    alpha = 0.9f
+                        modifier =
+                            Modifier
+                                .size(34.dp)
+                                .background(
+                                    Color.White.copy(
+                                        alpha = 0.9f
+                                    ),
+                                    CircleShape
                                 ),
-                                CircleShape
-                            ),
 
                         contentAlignment =
                             Alignment.Center

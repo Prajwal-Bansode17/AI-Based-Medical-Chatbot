@@ -1,6 +1,7 @@
 package ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,9 +15,14 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import com.example.ai_based_medical_chatbot.R
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -105,7 +111,10 @@ fun SymptomsCheckerScreen(
     ) {
 
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding(),
 
             contentPadding = PaddingValues(
                 start = 20.dp,
@@ -230,11 +239,12 @@ fun SymptomsCheckerScreen(
                                 Alignment.Center
                         ) {
 
-                            Text(
-                                text = "+",
-                                color = Color.White,
-                                fontSize = 38.sp,
-                                fontWeight = FontWeight.Light
+                            Image(
+                                painter = painterResource(id = R.drawable.medassist_logo),
+                                contentDescription = "MEDASSIST AI",
+                                modifier = Modifier
+                                    .size(42.dp),
+                                contentScale = ContentScale.Fit
                             )
                         }
 
@@ -256,7 +266,7 @@ fun SymptomsCheckerScreen(
                             )
 
                             Text(
-                                text = "Select all symptoms you currently have.",
+                                text = "Select all symptoms you are currently experiencing.",
                                 color = Color.White.copy(
                                     alpha = 0.82f
                                 ),
@@ -275,15 +285,32 @@ fun SymptomsCheckerScreen(
 
             item {
 
-                Text(
-                    text = "Select Symptoms",
-                    color = darkBlue,
-                    fontSize = 19.sp,
-                    fontWeight = FontWeight.Bold,
-                    modifier = Modifier.padding(
-                        top = 4.dp
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 4.dp)
+                ) {
+                    Text(
+                        text = "Select Symptoms",
+                        color = darkBlue,
+                        fontSize = 19.sp,
+                        fontWeight = FontWeight.Bold
                     )
-                )
+
+                    Spacer(
+                        modifier = Modifier.height(3.dp)
+                    )
+
+                    Text(
+                        text = if (selectedSymptoms.isEmpty()) {
+                            "Choose one or more symptoms"
+                        } else {
+                            "${selectedSymptoms.size} symptom${if (selectedSymptoms.size == 1) "" else "s"} selected"
+                        },
+                        color = gray,
+                        fontSize = 12.sp
+                    )
+                }
             }
 
             /*

@@ -1,6 +1,7 @@
 package ui
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -14,6 +15,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -32,6 +35,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.res.painterResource
+import com.example.ai_based_medical_chatbot.R
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -190,7 +196,10 @@ fun MedicineInfoScreen(
     ) {
 
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding(),
 
             contentPadding = PaddingValues(
                 start = 20.dp,
@@ -399,12 +408,11 @@ fun MedicineInfoScreen(
                                 Alignment.Center
                         ) {
 
-                            Text(
-                                text = "Rx",
-                                color = Color.White,
-                                fontSize = 22.sp,
-                                fontWeight =
-                                    FontWeight.Bold
+                            Image(
+                                painter = painterResource(id = R.drawable.medassist_logo),
+                                contentDescription = "MEDASSIST AI",
+                                modifier = Modifier.size(42.dp),
+                                contentScale = ContentScale.Fit
                             )
                         }
 
@@ -455,27 +463,32 @@ fun MedicineInfoScreen(
 
             item {
 
-                Text(
-                    text =
-                        if (searchQuery.isBlank())
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 3.dp)
+                ) {
+                    Text(
+                        text = if (searchQuery.isBlank()) {
                             "Available Medicines"
-                        else
-                            "Search Results",
+                        } else {
+                            "Search Results"
+                        },
+                        color = darkBlue,
+                        fontSize = 19.sp,
+                        fontWeight = FontWeight.Bold
+                    )
 
-                    color =
-                        darkBlue,
+                    Spacer(
+                        modifier = Modifier.height(3.dp)
+                    )
 
-                    fontSize =
-                        19.sp,
-
-                    fontWeight =
-                        FontWeight.Bold,
-
-                    modifier =
-                        Modifier.padding(
-                            top = 3.dp
-                        )
-                )
+                    Text(
+                        text = "${filteredMedicines.size} medicine${if (filteredMedicines.size == 1) "" else "s"} available",
+                        color = gray,
+                        fontSize = 12.sp
+                    )
+                }
             }
 
             // MEDICINES
@@ -677,13 +690,10 @@ private fun MedicineCard(
             ) {
 
                 Text(
-                    text = "Rx",
-                    color =
-                        primary,
-                    fontSize =
-                        17.sp,
-                    fontWeight =
-                        FontWeight.Bold
+                    text = "✚",
+                    color = primary,
+                    fontSize = 22.sp,
+                    fontWeight = FontWeight.Bold
                 )
             }
 
