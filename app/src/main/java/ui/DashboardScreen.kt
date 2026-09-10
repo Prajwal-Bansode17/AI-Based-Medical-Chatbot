@@ -50,15 +50,13 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ai_based_medical_chatbot.R
-import com.example.ai_based_medical_chatbot.ui.theme.DarkBackground
 import com.example.ai_based_medical_chatbot.ui.theme.MedicalBackground
 import com.example.ai_based_medical_chatbot.ui.theme.MedicalBlue
 import com.example.ai_based_medical_chatbot.ui.theme.MedicalBlueDark
-import com.example.ai_based_medical_chatbot.ui.theme.MedicalBlueLight
-import com.example.ai_based_medical_chatbot.ui.theme.MedicalBorder
 import com.example.ai_based_medical_chatbot.ui.theme.MedicalSurface
 import com.example.ai_based_medical_chatbot.ui.theme.MedicalSurfaceVariant
 import com.example.ai_based_medical_chatbot.ui.theme.MedicalTeal
@@ -66,11 +64,13 @@ import com.example.ai_based_medical_chatbot.ui.theme.MedicalTextPrimary
 import com.example.ai_based_medical_chatbot.ui.theme.MedicalTextSecondary
 import com.example.ai_based_medical_chatbot.ui.theme.PureWhite
 
+
 @Composable
 fun DashboardScreen(
     userName: String,
     onProfileClick: () -> Unit = {},
     onChatbotClick: () -> Unit = {},
+    onBMIClick: () -> Unit = {},
     onSymptomsClick: () -> Unit = {},
     onMedicineClick: () -> Unit = {},
     onHealthTipsClick: () -> Unit = {}
@@ -303,7 +303,9 @@ fun DashboardScreen(
                                 ) {
 
                                     Image(
-                                        painter = painterResource(id = R.drawable.medassist_logo),
+                                        painter = painterResource(
+                                            id = R.drawable.medassist_logo
+                                        ),
                                         contentDescription = "MEDASSIST AI",
                                         modifier = Modifier.size(46.dp),
                                         contentScale = ContentScale.Fit
@@ -428,6 +430,10 @@ fun DashboardScreen(
                 )
             }
 
+            // =====================================================
+            // BMI + SYMPTOMS
+            // =====================================================
+
             item {
 
                 Row(
@@ -436,18 +442,18 @@ fun DashboardScreen(
                 ) {
 
                     DashboardActionCard(
-                        title = "Ask AI",
-                        subtitle = "Medical chat",
+                        title = "BMI Checker",
+                        subtitle = "Check your BMI",
                         icon = {
                             Icon(
-                                imageVector = Icons.Default.Face,
-                                contentDescription = "Ask AI",
+                                imageVector = Icons.Default.Info,
+                                contentDescription = "BMI Checker",
                                 tint = MedicalBlue,
                                 modifier = Modifier.size(27.dp)
                             )
                         },
                         modifier = Modifier.weight(1f),
-                        onClick = onChatbotClick
+                        onClick = onBMIClick
                     )
 
                     DashboardActionCard(
@@ -472,6 +478,10 @@ fun DashboardScreen(
                     modifier = Modifier.height(12.dp)
                 )
             }
+
+            // =====================================================
+            // MEDICINE + HEALTH TIPS
+            // =====================================================
 
             item {
 
@@ -519,7 +529,7 @@ fun DashboardScreen(
             }
 
             // =====================================================
-            // RECENT / ASSISTANT INFORMATION
+            // YOUR ASSISTANT
             // =====================================================
 
             item {
@@ -564,7 +574,9 @@ fun DashboardScreen(
                         ) {
 
                             Image(
-                                painter = painterResource(id = R.drawable.medassist_logo),
+                                painter = painterResource(
+                                    id = R.drawable.medassist_logo
+                                ),
                                 contentDescription = "MEDASSIST AI",
                                 modifier = Modifier.size(34.dp),
                                 contentScale = ContentScale.Fit
@@ -654,6 +666,10 @@ fun DashboardScreen(
                 )
             }
 
+            // =====================================================
+            // FOOTER
+            // =====================================================
+
             item {
 
                 Text(
@@ -661,7 +677,7 @@ fun DashboardScreen(
                     modifier = Modifier.fillMaxWidth(),
                     color = MedicalTextSecondary,
                     fontSize = 10.sp,
-                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                    textAlign = TextAlign.Center
                 )
             }
         }
@@ -740,8 +756,3 @@ private fun DashboardActionCard(
         }
     }
 }
-
-
-// =============================================================
-// Small offset helpers
-// =============================================================

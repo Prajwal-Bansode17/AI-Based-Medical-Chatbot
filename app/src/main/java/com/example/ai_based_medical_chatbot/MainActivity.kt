@@ -16,6 +16,7 @@ import androidx.compose.ui.platform.LocalContext
 import com.example.ai_based_medical_chatbot.data.SupabaseClient
 import com.example.ai_based_medical_chatbot.ui.theme.AIBasedMedicalChatbotTheme
 import kotlinx.coroutines.launch
+import ui.BMICheckerScreen
 import ui.ChatbotScreen
 import ui.DashboardScreen
 import ui.ForgotPasswordScreen
@@ -396,10 +397,25 @@ private fun MedicalChatbotNavigation() {
                     )
                 },
 
+                // ============================================
+                // CHATBOT
+                // ============================================
+
                 onChatbotClick = {
 
                     navigateTo(
                         "chatbot"
+                    )
+                },
+
+                // ============================================
+                // BMI CHECKER
+                // ============================================
+
+                onBMIClick = {
+
+                    navigateTo(
+                        "bmi"
                     )
                 },
 
@@ -480,6 +496,22 @@ private fun MedicalChatbotNavigation() {
             ChatbotScreen(
 
                 onBack = {
+
+                    navigateBack()
+                }
+            )
+        }
+
+
+        // =====================================================
+        // BMI CHECKER
+        // =====================================================
+
+        "bmi" -> {
+
+            BMICheckerScreen(
+
+                onBackClick = {
 
                     navigateBack()
                 }
