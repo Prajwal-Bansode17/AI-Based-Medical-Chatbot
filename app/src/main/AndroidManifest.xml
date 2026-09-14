@@ -5,6 +5,9 @@
     <!-- Internet permission for Flask API / Retrofit -->
     <uses-permission android:name="android.permission.INTERNET" />
 
+    <!-- Camera permission for Prescription Scanner -->
+    <uses-permission android:name="android.permission.CAMERA" />
+
     <application
         android:allowBackup="true"
         android:dataExtractionRules="@xml/data_extraction_rules"

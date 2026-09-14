@@ -148,6 +148,13 @@ dependencies {
         "com.squareup.retrofit2:converter-gson:3.0.0"
     )
 
+    // Google ML Kit - Text Recognition (OCR)
+    implementation(
+        "com.google.mlkit:text-recognition:16.0.1"
+    )
+
+    implementation("com.google.mlkit:translate:17.0.3")
+
     // Tests
     testImplementation(
         libs.junit

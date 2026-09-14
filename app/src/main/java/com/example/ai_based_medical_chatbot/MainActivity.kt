@@ -25,6 +25,7 @@ import ui.LoginScreen
 import ui.MedicineDetailScreen
 import ui.MedicineInfoScreen
 import ui.ProfileScreen
+import ui.PrescriptionScannerScreen
 import ui.RegisterScreen
 import ui.SplashScreen
 import ui.SymptomsCheckerScreen
@@ -438,6 +439,13 @@ private fun MedicalChatbotNavigation() {
                     navigateTo(
                         "healthTips"
                     )
+                },
+
+                onPrescriptionClick = {
+
+                    navigateTo(
+                        "prescription"
+                    )
                 }
             )
         }
@@ -590,6 +598,22 @@ private fun MedicalChatbotNavigation() {
                     }
                 )
             }
+        }
+
+
+        // =====================================================
+        // PRESCRIPTION SCANNER
+        // =====================================================
+
+        "prescription" -> {
+
+            PrescriptionScannerScreen(
+
+                onBackClick = {
+
+                    navigateBack()
+                }
+            )
         }
 
 

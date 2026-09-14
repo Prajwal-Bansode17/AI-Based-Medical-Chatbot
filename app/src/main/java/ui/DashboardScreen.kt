@@ -16,11 +16,11 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -45,12 +45,12 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.res.painterResource
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ai_based_medical_chatbot.R
@@ -64,7 +64,6 @@ import com.example.ai_based_medical_chatbot.ui.theme.MedicalTextPrimary
 import com.example.ai_based_medical_chatbot.ui.theme.MedicalTextSecondary
 import com.example.ai_based_medical_chatbot.ui.theme.PureWhite
 
-
 @Composable
 fun DashboardScreen(
     userName: String,
@@ -73,7 +72,8 @@ fun DashboardScreen(
     onBMIClick: () -> Unit = {},
     onSymptomsClick: () -> Unit = {},
     onMedicineClick: () -> Unit = {},
-    onHealthTipsClick: () -> Unit = {}
+    onHealthTipsClick: () -> Unit = {},
+    onPrescriptionClick: () -> Unit = {}
 ) {
 
     var showContent by remember {
@@ -101,9 +101,9 @@ fun DashboardScreen(
             )
     ) {
 
-        // ---------------------------------------------------------
-        // Decorative background circles
-        // ---------------------------------------------------------
+        // =========================================================
+        // DECORATIVE BACKGROUND
+        // =========================================================
 
         Box(
             modifier = Modifier
@@ -291,7 +291,6 @@ fun DashboardScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
 
-                                // MEDASSIST brand mark
                                 Box(
                                     modifier = Modifier
                                         .size(58.dp)
@@ -333,9 +332,7 @@ fun DashboardScreen(
 
                                     Text(
                                         text = "Your intelligent health companion",
-                                        color = PureWhite.copy(
-                                            alpha = 0.82f
-                                        ),
+                                        color = PureWhite.copy(alpha = 0.82f),
                                         fontSize = 13.sp
                                     )
                                 }
@@ -359,9 +356,7 @@ fun DashboardScreen(
                             Surface(
                                 modifier = Modifier.fillMaxWidth(),
                                 shape = RoundedCornerShape(17.dp),
-                                color = PureWhite.copy(
-                                    alpha = 0.14f
-                                )
+                                color = PureWhite.copy(alpha = 0.14f)
                             ) {
 
                                 Row(
@@ -377,9 +372,7 @@ fun DashboardScreen(
                                     Text(
                                         text = "Ask anything about your health...",
                                         modifier = Modifier.weight(1f),
-                                        color = PureWhite.copy(
-                                            alpha = 0.72f
-                                        ),
+                                        color = PureWhite.copy(alpha = 0.72f),
                                         fontSize = 13.sp
                                     )
 
@@ -524,98 +517,50 @@ fun DashboardScreen(
 
             item {
                 Spacer(
-                    modifier = Modifier.height(25.dp)
+                    modifier = Modifier.height(12.dp)
                 )
             }
 
             // =====================================================
-            // YOUR ASSISTANT
+            // PRESCRIPTION SCANNER
             // =====================================================
 
             item {
 
-                Text(
-                    text = "Your Assistant",
-                    color = MedicalTextPrimary,
-                    fontSize = 20.sp,
-                    fontWeight = FontWeight.Bold
-                )
-
-                Spacer(
-                    modifier = Modifier.height(12.dp)
-                )
-
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(22.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = PureWhite
-                    ),
-                    elevation = CardDefaults.cardElevation(
-                        defaultElevation = 3.dp
-                    )
-                ) {
-
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(17.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
+                DashboardActionCard(
+                    title = "Prescription Scanner",
+                    subtitle = "Scan prescription",
+                    icon = {
 
                         Box(
                             modifier = Modifier
-                                .size(46.dp)
-                                .background(
-                                    MedicalSurfaceVariant,
-                                    RoundedCornerShape(15.dp)
-                                ),
+                                .size(50.dp),
                             contentAlignment = Alignment.Center
                         ) {
 
-                            Image(
-                                painter = painterResource(
-                                    id = R.drawable.medassist_logo
-                                ),
-                                contentDescription = "MEDASSIST AI",
-                                modifier = Modifier.size(34.dp),
-                                contentScale = ContentScale.Fit
-                            )
-                        }
-
-                        Spacer(
-                            modifier = Modifier.width(13.dp)
-                        )
-
-                        Column(
-                            modifier = Modifier.weight(1f)
-                        ) {
-
+                            // Scanner frame
                             Text(
-                                text = "Need medical information?",
-                                color = MedicalTextPrimary,
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.SemiBold
-                            )
-
-                            Spacer(
-                                modifier = Modifier.height(3.dp)
+                                text = "⌗",
+                                color = MedicalBlue,
+                                fontSize = 42.sp,
+                                fontWeight = FontWeight.Bold
                             )
 
                             Text(
-                                text = "MEDASSIST can help you understand general health information.",
-                                color = MedicalTextSecondary,
-                                fontSize = 11.sp,
-                                lineHeight = 16.sp
+                                text = "▤",
+                                color = MedicalBlue,
+                                fontSize = 25.sp
                             )
                         }
-                    }
-                }
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    onClick = onPrescriptionClick
+                )
             }
 
             item {
                 Spacer(
-                    modifier = Modifier.height(18.dp)
+                    modifier = Modifier.height(25.dp)
                 )
             }
 
@@ -629,7 +574,7 @@ fun DashboardScreen(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(18.dp),
                     colors = CardDefaults.cardColors(
-                        containerColor = MedicalSurfaceVariant
+                        containerColor = MedicalBlue.copy(alpha = 0.10f)
                     )
                 ) {
 
@@ -730,6 +675,7 @@ private fun DashboardActionCard(
                     ),
                 contentAlignment = Alignment.Center
             ) {
+
                 icon()
             }
 
@@ -741,7 +687,8 @@ private fun DashboardActionCard(
                 text = title,
                 color = MedicalTextPrimary,
                 fontSize = 14.sp,
-                fontWeight = FontWeight.Bold
+                fontWeight = FontWeight.Bold,
+                textAlign = TextAlign.Center
             )
 
             Spacer(

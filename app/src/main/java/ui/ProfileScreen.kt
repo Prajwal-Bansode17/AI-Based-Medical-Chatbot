@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -41,6 +42,9 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+
+import org.json.JSONArray
+import org.json.JSONObject
 
 @Composable
 fun ProfileScreen(
@@ -89,6 +93,34 @@ fun ProfileScreen(
         mutableStateOf(
             BMIRepository.getBMIData(context)
         )
+    }
+
+    // =========================================================
+    // SAVED PRESCRIPTIONS
+    // =========================================================
+
+    var savedPrescriptions by remember {
+        mutableStateOf(
+            PrescriptionRepository.getSavedPrescriptions(context).toString()
+        )
+    }
+
+    var selectedPrescriptionId by remember {
+        mutableStateOf<String?>(null)
+    }
+
+    var showDeleteDialog by remember {
+        mutableStateOf(false)
+    }
+
+    fun refreshPrescriptions() {
+        savedPrescriptions =
+            PrescriptionRepository.getSavedPrescriptions(context).toString()
+    }
+
+    // Refresh saved prescriptions whenever this Profile screen is entered.
+    LaunchedEffect(Unit) {
+        refreshPrescriptions()
     }
 
     // =========================================================
@@ -887,6 +919,527 @@ fun ProfileScreen(
                 modifier =
                     Modifier.height(25.dp)
             )
+
+            // =================================================
+            // MY PRESCRIPTIONS
+            // =================================================
+
+            androidx.compose.material3.Text(
+                text = "My Prescriptions",
+                color = textPrimary,
+                fontSize = 19.sp,
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(
+                modifier = Modifier.height(11.dp)
+            )
+
+            val prescriptionArray =
+                JSONArray(savedPrescriptions)
+
+            if (prescriptionArray.length() == 0) {
+
+                androidx.compose.material3.Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(22.dp),
+                    colors = androidx.compose.material3.CardDefaults.cardColors(
+                        containerColor = surface
+                    ),
+                    elevation = androidx.compose.material3.CardDefaults.cardElevation(
+                        defaultElevation = 3.dp
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(20.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        androidx.compose.material3.Text(
+                            text = "📄",
+                            fontSize = 36.sp
+                        )
+
+                        Spacer(modifier = Modifier.height(8.dp))
+
+                        androidx.compose.material3.Text(
+                            text = "No saved prescriptions",
+                            color = textPrimary,
+                            fontSize = 15.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+
+                        Spacer(modifier = Modifier.height(4.dp))
+
+                        androidx.compose.material3.Text(
+                            text = "Your scanned prescriptions will appear here after you save them.",
+                            color = textSecondary,
+                            fontSize = 11.sp,
+                            textAlign = TextAlign.Center,
+                            lineHeight = 17.sp
+                        )
+                    }
+                }
+
+            } else {
+
+                for (i in 0 until prescriptionArray.length()) {
+
+                    val prescription =
+                        prescriptionArray.optJSONObject(i) ?: continue
+
+                    val prescriptionId =
+                        prescription.optString("id")
+
+                    val doctor =
+                        prescription.optString("doctorName")
+
+                    val patient =
+                        prescription.optString("patientName")
+
+                    val date =
+                        prescription.optString("date")
+
+                    val diagnosisText =
+                        prescription.optString("diagnosis")
+
+                    val medicines =
+                        prescription.optJSONArray("medicines")
+                            ?: JSONArray()
+
+                    val medicineCount =
+                        medicines.length()
+
+                    androidx.compose.material3.Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                selectedPrescriptionId = prescriptionId
+                            },
+                        shape = RoundedCornerShape(20.dp),
+                        colors = androidx.compose.material3.CardDefaults.cardColors(
+                            containerColor = surface
+                        ),
+                        elevation = androidx.compose.material3.CardDefaults.cardElevation(
+                            defaultElevation = 3.dp
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(16.dp)
+                        ) {
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+
+                                Box(
+                                    modifier = Modifier
+                                        .size(48.dp)
+                                        .background(
+                                            surfaceVariant,
+                                            RoundedCornerShape(14.dp)
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    androidx.compose.material3.Text(
+                                        text = "📄",
+                                        fontSize = 25.sp
+                                    )
+                                }
+
+                                Spacer(
+                                    modifier = Modifier.width(12.dp)
+                                )
+
+                                Column(
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    androidx.compose.material3.Text(
+                                        text = if (doctor.isNotBlank()) {
+                                            "Dr. $doctor"
+                                        } else {
+                                            "Saved Prescription"
+                                        },
+                                        color = textPrimary,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+
+                                    Spacer(
+                                        modifier = Modifier.height(4.dp)
+                                    )
+
+                                    androidx.compose.material3.Text(
+                                        text = buildString {
+                                            if (date.isNotBlank()) {
+                                                append(date)
+                                            }
+                                            if (medicineCount > 0) {
+                                                if (isNotEmpty()) append("  •  ")
+                                                append("$medicineCount medicine")
+                                                if (medicineCount != 1) append("s")
+                                            }
+                                            if (isEmpty()) {
+                                                append("Prescription details")
+                                            }
+                                        },
+                                        color = textSecondary,
+                                        fontSize = 11.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+
+                                androidx.compose.material3.Text(
+                                    text = "›",
+                                    color = primaryBlue,
+                                    fontSize = 27.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+
+                            if (patient.isNotBlank() || diagnosisText.isNotBlank()) {
+                                Spacer(modifier = Modifier.height(10.dp))
+
+                                if (patient.isNotBlank()) {
+                                    androidx.compose.material3.Text(
+                                        text = "Patient: $patient",
+                                        color = textSecondary,
+                                        fontSize = 11.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+
+                                if (diagnosisText.isNotBlank()) {
+                                    Spacer(modifier = Modifier.height(3.dp))
+
+                                    androidx.compose.material3.Text(
+                                        text = "Diagnosis: $diagnosisText",
+                                        color = textSecondary,
+                                        fontSize = 11.sp,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    Spacer(
+                        modifier = Modifier.height(10.dp)
+                    )
+                }
+            }
+
+            // =================================================
+            // PRESCRIPTION DETAIL
+            // =================================================
+
+            selectedPrescriptionId?.let { selectedId ->
+
+                val selectedPrescription =
+                    (0 until prescriptionArray.length())
+                        .mapNotNull {
+                            prescriptionArray.optJSONObject(it)
+                        }
+                        .firstOrNull {
+                            it.optString("id") == selectedId
+                        }
+
+                if (selectedPrescription != null) {
+
+                    val selectedMedicines =
+                        selectedPrescription.optJSONArray("medicines")
+                            ?: JSONArray()
+
+                    androidx.compose.material3.Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(22.dp),
+                        colors = androidx.compose.material3.CardDefaults.cardColors(
+                            containerColor = surface
+                        ),
+                        elevation = androidx.compose.material3.CardDefaults.cardElevation(
+                            defaultElevation = 4.dp
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(18.dp)
+                        ) {
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(
+                                    modifier = Modifier.weight(1f)
+                                ) {
+                                    androidx.compose.material3.Text(
+                                        text = "📋 Prescription Details",
+                                        color = primaryDark,
+                                        fontSize = 17.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+
+                                    Spacer(modifier = Modifier.height(3.dp))
+
+                                    androidx.compose.material3.Text(
+                                        text = "Saved prescription",
+                                        color = textSecondary,
+                                        fontSize = 10.sp
+                                    )
+                                }
+
+                                androidx.compose.material3.Text(
+                                    text = "×",
+                                    modifier = Modifier
+                                        .clickable {
+                                            selectedPrescriptionId = null
+                                        }
+                                        .padding(6.dp),
+                                    color = textSecondary,
+                                    fontSize = 22.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(14.dp))
+
+                            val detailDoctor =
+                                selectedPrescription.optString("doctorName")
+                            val detailPatient =
+                                selectedPrescription.optString("patientName")
+                            val detailDate =
+                                selectedPrescription.optString("date")
+                            val detailDiagnosis =
+                                selectedPrescription.optString("diagnosis")
+
+                            if (detailDoctor.isNotBlank()) {
+                                HealthDataRow(
+                                    title = "Doctor",
+                                    value = detailDoctor
+                                )
+                                HealthDataDivider()
+                            }
+
+                            if (detailPatient.isNotBlank()) {
+                                HealthDataRow(
+                                    title = "Patient",
+                                    value = detailPatient
+                                )
+                                HealthDataDivider()
+                            }
+
+                            if (detailDate.isNotBlank()) {
+                                HealthDataRow(
+                                    title = "Date",
+                                    value = detailDate
+                                )
+                                HealthDataDivider()
+                            }
+
+                            if (detailDiagnosis.isNotBlank()) {
+                                HealthDataRow(
+                                    title = "Diagnosis",
+                                    value = detailDiagnosis
+                                )
+                            }
+
+                            if (detailDoctor.isNotBlank() ||
+                                detailPatient.isNotBlank() ||
+                                detailDate.isNotBlank() ||
+                                detailDiagnosis.isNotBlank()
+                            ) {
+                                Spacer(modifier = Modifier.height(12.dp))
+                            }
+
+                            androidx.compose.material3.Text(
+                                text = "💊 Medicines",
+                                color = primaryDark,
+                                fontSize = 14.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            if (selectedMedicines.length() == 0) {
+                                androidx.compose.material3.Text(
+                                    text = "No medicine details saved.",
+                                    color = textSecondary,
+                                    fontSize = 11.sp
+                                )
+                            } else {
+                                for (j in 0 until selectedMedicines.length()) {
+
+                                    val medicine =
+                                        selectedMedicines.optJSONObject(j)
+                                            ?: JSONObject()
+
+                                    val name =
+                                        medicine.optString("medicineName")
+                                    val strength =
+                                        medicine.optString("strength")
+                                    val frequency =
+                                        medicine.optString("frequency")
+                                    val duration =
+                                        medicine.optString("duration")
+                                    val instructions =
+                                        medicine.optString("instructions")
+
+                                    androidx.compose.material3.Card(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(bottom = 8.dp),
+                                        shape = RoundedCornerShape(15.dp),
+                                        colors = androidx.compose.material3.CardDefaults.cardColors(
+                                            containerColor = surfaceVariant
+                                        )
+                                    ) {
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(12.dp)
+                                        ) {
+                                            androidx.compose.material3.Text(
+                                                text = "${j + 1}. ${name.ifBlank { "Medicine" }}",
+                                                color = textPrimary,
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+
+                                            if (strength.isNotBlank()) {
+                                                androidx.compose.material3.Text(
+                                                    text = "Strength: $strength",
+                                                    color = textSecondary,
+                                                    fontSize = 11.sp
+                                                )
+                                            }
+
+                                            if (frequency.isNotBlank()) {
+                                                androidx.compose.material3.Text(
+                                                    text = "Frequency / Schedule: $frequency",
+                                                    color = textSecondary,
+                                                    fontSize = 11.sp
+                                                )
+                                            }
+
+                                            if (duration.isNotBlank()) {
+                                                androidx.compose.material3.Text(
+                                                    text = "Duration: $duration",
+                                                    color = textSecondary,
+                                                    fontSize = 11.sp
+                                                )
+                                            }
+
+                                            if (instructions.isNotBlank()) {
+                                                androidx.compose.material3.Text(
+                                                    text = "Instructions: $instructions",
+                                                    color = textSecondary,
+                                                    fontSize = 11.sp,
+                                                    lineHeight = 16.sp
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            androidx.compose.material3.Text(
+                                text = "⚠ Prescription information is saved for reference. Always follow your doctor's instructions.",
+                                color = textSecondary,
+                                fontSize = 10.sp,
+                                lineHeight = 16.sp
+                            )
+
+                            Spacer(modifier = Modifier.height(12.dp))
+
+                            androidx.compose.material3.Button(
+                                onClick = {
+                                    showDeleteDialog = true
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                    containerColor = logoutBackground,
+                                    contentColor = logoutText
+                                )
+                            ) {
+                                androidx.compose.material3.Text(
+                                    text = "🗑 Delete Prescription",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(24.dp))
+                }
+            }
+
+            // =================================================
+            // DELETE CONFIRMATION
+            // =================================================
+
+            if (showDeleteDialog && selectedPrescriptionId != null) {
+
+                androidx.compose.material3.AlertDialog(
+                    onDismissRequest = {
+                        showDeleteDialog = false
+                    },
+                    title = {
+                        androidx.compose.material3.Text(
+                            text = "Delete Prescription?"
+                        )
+                    },
+                    text = {
+                        androidx.compose.material3.Text(
+                            text = "This saved prescription will be removed from My Prescriptions."
+                        )
+                    },
+                    confirmButton = {
+                        androidx.compose.material3.TextButton(
+                            onClick = {
+                                selectedPrescriptionId?.let { id ->
+                                    PrescriptionRepository.delete(
+                                        context,
+                                        id
+                                    )
+                                }
+
+                                showDeleteDialog = false
+                                selectedPrescriptionId = null
+                                refreshPrescriptions()
+                            }
+                        ) {
+                            androidx.compose.material3.Text(
+                                text = "Delete",
+                                color = logoutText,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    },
+                    dismissButton = {
+                        androidx.compose.material3.TextButton(
+                            onClick = {
+                                showDeleteDialog = false
+                            }
+                        ) {
+                            androidx.compose.material3.Text("Cancel")
+                        }
+                    }
+                )
+            }
 
             // =================================================
             // SIGN OUT
