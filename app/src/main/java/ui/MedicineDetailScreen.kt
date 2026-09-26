@@ -36,20 +36,12 @@ fun MedicineDetailScreen(
     onBackClick: () -> Unit
 ) {
 
-    // ============================================================
-    // MEDASSIST AI THEME COLORS
-    // ============================================================
-
     val primary = Color(0xFF087EA4)
     val darkBlue = Color(0xFF123A56)
     val gray = Color(0xFF71818C)
 
     val backgroundTop = Color(0xFFEAF8FC)
     val backgroundBottom = Color(0xFFD8F0F6)
-
-    // ============================================================
-    // MAIN SCREEN
-    // ============================================================
 
     Box(
         modifier = Modifier
@@ -83,31 +75,25 @@ fun MedicineDetailScreen(
                 Arrangement.spacedBy(13.dp)
         ) {
 
-            // ====================================================
             // HEADER
-            // ====================================================
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                verticalAlignment =
-                    Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically
             ) {
-
-                // BACK BUTTON
 
                 Box(
                     modifier = Modifier
                         .size(45.dp)
                         .background(
-                            color = Color.White,
-                            shape = CircleShape
+                            Color.White,
+                            CircleShape
                         )
                         .clickable {
                             onBackClick()
                         },
 
-                    contentAlignment =
-                        Alignment.Center
+                    contentAlignment = Alignment.Center
                 ) {
 
                     Text(
@@ -138,136 +124,112 @@ fun MedicineDetailScreen(
                     )
 
                     Text(
-                        text = "Educational medicine information",
+                        text = "Complete medicine information",
                         color = gray,
                         fontSize = 12.sp
                     )
                 }
+            }
 
-                // MEDICINE ICON
+            // MEDICINE NAME
 
-                Box(
-                    modifier = Modifier
-                        .size(48.dp)
-                        .background(
-                            color = Color.White,
-                            shape = CircleShape
-                        ),
+            Card(
+                modifier = Modifier.fillMaxWidth(),
 
-                    contentAlignment =
-                        Alignment.Center
+                shape =
+                    RoundedCornerShape(27.dp),
+
+                colors =
+                    CardDefaults.cardColors(
+                        containerColor = primary
+                    ),
+
+                elevation =
+                    CardDefaults.cardElevation(
+                        defaultElevation = 8.dp
+                    )
+            ) {
+
+                Column(
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(22.dp)
                 ) {
 
                     Text(
-                        text = "Rx",
-                        color = primary,
-                        fontSize = 16.sp,
+                        text = "MEDICINE NAME",
+                        color =
+                            Color.White.copy(
+                                alpha = 0.75f
+                            ),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+
+                    Spacer(
+                        modifier =
+                            Modifier.height(6.dp)
+                    )
+
+                    Text(
+                        text = medicine.name,
+                        color = Color.White,
+                        fontSize = 25.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }
             }
 
-            // ====================================================
-            // MEDICINE HERO CARD
-            // ====================================================
+            // GENERIC NAME
 
-            Card(
-                modifier = Modifier.fillMaxWidth(),
+            MedicineTextSection(
+                title = "Generic Name",
+                content =
+                    medicine.genericName.ifBlank {
+                        "Generic name information is not available in this record."
+                    },
+                primary = primary,
+                darkBlue = darkBlue,
+                gray = gray
+            )
 
-                shape = RoundedCornerShape(27.dp),
+            // USES
 
-                colors = CardDefaults.cardColors(
-                    containerColor = primary
-                ),
-
-                elevation = CardDefaults.cardElevation(
-                    defaultElevation = 8.dp
-                )
-            ) {
-
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(22.dp),
-
-                    verticalAlignment =
-                        Alignment.CenterVertically
-                ) {
-
-                    // LARGE MEDICINE ICON
-
-                    Box(
-                        modifier = Modifier
-                            .size(68.dp)
-                            .background(
-                                color =
-                                    Color.White.copy(
-                                        alpha = 0.18f
-                                    ),
-                                shape =
-                                    RoundedCornerShape(20.dp)
-                            ),
-
-                        contentAlignment =
-                            Alignment.Center
-                    ) {
-
-                        Text(
-                            text = "Rx",
-                            color = Color.White,
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-
-                    Spacer(
-                        modifier = Modifier.width(15.dp)
-                    )
-
-                    Column(
-                        modifier = Modifier.weight(1f)
-                    ) {
-
-                        Text(
-                            text = medicine.name,
-                            color = Color.White,
-                            fontSize = 23.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-
-                        Spacer(
-                            modifier = Modifier.height(5.dp)
-                        )
-
-                        Text(
-                            text = medicine.category,
-                            color =
-                                Color.White.copy(
-                                    alpha = 0.85f
-                                ),
-                            fontSize = 12.sp
-                        )
-                    }
-                }
-            }
-
-            // ====================================================
-            // GENERAL USES
-            // ====================================================
-
-            MedicineInformationSection(
-                title = "General Uses",
+            MedicineListSection(
+                title = "Uses",
                 items = medicine.uses,
                 primary = primary,
                 darkBlue = darkBlue,
                 gray = gray
             )
 
-            // ====================================================
-            // PRECAUTIONS
-            // ====================================================
+            // SIDE EFFECTS
 
-            MedicineInformationSection(
+            MedicineListSection(
+                title = "Side Effects",
+                items = medicine.commonSideEffects,
+                primary = primary,
+                darkBlue = darkBlue,
+                gray = gray
+            )
+
+            // WARNINGS
+
+            MedicineTextSection(
+                title = "Warnings",
+                content =
+                    medicine.warning.ifBlank {
+                        "Warning information is not available in this record."
+                    },
+                primary = primary,
+                darkBlue = darkBlue,
+                gray = gray
+            )
+
+            // PRECAUTIONS
+
+            MedicineListSection(
                 title = "Precautions",
                 items = medicine.precautions,
                 primary = primary,
@@ -275,118 +237,33 @@ fun MedicineDetailScreen(
                 gray = gray
             )
 
-            // ====================================================
-            // COMMON SIDE EFFECTS
-            // ====================================================
-
-            MedicineInformationSection(
-                title = "Common Side Effects",
-                items = medicine.commonSideEffects,
-                primary = primary,
-                darkBlue = darkBlue,
-                gray = gray
-            )
-
-            // ====================================================
-            // IMPORTANT INFORMATION
-            // ====================================================
+            // DISCLAIMER
 
             Card(
-                modifier = Modifier.fillMaxWidth(),
+                modifier =
+                    Modifier.fillMaxWidth(),
 
-                shape = RoundedCornerShape(21.dp),
+                shape =
+                    RoundedCornerShape(18.dp),
 
-                colors = CardDefaults.cardColors(
-                    containerColor = Color.White
-                ),
-
-                elevation = CardDefaults.cardElevation(
-                    defaultElevation = 4.dp
-                )
-            ) {
-
-                Column(
-                    modifier = Modifier.padding(18.dp)
-                ) {
-
-                    Row(
-                        verticalAlignment =
-                            Alignment.CenterVertically
-                    ) {
-
-                        Box(
-                            modifier = Modifier
-                                .size(42.dp)
-                                .background(
-                                    color = Color(0xFFFFF4E5),
-                                    shape =
-                                        RoundedCornerShape(13.dp)
-                                ),
-
-                            contentAlignment =
-                                Alignment.Center
-                        ) {
-
-                            Text(
-                                text = "!",
-                                color = Color(0xFFE39A2B),
-                                fontSize = 20.sp,
-                                fontWeight = FontWeight.Bold
+                colors =
+                    CardDefaults.cardColors(
+                        containerColor =
+                            Color.White.copy(
+                                alpha = 0.88f
                             )
-                        }
-
-                        Spacer(
-                            modifier = Modifier.width(12.dp)
-                        )
-
-                        Text(
-                            text = "Important Information",
-                            color = darkBlue,
-                            fontSize = 16.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-
-                    Spacer(
-                        modifier = Modifier.height(12.dp)
                     )
-
-                    Text(
-                        text = medicine.warning,
-                        color = gray,
-                        fontSize = 12.sp,
-                        lineHeight = 18.sp
-                    )
-                }
-            }
-
-            // ====================================================
-            // MEDICAL DISCLAIMER
-            // ====================================================
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-
-                shape = RoundedCornerShape(18.dp),
-
-                colors = CardDefaults.cardColors(
-                    containerColor =
-                        Color.White.copy(
-                            alpha = 0.88f
-                        )
-                )
             ) {
 
                 Text(
                     text =
                         "⚠ This medicine information is for educational purposes only. Do not start, stop, or change medication without appropriate professional advice.",
 
-                    modifier = Modifier.padding(16.dp),
+                    modifier =
+                        Modifier.padding(16.dp),
 
                     color = gray,
-
                     fontSize = 11.sp,
-
                     lineHeight = 17.sp
                 )
             }
@@ -395,38 +272,41 @@ fun MedicineDetailScreen(
 }
 
 
-// =================================================================
-// INFORMATION SECTION
-// =================================================================
+// ================================================================
+// TEXT INFORMATION SECTION
+// ================================================================
 
 @Composable
-private fun MedicineInformationSection(
+private fun MedicineTextSection(
     title: String,
-    items: List<String>,
+    content: String,
     primary: Color,
     darkBlue: Color,
     gray: Color
 ) {
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier =
+            Modifier.fillMaxWidth(),
 
-        shape = RoundedCornerShape(21.dp),
+        shape =
+            RoundedCornerShape(21.dp),
 
-        colors = CardDefaults.cardColors(
-            containerColor = Color.White
-        ),
+        colors =
+            CardDefaults.cardColors(
+                containerColor = Color.White
+            ),
 
-        elevation = CardDefaults.cardElevation(
-            defaultElevation = 4.dp
-        )
+        elevation =
+            CardDefaults.cardElevation(
+                defaultElevation = 4.dp
+            )
     ) {
 
         Column(
-            modifier = Modifier.padding(18.dp)
+            modifier =
+                Modifier.padding(18.dp)
         ) {
-
-            // SECTION HEADER
 
             Row(
                 verticalAlignment =
@@ -434,16 +314,18 @@ private fun MedicineInformationSection(
             ) {
 
                 Box(
-                    modifier = Modifier
-                        .size(10.dp)
-                        .background(
-                            color = primary,
-                            shape = CircleShape
-                        )
+                    modifier =
+                        Modifier
+                            .size(10.dp)
+                            .background(
+                                color = primary,
+                                shape = CircleShape
+                            )
                 )
 
                 Spacer(
-                    modifier = Modifier.width(9.dp)
+                    modifier =
+                        Modifier.width(9.dp)
                 )
 
                 Text(
@@ -455,19 +337,99 @@ private fun MedicineInformationSection(
             }
 
             Spacer(
-                modifier = Modifier.height(13.dp)
+                modifier =
+                    Modifier.height(13.dp)
             )
 
-            // ITEMS
+            Text(
+                text = content,
+                color = gray,
+                fontSize = 13.sp,
+                lineHeight = 20.sp
+            )
+        }
+    }
+}
+
+
+// ================================================================
+// LIST INFORMATION SECTION
+// ================================================================
+
+@Composable
+private fun MedicineListSection(
+    title: String,
+    items: List<String>,
+    primary: Color,
+    darkBlue: Color,
+    gray: Color
+) {
+
+    Card(
+        modifier =
+            Modifier.fillMaxWidth(),
+
+        shape =
+            RoundedCornerShape(21.dp),
+
+        colors =
+            CardDefaults.cardColors(
+                containerColor = Color.White
+            ),
+
+        elevation =
+            CardDefaults.cardElevation(
+                defaultElevation = 4.dp
+            )
+    ) {
+
+        Column(
+            modifier =
+                Modifier.padding(18.dp)
+        ) {
+
+            Row(
+                verticalAlignment =
+                    Alignment.CenterVertically
+            ) {
+
+                Box(
+                    modifier =
+                        Modifier
+                            .size(10.dp)
+                            .background(
+                                color = primary,
+                                shape = CircleShape
+                            )
+                )
+
+                Spacer(
+                    modifier =
+                        Modifier.width(9.dp)
+                )
+
+                Text(
+                    text = title,
+                    color = darkBlue,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold
+                )
+            }
+
+            Spacer(
+                modifier =
+                    Modifier.height(13.dp)
+            )
 
             items.forEach { item ->
 
                 Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(
-                            bottom = 9.dp
-                        ),
+                    modifier =
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(
+                                bottom = 9.dp
+                            ),
 
                     verticalAlignment =
                         Alignment.Top
@@ -481,7 +443,8 @@ private fun MedicineInformationSection(
                     )
 
                     Spacer(
-                        modifier = Modifier.width(9.dp)
+                        modifier =
+                            Modifier.width(9.dp)
                     )
 
                     Text(
@@ -489,7 +452,8 @@ private fun MedicineInformationSection(
                         color = gray,
                         fontSize = 13.sp,
                         lineHeight = 19.sp,
-                        modifier = Modifier.weight(1f)
+                        modifier =
+                            Modifier.weight(1f)
                     )
                 }
             }

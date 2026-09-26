@@ -1,5 +1,6 @@
 package ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -11,8 +12,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -24,6 +27,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -32,9 +36,16 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ai_based_medical_chatbot.R
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 data class Medicine(
     val name: String,
@@ -42,112 +53,86 @@ data class Medicine(
     val uses: List<String>,
     val precautions: List<String>,
     val commonSideEffects: List<String>,
-    val warning: String
+    val warning: String,
+    val genericName: String = ""
 )
 
-private val medicines = listOf(
+private fun MedicineRecord.toMedicine(): Medicine {
 
-    Medicine(
-        name = "Paracetamol",
-        category = "Pain reliever / Fever reducer",
-        uses = listOf(
-            "Fever",
-            "Mild to moderate pain",
-            "Headache"
-        ),
-        precautions = listOf(
-            "Do not exceed the recommended amount.",
-            "Check other medicines for paracetamol content.",
-            "People with liver problems should seek professional advice."
-        ),
-        commonSideEffects = listOf(
-            "Usually well tolerated when used appropriately."
-        ),
-        warning = "This information is educational and does not replace professional medical advice."
-    ),
+    val useList = uses
+        .split("\n")
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .take(8)
 
-    Medicine(
-        name = "Ibuprofen",
-        category = "Pain reliever / Anti-inflammatory",
-        uses = listOf(
-            "Mild to moderate pain",
-            "Inflammation",
-            "Fever"
-        ),
-        precautions = listOf(
-            "May not be suitable for people with certain stomach or kidney conditions.",
-            "Take only according to the product label or professional advice.",
-            "Check for interactions with other medicines."
-        ),
-        commonSideEffects = listOf(
-            "Stomach discomfort",
-            "Nausea",
-            "Indigestion"
-        ),
-        warning = "This information is educational and does not replace professional medical advice."
-    ),
+    val precautionList = precautions
+        .split("\n")
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .take(8)
 
-    Medicine(
-        name = "Cetirizine",
-        category = "Antihistamine",
-        uses = listOf(
-            "Allergy symptoms",
-            "Sneezing",
-            "Runny nose",
-            "Itching"
-        ),
-        precautions = listOf(
-            "May cause drowsiness in some people.",
-            "Avoid activities requiring alertness if you feel drowsy.",
-            "Check with a healthcare professional if taking other medicines."
-        ),
-        commonSideEffects = listOf(
-            "Drowsiness",
-            "Dry mouth",
-            "Tiredness"
-        ),
-        warning = "This information is educational and does not replace professional medical advice."
-    ),
+    val sideEffectList = sideEffects
+        .split("\n")
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .take(8)
 
-    Medicine(
-        name = "Omeprazole",
-        category = "Acid-reducing medicine",
-        uses = listOf(
-            "Heartburn",
-            "Acid reflux",
-            "Certain stomach acid conditions"
-        ),
-        precautions = listOf(
-            "Use according to the product label or professional advice.",
-            "Long-term use should be discussed with a healthcare professional.",
-            "Tell your healthcare professional about other medicines you take."
-        ),
-        commonSideEffects = listOf(
-            "Headache",
-            "Stomach discomfort",
-            "Nausea"
-        ),
-        warning = "This information is educational and does not replace professional medical advice."
-    ),
-
-    Medicine(
-        name = "ORS",
-        category = "Oral Rehydration Solution",
-        uses = listOf(
-            "Helps replace fluids and electrolytes.",
-            "Dehydration associated with diarrhea or vomiting."
-        ),
-        precautions = listOf(
-            "Prepare according to the instructions on the packet.",
-            "Use clean water when preparing the solution.",
-            "Seek medical help for severe dehydration."
-        ),
-        commonSideEffects = listOf(
-            "Generally well tolerated when prepared and used correctly."
-        ),
-        warning = "This information is educational and does not replace professional medical advice."
+    return Medicine(
+        name = name.ifBlank {
+            generic.ifBlank {
+                brand.ifBlank {
+                    "Unknown Medicine"
+                }
+            }
+        },
+        category = drugClass.ifBlank {
+            "Medicine"
+        },
+        uses = useList.ifEmpty {
+            listOf(
+                "Uses information is not available in this record."
+            )
+        },
+        precautions = precautionList.ifEmpty {
+            listOf(
+                "Check the official product label or consult a qualified healthcare professional."
+            )
+        },
+        commonSideEffects = sideEffectList.ifEmpty {
+            listOf(
+                "Side-effect information is not available in this record."
+            )
+        },
+        warning = warnings.ifBlank {
+            "This information is educational and does not replace professional medical advice."
+        },
+        genericName = generic
     )
-)
+}
+
+private suspend fun loadMedicineResults(
+    context: android.content.Context,
+    query: String
+): List<MedicineRecord> {
+
+    return withContext(Dispatchers.IO) {
+
+        if (query.isBlank()) {
+
+            MedicineRepository
+                .getMedicines(context)
+                .take(20)
+
+        } else {
+
+            MedicineRepository.searchMedicines(
+                context = context,
+                query = query,
+                limit = 20
+            )
+        }
+    }
+}
 
 @Composable
 fun MedicineInfoScreen(
@@ -155,21 +140,47 @@ fun MedicineInfoScreen(
     onMedicineClick: (Medicine) -> Unit
 ) {
 
+    val context = LocalContext.current
+
     var searchQuery by remember {
         mutableStateOf("")
     }
 
-    val filteredMedicines = medicines.filter { medicine ->
+    var searchResults by remember {
+        mutableStateOf<List<MedicineRecord>>(emptyList())
+    }
 
-        medicine.name.contains(
-            searchQuery,
-            ignoreCase = true
-        ) ||
+    var isSearching by remember {
+        mutableStateOf(true)
+    }
 
-                medicine.category.contains(
-                    searchQuery,
-                    ignoreCase = true
-                )
+    /*
+     * Search is delayed by 300 ms so that the database
+     * is not searched for every character typed.
+     *
+     * The actual medicine search runs on Dispatchers.IO,
+     * keeping the Compose UI thread responsive.
+     */
+    LaunchedEffect(searchQuery) {
+
+        isSearching = true
+
+        delay(300)
+
+        val results = loadMedicineResults(
+            context = context,
+            query = searchQuery
+        )
+
+        searchResults = results
+
+        isSearching = false
+    }
+
+    val filteredMedicines = remember(searchResults) {
+        searchResults.map {
+            it.toMedicine()
+        }
     }
 
     val primary = Color(0xFF087EA4)
@@ -190,7 +201,10 @@ fun MedicineInfoScreen(
     ) {
 
         LazyColumn(
-            modifier = Modifier.fillMaxSize(),
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding(),
 
             contentPadding = PaddingValues(
                 start = 20.dp,
@@ -203,7 +217,9 @@ fun MedicineInfoScreen(
                 Arrangement.spacedBy(12.dp)
         ) {
 
+            // =====================================================
             // HEADER
+            // =====================================================
 
             item {
 
@@ -238,7 +254,8 @@ fun MedicineInfoScreen(
                     }
 
                     Spacer(
-                        modifier = Modifier.width(12.dp)
+                        modifier =
+                            Modifier.width(12.dp)
                     )
 
                     Column {
@@ -264,7 +281,7 @@ fun MedicineInfoScreen(
 
                         Text(
                             text =
-                                "Explore common medicine information",
+                                "Search medicines by name, generic or brand",
 
                             color =
                                 gray,
@@ -276,7 +293,9 @@ fun MedicineInfoScreen(
                 }
             }
 
-            // SEARCH CARD
+            // =====================================================
+            // SEARCH
+            // =====================================================
 
             item {
 
@@ -304,8 +323,8 @@ fun MedicineInfoScreen(
                         value =
                             searchQuery,
 
-                        onValueChange = {
-                            searchQuery = it
+                        onValueChange = { value ->
+                            searchQuery = value
                         },
 
                         modifier =
@@ -316,9 +335,10 @@ fun MedicineInfoScreen(
                         singleLine = true,
 
                         placeholder = {
+
                             Text(
                                 text =
-                                    "Search medicines..."
+                                    "Search any medicine..."
                             )
                         },
 
@@ -328,7 +348,8 @@ fun MedicineInfoScreen(
                                 text = "⌕",
                                 color =
                                     primary,
-                                fontSize = 27.sp
+                                fontSize =
+                                    27.sp
                             )
                         },
 
@@ -337,6 +358,18 @@ fun MedicineInfoScreen(
 
                         colors =
                             OutlinedTextFieldDefaults.colors(
+
+                                focusedTextColor =
+                                    darkBlue,
+
+                                unfocusedTextColor =
+                                    darkBlue,
+
+                                focusedPlaceholderColor =
+                                    gray,
+
+                                unfocusedPlaceholderColor =
+                                    gray,
 
                                 focusedBorderColor =
                                     primary,
@@ -351,7 +384,9 @@ fun MedicineInfoScreen(
                 }
             }
 
+            // =====================================================
             // INTRO CARD
+            // =====================================================
 
             item {
 
@@ -390,21 +425,28 @@ fun MedicineInfoScreen(
                                         Color.White.copy(
                                             alpha = 0.18f
                                         ),
-                                        RoundedCornerShape(
-                                            17.dp
-                                        )
+                                        RoundedCornerShape(17.dp)
                                     ),
 
                             contentAlignment =
                                 Alignment.Center
                         ) {
 
-                            Text(
-                                text = "Rx",
-                                color = Color.White,
-                                fontSize = 22.sp,
-                                fontWeight =
-                                    FontWeight.Bold
+                            Image(
+                                painter =
+                                    painterResource(
+                                        id =
+                                            R.drawable.medassist_logo
+                                    ),
+
+                                contentDescription =
+                                    "MEDASSIST AI",
+
+                                modifier =
+                                    Modifier.size(42.dp),
+
+                                contentScale =
+                                    ContentScale.Fit
                             )
                         }
 
@@ -417,7 +459,7 @@ fun MedicineInfoScreen(
 
                             Text(
                                 text =
-                                    "Common Medicines",
+                                    "Universal Medicine Search",
 
                                 color =
                                     Color.White,
@@ -436,7 +478,7 @@ fun MedicineInfoScreen(
 
                             Text(
                                 text =
-                                    "Tap a medicine to view detailed information.",
+                                    "Search across the MEDASSIST medicine database.",
 
                                 color =
                                     Color.White.copy(
@@ -451,36 +493,135 @@ fun MedicineInfoScreen(
                 }
             }
 
+            // =====================================================
             // SECTION TITLE
+            // =====================================================
 
             item {
 
-                Text(
-                    text =
-                        if (searchQuery.isBlank())
-                            "Available Medicines"
-                        else
-                            "Search Results",
-
-                    color =
-                        darkBlue,
-
-                    fontSize =
-                        19.sp,
-
-                    fontWeight =
-                        FontWeight.Bold,
-
+                Column(
                     modifier =
-                        Modifier.padding(
-                            top = 3.dp
-                        )
-                )
+                        Modifier
+                            .fillMaxWidth()
+                            .padding(top = 3.dp)
+                ) {
+
+                    Text(
+                        text =
+                            if (searchQuery.isBlank()) {
+                                "Available Medicines"
+                            } else {
+                                "Search Results"
+                            },
+
+                        color =
+                            darkBlue,
+
+                        fontSize =
+                            19.sp,
+
+                        fontWeight =
+                            FontWeight.Bold
+                    )
+
+                    Spacer(
+                        modifier =
+                            Modifier.height(3.dp)
+                    )
+
+                    val resultText =
+                        if (isSearching) {
+                            "Searching medicines..."
+                        } else if (searchQuery.isBlank()) {
+                            "Showing ${filteredMedicines.size} medicines"
+                        } else {
+                            "${filteredMedicines.size} result${
+                                if (filteredMedicines.size == 1) {
+                                    ""
+                                } else {
+                                    "s"
+                                }
+                            } found"
+                        }
+
+                    Text(
+                        text = resultText,
+                        color = gray,
+                        fontSize = 12.sp
+                    )
+                }
             }
 
-            // MEDICINES
+            // =====================================================
+            // SEARCHING
+            // =====================================================
 
-            if (filteredMedicines.isEmpty()) {
+            if (isSearching) {
+
+                item {
+
+                    Card(
+                        modifier =
+                            Modifier.fillMaxWidth(),
+
+                        shape =
+                            RoundedCornerShape(20.dp),
+
+                        colors =
+                            CardDefaults.cardColors(
+                                containerColor =
+                                    Color.White
+                            )
+                    ) {
+
+                        Column(
+                            modifier =
+                                Modifier
+                                    .fillMaxWidth()
+                                    .padding(25.dp),
+
+                            horizontalAlignment =
+                                Alignment.CenterHorizontally
+                        ) {
+
+                            Text(
+                                text =
+                                    "Searching...",
+
+                                color =
+                                    primary,
+
+                                fontSize =
+                                    15.sp,
+
+                                fontWeight =
+                                    FontWeight.SemiBold
+                            )
+
+                            Spacer(
+                                modifier =
+                                    Modifier.height(5.dp)
+                            )
+
+                            Text(
+                                text =
+                                    "Finding matching medicines",
+
+                                color =
+                                    gray,
+
+                                fontSize =
+                                    12.sp
+                            )
+                        }
+                    }
+                }
+
+            } else if (filteredMedicines.isEmpty()) {
+
+                // =================================================
+                // NO RESULTS
+                // =================================================
 
                 item {
 
@@ -510,8 +651,10 @@ fun MedicineInfoScreen(
 
                             Text(
                                 text = "⌕",
+
                                 color =
                                     primary,
+
                                 fontSize =
                                     35.sp
                             )
@@ -542,7 +685,7 @@ fun MedicineInfoScreen(
 
                             Text(
                                 text =
-                                    "Try another medicine name.",
+                                    "Try the generic name, brand name or another spelling.",
 
                                 color =
                                     gray,
@@ -556,24 +699,27 @@ fun MedicineInfoScreen(
 
             } else {
 
+                // =================================================
+                // RESULTS
+                // =================================================
+
                 items(
-                    filteredMedicines
+                    items = filteredMedicines
                 ) { medicine ->
 
                     MedicineCard(
-                        medicine =
-                            medicine,
+                        medicine = medicine,
 
                         onClick = {
-                            onMedicineClick(
-                                medicine
-                            )
+                            onMedicineClick(medicine)
                         }
                     )
                 }
             }
 
+            // =====================================================
             // DISCLAIMER
+            // =====================================================
 
             item {
 
@@ -614,6 +760,10 @@ fun MedicineInfoScreen(
         }
     }
 }
+
+// =============================================================
+// MEDICINE CARD
+// =============================================================
 
 @Composable
 private fun MedicineCard(
@@ -677,11 +827,14 @@ private fun MedicineCard(
             ) {
 
                 Text(
-                    text = "Rx",
+                    text = "✚",
+
                     color =
                         primary,
+
                     fontSize =
-                        17.sp,
+                        22.sp,
+
                     fontWeight =
                         FontWeight.Bold
                 )
@@ -708,7 +861,9 @@ private fun MedicineCard(
                         16.sp,
 
                     fontWeight =
-                        FontWeight.Bold
+                        FontWeight.Bold,
+
+                    maxLines = 2
                 )
 
                 Spacer(
@@ -724,14 +879,18 @@ private fun MedicineCard(
                         gray,
 
                     fontSize =
-                        12.sp
+                        12.sp,
+
+                    maxLines = 2
                 )
             }
 
             Text(
                 text = "›",
+
                 color =
                     primary,
+
                 fontSize =
                     30.sp
             )

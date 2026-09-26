@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -76,25 +77,25 @@ fun DashboardScreen(
     // =========================================================
 
     val backgroundTop =
-        Color(0xFF080D18)
+        Color(0xFFEAF8FC)
 
     val backgroundBottom =
-        Color(0xFF0D1422)
+        Color(0xFFD8F0F6)
 
     val primaryBlue =
-        Color(0xFF4F7CFF)
+        Color(0xFF087EA4)
 
     val darkBlue =
-        Color(0xFFF8FAFC)
+        Color(0xFF123A56)
 
     val textDark =
-        Color(0xFFF8FAFC)
+        Color(0xFF163247)
 
     val textGray =
-        Color(0xFF94A3B8)
+        Color(0xFF71818C)
 
     val lightBlue =
-        Color(0xFF16233A)
+        Color(0xFFE8F7FB)
 
 
     // =========================================================
@@ -130,7 +131,7 @@ fun DashboardScreen(
                     .align(Alignment.TopEnd)
                     .background(
                         color =
-                            Color(0x224F7CFF),
+                            Color(0x22087EA4),
 
                         shape =
                             CircleShape
@@ -150,7 +151,7 @@ fun DashboardScreen(
                     .align(Alignment.BottomStart)
                     .background(
                         color =
-                            Color(0x184F7CFF),
+                            Color(0x18087EA4),
 
                         shape =
                             CircleShape
@@ -305,7 +306,7 @@ fun DashboardScreen(
                                     )
                                     .background(
                                         color =
-                                            Color(0xFF111A2A),
+                                            Color.White,
 
                                         shape =
                                             CircleShape
@@ -390,7 +391,7 @@ fun DashboardScreen(
                         colors =
                             CardDefaults.cardColors(
                                 containerColor =
-                                    Color(0xFF111A2A)
+                                    Color.White
                             ),
 
                         elevation =
@@ -1056,7 +1057,7 @@ fun DashboardScreen(
                         colors =
                             CardDefaults.cardColors(
                                 containerColor =
-                                    Color(0xFF111A2A).copy(
+                                    Color.White.copy(
                                         alpha = 0.88f
                                     )
                             )
@@ -1151,7 +1152,7 @@ fun DashboardScreen(
                             Modifier.fillMaxWidth(),
 
                         color =
-                            Color(0xFF64748B),
+                            Color(0xFF5D7E8B),
 
                         fontSize =
                             10.sp,
@@ -1235,7 +1236,7 @@ private fun DashboardServiceCard(
                         .size(54.dp)
                         .background(
                             color =
-                                Color(0xFF16233A),
+                                Color(0xFFE8F7FB),
 
                             shape =
                                 RoundedCornerShape(17.dp)
@@ -1265,7 +1266,7 @@ private fun DashboardServiceCard(
                     title,
 
                 color =
-                    Color(0xFFF8FAFC),
+                    Color(0xFF163247),
 
                 fontSize =
                     15.sp,
@@ -1294,7 +1295,7 @@ private fun DashboardServiceCard(
                     subtitle,
 
                 color =
-                    Color(0xFF94A3B8),
+                    Color(0xFF71818C),
 
                 fontSize =
                     11.sp,

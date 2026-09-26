@@ -1,0 +1,819 @@
+{
+  "version": "1.0",
+  "description": "Small educational symptom-to-condition dataset for MEDASSIST AI rule-based symptom checker.",
+  "disclaimer": "This dataset is for educational screening support only. It is not a medical diagnosis and should not replace a qualified healthcare professional.",
+  "symptoms": [
+    {
+      "id": 1,
+      "name": "acidic taste"
+    },
+    {
+      "id": 2,
+      "name": "anxiety"
+    },
+    {
+      "id": 3,
+      "name": "back pain"
+    },
+    {
+      "id": 4,
+      "name": "blisters"
+    },
+    {
+      "id": 5,
+      "name": "bloating"
+    },
+    {
+      "id": 6,
+      "name": "blood in urine"
+    },
+    {
+      "id": 7,
+      "name": "blurred vision"
+    },
+    {
+      "id": 8,
+      "name": "body pain"
+    },
+    {
+      "id": 9,
+      "name": "bone pain"
+    },
+    {
+      "id": 10,
+      "name": "burning urination"
+    },
+    {
+      "id": 11,
+      "name": "chest discomfort"
+    },
+    {
+      "id": 12,
+      "name": "chest pain"
+    },
+    {
+      "id": 13,
+      "name": "chest tightness"
+    },
+    {
+      "id": 14,
+      "name": "chills"
+    },
+    {
+      "id": 15,
+      "name": "cloudy urine"
+    },
+    {
+      "id": 16,
+      "name": "cold intolerance"
+    },
+    {
+      "id": 17,
+      "name": "confusion"
+    },
+    {
+      "id": 18,
+      "name": "constipation"
+    },
+    {
+      "id": 19,
+      "name": "cough"
+    },
+    {
+      "id": 20,
+      "name": "dark urine"
+    },
+    {
+      "id": 21,
+      "name": "dehydration"
+    },
+    {
+      "id": 22,
+      "name": "diarrhea"
+    },
+    {
+      "id": 23,
+      "name": "difficulty swallowing"
+    },
+    {
+      "id": 24,
+      "name": "dizziness"
+    },
+    {
+      "id": 25,
+      "name": "dry cough"
+    },
+    {
+      "id": 26,
+      "name": "dry mouth"
+    },
+    {
+      "id": 27,
+      "name": "dry skin"
+    },
+    {
+      "id": 28,
+      "name": "ear discharge"
+    },
+    {
+      "id": 29,
+      "name": "ear pain"
+    },
+    {
+      "id": 30,
+      "name": "excessive thirst"
+    },
+    {
+      "id": 31,
+      "name": "eye discharge"
+    },
+    {
+      "id": 32,
+      "name": "eye irritation"
+    },
+    {
+      "id": 33,
+      "name": "eye strain"
+    },
+    {
+      "id": 34,
+      "name": "facial pain"
+    },
+    {
+      "id": 35,
+      "name": "fast heartbeat"
+    },
+    {
+      "id": 36,
+      "name": "fatigue"
+    },
+    {
+      "id": 37,
+      "name": "fever"
+    },
+    {
+      "id": 38,
+      "name": "frequent urination"
+    },
+    {
+      "id": 39,
+      "name": "gas"
+    },
+    {
+      "id": 40,
+      "name": "hard stool"
+    },
+    {
+      "id": 41,
+      "name": "headache"
+    },
+    {
+      "id": 42,
+      "name": "hearing difficulty"
+    },
+    {
+      "id": 43,
+      "name": "heartburn"
+    },
+    {
+      "id": 44,
+      "name": "heat intolerance"
+    },
+    {
+      "id": 45,
+      "name": "high fever"
+    },
+    {
+      "id": 46,
+      "name": "increased hunger"
+    },
+    {
+      "id": 47,
+      "name": "itchy eyes"
+    },
+    {
+      "id": 48,
+      "name": "itchy nose"
+    },
+    {
+      "id": 49,
+      "name": "itchy rash"
+    },
+    {
+      "id": 50,
+      "name": "itchy skin"
+    },
+    {
+      "id": 51,
+      "name": "loss of appetite"
+    },
+    {
+      "id": 52,
+      "name": "loss of taste or smell"
+    },
+    {
+      "id": 53,
+      "name": "low mood"
+    },
+    {
+      "id": 54,
+      "name": "lower abdominal pain"
+    },
+    {
+      "id": 55,
+      "name": "mild fever"
+    },
+    {
+      "id": 56,
+      "name": "mild headache"
+    },
+    {
+      "id": 57,
+      "name": "mucus"
+    },
+    {
+      "id": 58,
+      "name": "muscle weakness"
+    },
+    {
+      "id": 59,
+      "name": "nasal congestion"
+    },
+    {
+      "id": 60,
+      "name": "nausea"
+    },
+    {
+      "id": 61,
+      "name": "neck pain"
+    },
+    {
+      "id": 62,
+      "name": "neck swelling"
+    },
+    {
+      "id": 63,
+      "name": "night cough"
+    },
+    {
+      "id": 64,
+      "name": "nosebleed"
+    },
+    {
+      "id": 65,
+      "name": "pain behind eyes"
+    },
+    {
+      "id": 66,
+      "name": "painful urination"
+    },
+    {
+      "id": 67,
+      "name": "pale skin"
+    },
+    {
+      "id": 68,
+      "name": "postnasal drip"
+    },
+    {
+      "id": 69,
+      "name": "rash"
+    },
+    {
+      "id": 70,
+      "name": "red eyes"
+    },
+    {
+      "id": 71,
+      "name": "red skin"
+    },
+    {
+      "id": 72,
+      "name": "regurgitation"
+    },
+    {
+      "id": 73,
+      "name": "runny nose"
+    },
+    {
+      "id": 74,
+      "name": "sensitivity to light"
+    },
+    {
+      "id": 75,
+      "name": "sensitivity to sound"
+    },
+    {
+      "id": 76,
+      "name": "severe headache"
+    },
+    {
+      "id": 77,
+      "name": "severe side pain"
+    },
+    {
+      "id": 78,
+      "name": "shaking"
+    },
+    {
+      "id": 79,
+      "name": "shortness of breath"
+    },
+    {
+      "id": 80,
+      "name": "shoulder pain"
+    },
+    {
+      "id": 81,
+      "name": "skin rash"
+    },
+    {
+      "id": 82,
+      "name": "skin swelling"
+    },
+    {
+      "id": 83,
+      "name": "slow heart rate"
+    },
+    {
+      "id": 84,
+      "name": "slow wound healing"
+    },
+    {
+      "id": 85,
+      "name": "sneezing"
+    },
+    {
+      "id": 86,
+      "name": "sore throat"
+    },
+    {
+      "id": 87,
+      "name": "stomach pain"
+    },
+    {
+      "id": 88,
+      "name": "straining during bowel movement"
+    },
+    {
+      "id": 89,
+      "name": "sweating"
+    },
+    {
+      "id": 90,
+      "name": "swollen neck glands"
+    },
+    {
+      "id": 91,
+      "name": "swollen tonsils"
+    },
+    {
+      "id": 92,
+      "name": "thirst"
+    },
+    {
+      "id": 93,
+      "name": "tremor"
+    },
+    {
+      "id": 94,
+      "name": "urgent urination"
+    },
+    {
+      "id": 95,
+      "name": "vomiting"
+    },
+    {
+      "id": 96,
+      "name": "watery eyes"
+    },
+    {
+      "id": 97,
+      "name": "weakness"
+    },
+    {
+      "id": 98,
+      "name": "weight gain"
+    },
+    {
+      "id": 99,
+      "name": "weight loss"
+    },
+    {
+      "id": 100,
+      "name": "wheezing"
+    }
+  ],
+  "conditions": [
+    {
+      "id": 1,
+      "name": "Common Cold",
+      "symptoms": [
+        "runny nose",
+        "sneezing",
+        "nasal congestion",
+        "sore throat",
+        "cough",
+        "mild headache",
+        "fatigue"
+      ]
+    },
+    {
+      "id": 2,
+      "name": "Influenza (Flu)",
+      "symptoms": [
+        "fever",
+        "chills",
+        "dry cough",
+        "sore throat",
+        "body pain",
+        "headache",
+        "fatigue"
+      ]
+    },
+    {
+      "id": 3,
+      "name": "COVID-19",
+      "symptoms": [
+        "fever",
+        "cough",
+        "sore throat",
+        "fatigue",
+        "headache",
+        "body pain",
+        "loss of taste or smell"
+      ]
+    },
+    {
+      "id": 4,
+      "name": "Allergic Rhinitis",
+      "symptoms": [
+        "sneezing",
+        "runny nose",
+        "nasal congestion",
+        "itchy nose",
+        "itchy eyes",
+        "watery eyes"
+      ]
+    },
+    {
+      "id": 5,
+      "name": "Sinusitis",
+      "symptoms": [
+        "facial pain",
+        "nasal congestion",
+        "runny nose",
+        "headache",
+        "postnasal drip",
+        "sore throat"
+      ]
+    },
+    {
+      "id": 6,
+      "name": "Tonsillitis",
+      "symptoms": [
+        "sore throat",
+        "fever",
+        "difficulty swallowing",
+        "swollen tonsils",
+        "neck swelling"
+      ]
+    },
+    {
+      "id": 7,
+      "name": "Pharyngitis",
+      "symptoms": [
+        "sore throat",
+        "fever",
+        "difficulty swallowing",
+        "headache",
+        "swollen neck glands"
+      ]
+    },
+    {
+      "id": 8,
+      "name": "Bronchitis",
+      "symptoms": [
+        "cough",
+        "mucus",
+        "chest discomfort",
+        "fatigue",
+        "mild fever",
+        "shortness of breath"
+      ]
+    },
+    {
+      "id": 9,
+      "name": "Asthma",
+      "symptoms": [
+        "shortness of breath",
+        "wheezing",
+        "chest tightness",
+        "cough",
+        "night cough"
+      ]
+    },
+    {
+      "id": 10,
+      "name": "Pneumonia",
+      "symptoms": [
+        "fever",
+        "cough",
+        "mucus",
+        "shortness of breath",
+        "chest pain",
+        "chills",
+        "fatigue"
+      ]
+    },
+    {
+      "id": 11,
+      "name": "Gastroenteritis",
+      "symptoms": [
+        "nausea",
+        "vomiting",
+        "diarrhea",
+        "stomach pain",
+        "fever",
+        "dehydration"
+      ]
+    },
+    {
+      "id": 12,
+      "name": "Food Poisoning",
+      "symptoms": [
+        "nausea",
+        "vomiting",
+        "diarrhea",
+        "stomach pain",
+        "fever",
+        "weakness"
+      ]
+    },
+    {
+      "id": 13,
+      "name": "Acid Reflux (GERD)",
+      "symptoms": [
+        "heartburn",
+        "acidic taste",
+        "chest discomfort",
+        "regurgitation",
+        "sore throat"
+      ]
+    },
+    {
+      "id": 14,
+      "name": "Gastritis",
+      "symptoms": [
+        "stomach pain",
+        "nausea",
+        "vomiting",
+        "bloating",
+        "loss of appetite",
+        "heartburn"
+      ]
+    },
+    {
+      "id": 15,
+      "name": "Migraine",
+      "symptoms": [
+        "severe headache",
+        "nausea",
+        "vomiting",
+        "sensitivity to light",
+        "sensitivity to sound",
+        "dizziness"
+      ]
+    },
+    {
+      "id": 16,
+      "name": "Tension Headache",
+      "symptoms": [
+        "headache",
+        "neck pain",
+        "shoulder pain",
+        "fatigue",
+        "eye strain"
+      ]
+    },
+    {
+      "id": 17,
+      "name": "Dehydration",
+      "symptoms": [
+        "thirst",
+        "dry mouth",
+        "dizziness",
+        "weakness",
+        "headache",
+        "dark urine"
+      ]
+    },
+    {
+      "id": 18,
+      "name": "Constipation",
+      "symptoms": [
+        "constipation",
+        "hard stool",
+        "stomach pain",
+        "bloating",
+        "straining during bowel movement"
+      ]
+    },
+    {
+      "id": 19,
+      "name": "Irritable Bowel Syndrome (IBS)",
+      "symptoms": [
+        "stomach pain",
+        "bloating",
+        "diarrhea",
+        "constipation",
+        "gas"
+      ]
+    },
+    {
+      "id": 20,
+      "name": "Urinary Tract Infection (UTI)",
+      "symptoms": [
+        "burning urination",
+        "frequent urination",
+        "urgent urination",
+        "lower abdominal pain",
+        "cloudy urine"
+      ]
+    },
+    {
+      "id": 21,
+      "name": "Kidney Stone",
+      "symptoms": [
+        "severe side pain",
+        "back pain",
+        "blood in urine",
+        "nausea",
+        "vomiting",
+        "painful urination"
+      ]
+    },
+    {
+      "id": 22,
+      "name": "Anemia",
+      "symptoms": [
+        "fatigue",
+        "weakness",
+        "dizziness",
+        "pale skin",
+        "shortness of breath",
+        "headache"
+      ]
+    },
+    {
+      "id": 23,
+      "name": "Vitamin D Deficiency",
+      "symptoms": [
+        "fatigue",
+        "bone pain",
+        "muscle weakness",
+        "body pain",
+        "low mood"
+      ]
+    },
+    {
+      "id": 24,
+      "name": "Hypothyroidism",
+      "symptoms": [
+        "fatigue",
+        "weight gain",
+        "cold intolerance",
+        "dry skin",
+        "constipation",
+        "slow heart rate"
+      ]
+    },
+    {
+      "id": 25,
+      "name": "Hyperthyroidism",
+      "symptoms": [
+        "weight loss",
+        "fast heartbeat",
+        "sweating",
+        "tremor",
+        "anxiety",
+        "heat intolerance"
+      ]
+    },
+    {
+      "id": 26,
+      "name": "Hypertension",
+      "symptoms": [
+        "headache",
+        "dizziness",
+        "blurred vision",
+        "nosebleed"
+      ]
+    },
+    {
+      "id": 27,
+      "name": "Type 2 Diabetes",
+      "symptoms": [
+        "frequent urination",
+        "excessive thirst",
+        "increased hunger",
+        "fatigue",
+        "blurred vision",
+        "slow wound healing"
+      ]
+    },
+    {
+      "id": 28,
+      "name": "Dengue",
+      "symptoms": [
+        "high fever",
+        "severe headache",
+        "body pain",
+        "pain behind eyes",
+        "nausea",
+        "rash"
+      ]
+    },
+    {
+      "id": 29,
+      "name": "Malaria",
+      "symptoms": [
+        "fever",
+        "chills",
+        "sweating",
+        "headache",
+        "body pain",
+        "nausea",
+        "weakness"
+      ]
+    },
+    {
+      "id": 30,
+      "name": "Chickenpox",
+      "symptoms": [
+        "fever",
+        "itchy rash",
+        "blisters",
+        "fatigue",
+        "headache"
+      ]
+    },
+    {
+      "id": 31,
+      "name": "Dermatitis",
+      "symptoms": [
+        "itchy skin",
+        "red skin",
+        "skin rash",
+        "dry skin",
+        "skin swelling"
+      ]
+    },
+    {
+      "id": 32,
+      "name": "Conjunctivitis",
+      "symptoms": [
+        "red eyes",
+        "itchy eyes",
+        "watery eyes",
+        "eye discharge",
+        "eye irritation"
+      ]
+    },
+    {
+      "id": 33,
+      "name": "Ear Infection",
+      "symptoms": [
+        "ear pain",
+        "fever",
+        "hearing difficulty",
+        "ear discharge",
+        "dizziness"
+      ]
+    },
+    {
+      "id": 34,
+      "name": "Low Blood Sugar",
+      "symptoms": [
+        "sweating",
+        "shaking",
+        "dizziness",
+        "weakness",
+        "confusion",
+        "fast heartbeat"
+      ]
+    },
+    {
+      "id": 35,
+      "name": "Common Cold and Flu-like Illness",
+      "symptoms": [
+        "fever",
+        "cough",
+        "sore throat",
+        "runny nose",
+        "body pain",
+        "fatigue"
+      ]
+    }
+  ]
+}

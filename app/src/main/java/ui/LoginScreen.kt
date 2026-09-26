@@ -1,7 +1,5 @@
 package ui
 
-import android.content.Context
-
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
@@ -24,8 +22,6 @@ import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -39,10 +35,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.shadow
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
@@ -68,17 +62,6 @@ fun LoginScreen(
         mutableStateOf("")
     }
 
-    // Recent email suggestions. These are stored locally on the device.
-    val context = LocalContext.current
-
-    var recentEmails by remember {
-        mutableStateOf(loadRecentEmails(context))
-    }
-
-    var emailFieldFocused by remember {
-        mutableStateOf(false)
-    }
-
     var password by remember {
         mutableStateOf("")
     }
@@ -100,27 +83,21 @@ fun LoginScreen(
     // COLORS
     // =========================================================
 
-    // =========================================================
-    // MIDNIGHT AI PREMIUM PALETTE
-    // =========================================================
+    val backgroundTop = Color(0xFFEAF8FC)
 
-    val backgroundTop = Color(0xFF080D18)
-    val backgroundBottom = Color(0xFF0D1422)
+    val backgroundBottom = Color(0xFFD8F0F6)
 
-    val primaryBlue = Color(0xFF4F7CFF)
-    val darkBlue = Color(0xFFF8FAFC)
-    val lightBlue = Color(0xFF16233A)
+    val primaryBlue = Color(0xFF087EA4)
 
-    val textDark = Color(0xFFF8FAFC)
-    val textGray = Color(0xFF94A3B8)
+    val darkBlue = Color(0xFF123A56)
 
-    val errorRed = Color(0xFFF87171)
+    val lightBlue = Color(0xFFE8F7FB)
 
-    val cardColor = Color(0xFF111A2A)
-    val inputColor = Color(0xFF0D1422)
-    val borderColor = Color(0xFF26354A)
-    val accentCyan = Color(0xFF22D3EE)
-    val successGreen = Color(0xFF22C997)
+    val textDark = Color(0xFF163247)
+
+    val textGray = Color(0xFF71818C)
+
+    val errorRed = Color(0xFFD64545)
 
 
     // =========================================================
@@ -149,7 +126,7 @@ fun LoginScreen(
                 .size(190.dp)
                 .align(Alignment.TopEnd)
                 .background(
-                    color = Color(0x224F7CFF),
+                    color = Color(0x22087EA4),
                     shape = CircleShape
                 )
         )
@@ -164,7 +141,7 @@ fun LoginScreen(
                 .size(120.dp)
                 .align(Alignment.BottomStart)
                 .background(
-                    color = Color(0x184F7CFF),
+                    color = Color(0x18087EA4),
                     shape = CircleShape
                 )
         )
@@ -200,12 +177,12 @@ fun LoginScreen(
                         shape = RoundedCornerShape(25.dp)
                     )
                     .background(
-                        color = cardColor,
+                        color = Color.White,
                         shape = RoundedCornerShape(25.dp)
                     )
                     .border(
                         width = 1.dp,
-                        color = borderColor,
+                        color = Color(0xFFE1EEF2),
                         shape = RoundedCornerShape(25.dp)
                     ),
 
@@ -293,7 +270,7 @@ fun LoginScreen(
                         shape = RoundedCornerShape(28.dp)
                     )
                     .background(
-                        color = cardColor,
+                        color = Color.White,
                         shape = RoundedCornerShape(28.dp)
                     )
                     .padding(23.dp)
@@ -360,116 +337,61 @@ fun LoginScreen(
                 // EMAIL FIELD
                 // =================================================
 
-                // =================================================
-                // EMAIL FIELD + RECENT EMAIL SUGGESTIONS
-                // =================================================
+                OutlinedTextField(
+                    value = email,
 
-                Box(
-                    modifier = Modifier.fillMaxWidth()
-                ) {
+                    onValueChange = {
+                        email = it
+                        emailError = ""
+                    },
 
-                    OutlinedTextField(
-                        value = email,
+                    modifier = Modifier.fillMaxWidth(),
 
-                        onValueChange = {
-                            email = it
-                            emailError = ""
-                        },
+                    enabled = !isLoading,
 
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .onFocusChanged {
-                                emailFieldFocused = it.isFocused
-                            },
+                    singleLine = true,
 
-                        enabled = !isLoading,
+                    placeholder = {
+                        Text(
+                            text = "Enter your email",
 
-                        singleLine = true,
+                            color = Color(0xFF9AAAB3),
 
-                        placeholder = {
-                            Text(
-                                text = "Enter your email",
-
-                                color = Color(0xFF64748B),
-
-                                fontSize = 14.sp
-                            )
-                        },
-
-                        leadingIcon = {
-                            Icon(
-                                imageVector = Icons.Default.Email,
-
-                                contentDescription = "Email",
-
-                                tint = primaryBlue
-                            )
-                        },
-
-                        isError = emailError.isNotEmpty(),
-
-                        shape = RoundedCornerShape(15.dp),
-
-                        colors = OutlinedTextFieldDefaults.colors(
-
-                            focusedBorderColor = primaryBlue,
-
-                            unfocusedBorderColor = borderColor,
-
-                            focusedContainerColor = inputColor,
-
-                            unfocusedContainerColor = inputColor,
-
-                            cursorColor = primaryBlue,
-
-                            focusedTextColor = textDark,
-
-                            unfocusedTextColor = textDark
+                            fontSize = 14.sp
                         )
+                    },
+
+                    leadingIcon = {
+                        Icon(
+                            imageVector = Icons.Default.Email,
+
+                            contentDescription = "Email",
+
+                            tint = primaryBlue
+                        )
+                    },
+
+                    isError = emailError.isNotEmpty(),
+
+                    shape = RoundedCornerShape(15.dp),
+
+                    colors = OutlinedTextFieldDefaults.colors(
+
+                        focusedBorderColor = primaryBlue,
+
+                        unfocusedBorderColor = Color(0xFFD6E2E7),
+
+                        focusedContainerColor = Color(0xFFFAFDFE),
+
+                        unfocusedContainerColor = Color(0xFFFAFDFE),
+
+                        cursorColor = primaryBlue,
+
+                        focusedTextColor = textDark,
+
+                        unfocusedTextColor = textDark
                     )
-
-                    val filteredSuggestions =
-                        recentEmails.filter {
-                            email.isBlank() ||
-                                    it.contains(
-                                        email.trim(),
-                                        ignoreCase = true
-                                    )
-                        }
-
-                    DropdownMenu(
-                        expanded =
-                            emailFieldFocused &&
-                                    !isLoading &&
-                                    filteredSuggestions.isNotEmpty(),
-
-                        onDismissRequest = {
-                            emailFieldFocused = false
-                        },
-
-                        modifier = Modifier.fillMaxWidth(0.90f)
-                    ) {
-
-                        filteredSuggestions.forEach { suggestion ->
-
-                            DropdownMenuItem(
-                                text = {
-                                    Text(
-                                        text = suggestion,
-                                        color = textDark,
-                                        fontSize = 14.sp
-                                    )
-                                },
-
-                                onClick = {
-                                    email = suggestion
-                                    emailError = ""
-                                    emailFieldFocused = false
-                                }
-                            )
-                        }
-                    }
-                }
+                )
 
 
                 // =================================================
@@ -539,7 +461,7 @@ fun LoginScreen(
                         Text(
                             text = "Enter your password",
 
-                            color = Color(0xFF64748B),
+                            color = Color(0xFF9AAAB3),
 
                             fontSize = 14.sp
                         )
@@ -600,11 +522,11 @@ fun LoginScreen(
 
                         focusedBorderColor = primaryBlue,
 
-                        unfocusedBorderColor = borderColor,
+                        unfocusedBorderColor = Color(0xFFD6E2E7),
 
-                        focusedContainerColor = inputColor,
+                        focusedContainerColor = Color(0xFFFAFDFE),
 
-                        unfocusedContainerColor = inputColor,
+                        unfocusedContainerColor = Color(0xFFFAFDFE),
 
                         cursorColor = primaryBlue,
 
@@ -835,15 +757,6 @@ fun LoginScreen(
                         // SEND TO MAIN ACTIVITY / SUPABASE
                         // -----------------------------------------
 
-                        // Save the frequently used email locally so it can
-                        // be suggested the next time the user logs in.
-                        recentEmails =
-                            saveRecentEmail(
-                                context = context,
-                                email = cleanEmail,
-                                currentEmails = recentEmails
-                            )
-
                         onLoginClick(
                             cleanEmail,
                             password
@@ -924,7 +837,7 @@ fun LoginScreen(
                     Text(
                         text = "  OR  ",
 
-                        color = Color(0xFF64748B),
+                        color = Color(0xFF9AAAB3),
 
                         fontSize = 11.sp
                     )
@@ -1055,78 +968,4 @@ fun LoginScreen(
             }
         }
     }
-}
-
-// =========================================================
-// RECENT EMAIL SUGGESTIONS
-// =========================================================
-
-private const val LOGIN_PREFS_NAME = "medassist_login_preferences"
-private const val RECENT_EMAILS_KEY = "recent_emails"
-private const val MAX_RECENT_EMAILS = 5
-
-private fun loadRecentEmails(
-    context: Context
-): List<String> {
-
-    val preferences =
-        context.getSharedPreferences(
-            LOGIN_PREFS_NAME,
-            Context.MODE_PRIVATE
-        )
-
-    return preferences
-        .getStringSet(
-            RECENT_EMAILS_KEY,
-            emptySet()
-        )
-        ?.toList()
-        ?.sorted()
-        ?: emptyList()
-}
-
-private fun saveRecentEmail(
-    context: Context,
-    email: String,
-    currentEmails: List<String>
-): List<String> {
-
-    val cleanEmail = email.trim()
-
-    if (cleanEmail.isBlank()) {
-        return currentEmails
-    }
-
-    val updated =
-        buildList {
-
-            add(cleanEmail)
-
-            currentEmails.forEach { existing ->
-
-                if (
-                    !existing.equals(
-                        cleanEmail,
-                        ignoreCase = true
-                    )
-                ) {
-                    add(existing)
-                }
-            }
-        }
-            .take(MAX_RECENT_EMAILS)
-
-    context
-        .getSharedPreferences(
-            LOGIN_PREFS_NAME,
-            Context.MODE_PRIVATE
-        )
-        .edit()
-        .putStringSet(
-            RECENT_EMAILS_KEY,
-            updated.toSet()
-        )
-        .apply()
-
-    return updated
 }

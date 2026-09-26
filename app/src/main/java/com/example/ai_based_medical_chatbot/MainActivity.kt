@@ -12,15 +12,14 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.LocalContext
 import com.example.ai_based_medical_chatbot.data.SupabaseClient
 import com.example.ai_based_medical_chatbot.ui.theme.AIBasedMedicalChatbotTheme
 import kotlinx.coroutines.launch
-import ui.ChatHistoryScreen
 import ui.ChatbotScreen
 import ui.DashboardScreen
 import ui.ForgotPasswordScreen
 import ui.HealthTipsScreen
-import ui.HealthProfileScreen
 import ui.LoginScreen
 import ui.MedicineDetailScreen
 import ui.MedicineInfoScreen
@@ -29,23 +28,35 @@ import ui.RegisterScreen
 import ui.SplashScreen
 import ui.SymptomsCheckerScreen
 
+
 class MainActivity : ComponentActivity() {
 
-    override fun onCreate(savedInstanceState: Bundle?) {
+    override fun onCreate(
+        savedInstanceState: Bundle?
+    ) {
         super.onCreate(savedInstanceState)
 
         setContent {
+
             AIBasedMedicalChatbotTheme {
+
                 MedicalChatbotNavigation()
             }
         }
     }
 }
 
+
 @Composable
 private fun MedicalChatbotNavigation() {
 
-    val context = androidx.compose.ui.platform.LocalContext.current
+    // =========================================================
+    // CONTEXT
+    // =========================================================
+
+    val context =
+        LocalContext.current
+
 
     // =========================================================
     // NAVIGATION STACK
@@ -56,6 +67,7 @@ private fun MedicalChatbotNavigation() {
             mutableStateListOf("splash")
         }
 
+
     // =========================================================
     // COROUTINE SCOPE
     // =========================================================
@@ -63,21 +75,19 @@ private fun MedicalChatbotNavigation() {
     val scope =
         rememberCoroutineScope()
 
+
     // =========================================================
     // USER INFORMATION
     // =========================================================
 
     var userName by remember {
-        mutableStateOf(
-            SupabaseClient.getSavedUser(context)?.fullName.orEmpty()
-        )
+        mutableStateOf("")
     }
 
     var userEmail by remember {
-        mutableStateOf(
-            SupabaseClient.getSavedUser(context)?.email.orEmpty()
-        )
+        mutableStateOf("")
     }
+
 
     // =========================================================
     // LOGIN STATE
@@ -91,15 +101,6 @@ private fun MedicalChatbotNavigation() {
         mutableStateOf("")
     }
 
-    // =========================================================
-    // CHATBOT ACCESS STATE
-    // =========================================================
-
-    // True when the user requested the chatbot and must return
-    // to the chatbot after authentication/profile setup.
-    var pendingChatbotAccess by remember {
-        mutableStateOf(false)
-    }
 
     // =========================================================
     // SELECTED MEDICINE
@@ -109,24 +110,33 @@ private fun MedicalChatbotNavigation() {
         mutableStateOf<ui.Medicine?>(null)
     }
 
+
     // =========================================================
     // CURRENT SCREEN
     // =========================================================
 
     val currentScreen =
-        screenStack.lastOrNull() ?: "dashboard"
+        screenStack.lastOrNull()
+            ?: "login"
+
 
     // =========================================================
-    // NAVIGATION FUNCTIONS
+    // NAVIGATION
     // =========================================================
 
-    fun navigateTo(screen: String) {
+    fun navigateTo(
+        screen: String
+    ) {
+
         screenStack.add(screen)
     }
 
+
     fun navigateBack() {
 
-        if (screenStack.size > 1) {
+        if (
+            screenStack.size > 1
+        ) {
 
             screenStack.removeAt(
                 screenStack.lastIndex
@@ -134,15 +144,19 @@ private fun MedicalChatbotNavigation() {
         }
     }
 
+
     // =========================================================
     // ANDROID BACK BUTTON
     // =========================================================
 
     BackHandler(
-        enabled = screenStack.size > 1
+        enabled =
+            screenStack.size > 1
     ) {
+
         navigateBack()
     }
+
 
     // =========================================================
     // SCREEN ROUTING
@@ -150,8 +164,9 @@ private fun MedicalChatbotNavigation() {
 
     when (currentScreen) {
 
+
         // =====================================================
-        // SPLASH SCREEN
+        // SPLASH
         // =====================================================
 
         "splash" -> {
@@ -160,51 +175,27 @@ private fun MedicalChatbotNavigation() {
 
                 onSplashFinished = {
 
-                    val savedUser =
-                        SupabaseClient.getSavedUser(context)
-
                     screenStack.clear()
 
-                    if (savedUser != null) {
-
-                        userEmail =
-                            savedUser.email
-
-                        userName =
-                            savedUser.fullName.ifBlank {
-                                savedUser.email
-                                    .substringBefore("@")
-                                    .replaceFirstChar {
-                                        it.uppercase()
-                                    }
-                            }
-
-                        screenStack.add(
-                            "dashboard"
-                        )
-
-                    } else {
-
-                        // Login is intentionally NOT required at app startup.
-                        // Users can explore the dashboard and authenticate only
-                        // when they choose to open the chatbot.
-                        screenStack.add(
-                            "dashboard"
-                        )
-                    }
+                    screenStack.add(
+                        "login"
+                    )
                 }
             )
         }
 
+
         // =====================================================
-        // LOGIN SCREEN
+        // LOGIN
         // =====================================================
 
         "login" -> {
 
             LoginScreen(
 
-                onLoginClick = { email, password ->
+                onLoginClick = {
+                        email,
+                        password ->
 
                     scope.launch {
 
@@ -220,8 +211,9 @@ private fun MedicalChatbotNavigation() {
                                     context = context
                                 )
 
+
                             // =================================
-                            // SUCCESS
+                            // LOGIN SUCCESS
                             // =================================
 
                             result.onSuccess { user ->
@@ -231,7 +223,8 @@ private fun MedicalChatbotNavigation() {
 
                                 userName =
                                     if (
-                                        user.fullName.isNotBlank()
+                                        user.fullName
+                                            .isNotBlank()
                                     ) {
 
                                         user.fullName
@@ -239,7 +232,9 @@ private fun MedicalChatbotNavigation() {
                                     } else {
 
                                         user.email
-                                            .substringBefore("@")
+                                            .substringBefore(
+                                                "@"
+                                            )
                                             .replaceFirstChar {
                                                 it.uppercase()
                                             }
@@ -248,26 +243,16 @@ private fun MedicalChatbotNavigation() {
                                 loginLoading = false
                                 loginError = ""
 
-                                // If login was requested because the user
-                                // wanted the chatbot, continue to the optional
-                                // personal-health profile first.
                                 screenStack.clear()
 
-                                if (pendingChatbotAccess) {
-                                    screenStack.add(
-                                        "healthProfile"
-                                    )
-                                } else {
-                                    screenStack.add(
-                                        "dashboard"
-                                    )
-                                }
-
-                                pendingChatbotAccess = false
+                                screenStack.add(
+                                    "dashboard"
+                                )
                             }
 
+
                             // =================================
-                            // FAILURE
+                            // LOGIN FAILURE
                             // =================================
 
                             result.onFailure { error ->
@@ -280,11 +265,14 @@ private fun MedicalChatbotNavigation() {
 
                                 Log.e(
                                     "SupabaseLogin",
-                                    loginError
+                                    loginError,
+                                    error
                                 )
                             }
 
-                        } catch (e: Exception) {
+                        } catch (
+                            e: Exception
+                        ) {
 
                             loginLoading = false
 
@@ -301,6 +289,7 @@ private fun MedicalChatbotNavigation() {
                     }
                 },
 
+
                 // =============================================
                 // REGISTER
                 // =============================================
@@ -313,6 +302,7 @@ private fun MedicalChatbotNavigation() {
                         "register"
                     )
                 },
+
 
                 // =============================================
                 // FORGOT PASSWORD
@@ -327,12 +317,14 @@ private fun MedicalChatbotNavigation() {
                     )
                 },
 
+
                 // =============================================
                 // LOADING
                 // =============================================
 
                 isLoading =
                     loginLoading,
+
 
                 // =============================================
                 // ERROR
@@ -343,8 +335,9 @@ private fun MedicalChatbotNavigation() {
             )
         }
 
+
         // =====================================================
-        // REGISTER SCREEN
+        // REGISTER
         // =====================================================
 
         "register" -> {
@@ -353,8 +346,6 @@ private fun MedicalChatbotNavigation() {
 
                 onRegisterClick = {
 
-                    // Registration successful
-                    // Return to Login
                     navigateBack()
                 },
 
@@ -370,6 +361,7 @@ private fun MedicalChatbotNavigation() {
             )
         }
 
+
         // =====================================================
         // FORGOT PASSWORD
         // =====================================================
@@ -384,6 +376,7 @@ private fun MedicalChatbotNavigation() {
                 }
             )
         }
+
 
         // =====================================================
         // DASHBOARD
@@ -405,29 +398,9 @@ private fun MedicalChatbotNavigation() {
 
                 onChatbotClick = {
 
-                    val savedUser =
-                        SupabaseClient.getSavedUser(context)
-
-                    if (savedUser == null) {
-
-                        // Authentication is required only when the
-                        // user chooses to access the chatbot.
-                        pendingChatbotAccess = true
-
-                        navigateTo(
-                            "login"
-                        )
-
-                    } else {
-
-                        // Existing users go through the optional
-                        // personal-information page before entering chat.
-                        pendingChatbotAccess = true
-
-                        navigateTo(
-                            "healthProfile"
-                        )
-                    }
+                    navigateTo(
+                        "chatbot"
+                    )
                 },
 
                 onSymptomsClick = {
@@ -449,15 +422,10 @@ private fun MedicalChatbotNavigation() {
                     navigateTo(
                         "healthTips"
                     )
-                },
-
-                // =================================================
-                // NEW: CHAT HISTORY
-                // =================================================
-
-
+                }
             )
         }
+
 
         // =====================================================
         // PROFILE
@@ -480,54 +448,28 @@ private fun MedicalChatbotNavigation() {
 
                 onLogoutClick = {
 
+                    // Clear saved Supabase session
                     SupabaseClient.clearSession(
                         context
                     )
 
+                    // Clear UI user data
                     userName = ""
                     userEmail = ""
+
                     loginError = ""
                     loginLoading = false
 
-                    pendingChatbotAccess = false
-
+                    // Go to login
                     screenStack.clear()
 
                     screenStack.add(
-                        "dashboard"
+                        "login"
                     )
                 }
             )
         }
 
-        // =====================================================
-        // PERSONAL HEALTH PROFILE
-        // =====================================================
-
-        "healthProfile" -> {
-
-            HealthProfileScreen(
-
-                onBack = {
-
-                    pendingChatbotAccess = false
-                    navigateBack()
-                },
-
-                onContinue = {
-
-                    pendingChatbotAccess = false
-
-                    screenStack.removeAll {
-                        it == "healthProfile"
-                    }
-
-                    screenStack.add(
-                        "chatbot"
-                    )
-                }
-            )
-        }
 
         // =====================================================
         // CHATBOT
@@ -544,20 +486,6 @@ private fun MedicalChatbotNavigation() {
             )
         }
 
-        // =====================================================
-        // CHAT HISTORY
-        // =====================================================
-
-        "chatHistory" -> {
-
-            ChatHistoryScreen(
-
-                onBackClick = {
-
-                    navigateBack()
-                }
-            )
-        }
 
         // =====================================================
         // SYMPTOMS CHECKER
@@ -574,6 +502,7 @@ private fun MedicalChatbotNavigation() {
             )
         }
 
+
         // =====================================================
         // MEDICINE INFORMATION
         // =====================================================
@@ -587,7 +516,8 @@ private fun MedicalChatbotNavigation() {
                     navigateBack()
                 },
 
-                onMedicineClick = { medicine ->
+                onMedicineClick = {
+                        medicine ->
 
                     selectedMedicine =
                         medicine
@@ -599,6 +529,7 @@ private fun MedicalChatbotNavigation() {
             )
         }
 
+
         // =====================================================
         // MEDICINE DETAIL
         // =====================================================
@@ -608,7 +539,9 @@ private fun MedicalChatbotNavigation() {
             val medicine =
                 selectedMedicine
 
-            if (medicine == null) {
+            if (
+                medicine == null
+            ) {
 
                 navigateBack()
 
@@ -626,6 +559,7 @@ private fun MedicalChatbotNavigation() {
                 )
             }
         }
+
 
         // =====================================================
         // HEALTH TIPS
