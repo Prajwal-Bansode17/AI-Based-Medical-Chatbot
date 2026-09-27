@@ -16,6 +16,7 @@ import androidx.compose.ui.platform.LocalContext
 import com.example.ai_based_medical_chatbot.data.SupabaseClient
 import com.example.ai_based_medical_chatbot.ui.theme.AIBasedMedicalChatbotTheme
 import kotlinx.coroutines.launch
+import ui.BMICheckerScreen
 import ui.ChatbotScreen
 import ui.DashboardScreen
 import ui.ForgotPasswordScreen
@@ -24,6 +25,7 @@ import ui.LoginScreen
 import ui.MedicineDetailScreen
 import ui.MedicineInfoScreen
 import ui.ProfileScreen
+import ui.PrescriptionScannerScreen
 import ui.RegisterScreen
 import ui.SplashScreen
 import ui.SymptomsCheckerScreen
@@ -396,10 +398,25 @@ private fun MedicalChatbotNavigation() {
                     )
                 },
 
+                // ============================================
+                // CHATBOT
+                // ============================================
+
                 onChatbotClick = {
 
                     navigateTo(
                         "chatbot"
+                    )
+                },
+
+                // ============================================
+                // BMI CHECKER
+                // ============================================
+
+                onBMIClick = {
+
+                    navigateTo(
+                        "bmi"
                     )
                 },
 
@@ -421,6 +438,13 @@ private fun MedicalChatbotNavigation() {
 
                     navigateTo(
                         "healthTips"
+                    )
+                },
+
+                onPrescriptionClick = {
+
+                    navigateTo(
+                        "prescription"
                     )
                 }
             )
@@ -480,6 +504,22 @@ private fun MedicalChatbotNavigation() {
             ChatbotScreen(
 
                 onBack = {
+
+                    navigateBack()
+                }
+            )
+        }
+
+
+        // =====================================================
+        // BMI CHECKER
+        // =====================================================
+
+        "bmi" -> {
+
+            BMICheckerScreen(
+
+                onBackClick = {
 
                     navigateBack()
                 }
@@ -558,6 +598,22 @@ private fun MedicalChatbotNavigation() {
                     }
                 )
             }
+        }
+
+
+        // =====================================================
+        // PRESCRIPTION SCANNER
+        // =====================================================
+
+        "prescription" -> {
+
+            PrescriptionScannerScreen(
+
+                onBackClick = {
+
+                    navigateBack()
+                }
+            )
         }
 
 

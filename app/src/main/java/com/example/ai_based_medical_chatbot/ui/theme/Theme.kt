@@ -1,53 +1,77 @@
 package com.example.ai_based_medical_chatbot.ui.theme
 
-import android.app.Activity
-import android.os.Build
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.dynamicDarkColorScheme
-import androidx.compose.material3.dynamicLightColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.platform.LocalContext
-
-private val DarkColorScheme = darkColorScheme(
-    primary = Purple80,
-    secondary = PurpleGrey80,
-    tertiary = Pink80
-)
 
 private val LightColorScheme = lightColorScheme(
-    primary = Purple40,
-    secondary = PurpleGrey40,
-    tertiary = Pink40
+    primary = MedicalBlue,
+    onPrimary = PureWhite,
 
-    /* Other default colors to override
-    background = Color(0xFFFFFBFE),
-    surface = Color(0xFFFFFBFE),
-    onPrimary = Color.White,
-    onSecondary = Color.White,
-    onTertiary = Color.White,
-    onBackground = Color(0xFF1C1B1F),
-    onSurface = Color(0xFF1C1B1F),
-    */
+    primaryContainer = MedicalBlueLight,
+    onPrimaryContainer = MedicalTextPrimary,
+
+    secondary = MedicalTeal,
+    onSecondary = PureWhite,
+
+    secondaryContainer = MedicalTealLight,
+    onSecondaryContainer = MedicalTextPrimary,
+
+    background = MedicalBackground,
+    onBackground = MedicalTextPrimary,
+
+    surface = MedicalSurface,
+    onSurface = MedicalTextPrimary,
+
+    surfaceVariant = MedicalSurfaceVariant,
+    onSurfaceVariant = MedicalTextSecondary,
+
+    outline = MedicalBorder,
+
+    error = MedicalError,
+    onError = PureWhite
+)
+
+private val DarkColorScheme = darkColorScheme(
+    primary = MedicalBlueLight,
+    onPrimary = MedicalTextPrimary,
+
+    primaryContainer = MedicalBlueDark,
+    onPrimaryContainer = PureWhite,
+
+    secondary = MedicalTealLight,
+    onSecondary = MedicalTextPrimary,
+
+    secondaryContainer = MedicalTealDark,
+    onSecondaryContainer = PureWhite,
+
+    background = DarkBackground,
+    onBackground = DarkTextPrimary,
+
+    surface = DarkSurface,
+    onSurface = DarkTextPrimary,
+
+    surfaceVariant = DarkSurfaceVariant,
+    onSurfaceVariant = DarkTextSecondary,
+
+    outline = MedicalTextSecondary,
+
+    error = MedicalError,
+    onError = PureWhite
 )
 
 @Composable
 fun AIBasedMedicalChatbotTheme(
     darkTheme: Boolean = isSystemInDarkTheme(),
-    // Dynamic color is available on Android 12+
-    dynamicColor: Boolean = true,
+    dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            val context = LocalContext.current
-            if (darkTheme) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        }
-
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
+    val colorScheme = if (darkTheme) {
+        DarkColorScheme
+    } else {
+        LightColorScheme
     }
 
     MaterialTheme(
