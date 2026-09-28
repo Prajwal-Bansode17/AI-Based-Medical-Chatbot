@@ -1,7 +1,7 @@
 package ui
 
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.foundation.layout.width
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
@@ -10,8 +10,9 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.slideInVertically
-import androidx.compose.foundation.Image
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,7 +25,9 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
@@ -36,8 +39,10 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -46,21 +51,19 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ai_based_medical_chatbot.R
 import kotlinx.coroutines.delay
 
 @Composable
@@ -80,72 +83,140 @@ fun LoginScreen(
     var showContent by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
-        delay(120)
+        delay(100)
         showContent = true
     }
 
-    val infiniteTransition = rememberInfiniteTransition(label = "loginLogo")
-    val logoScale by infiniteTransition.animateFloat(
+    val infiniteTransition = rememberInfiniteTransition(
+        label = "aiDoctorAnimation"
+    )
+
+    val botScale by infiniteTransition.animateFloat(
         initialValue = 0.98f,
         targetValue = 1.03f,
         animationSpec = infiniteRepeatable(
-            animation = tween(1700),
+            animation = tween(
+                durationMillis = 1800,
+                easing = FastOutSlowInEasing
+            ),
             repeatMode = RepeatMode.Reverse
         ),
-        label = "logoScale"
+        label = "botScale"
     )
 
-    val background = Brush.verticalGradient(
-        colors = listOf(
-            Color(0xFFEAF6FF),
-            Color(0xFFF7FBFF),
-            Color(0xFFE7F7FA)
-        )
-    )
+    val background = MaterialTheme.colorScheme.background
+    val surface = MaterialTheme.colorScheme.surface
+    val primary = MaterialTheme.colorScheme.primary
+    val secondary = MaterialTheme.colorScheme.secondary
+    val primaryContainer = MaterialTheme.colorScheme.primaryContainer
+    val textPrimary = MaterialTheme.colorScheme.onSurface
+    val textSecondary = MaterialTheme.colorScheme.onSurfaceVariant
+    val border = MaterialTheme.colorScheme.outline
 
     Box(
         modifier = Modifier
             .fillMaxSize()
-            .background(background)
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        primaryContainer.copy(alpha = 0.22f),
+                        background,
+                        secondary.copy(alpha = 0.04f)
+                    )
+                )
+            )
             .statusBarsPadding()
             .navigationBarsPadding()
     ) {
+
+        // Top ambient glow
+        Box(
+            modifier = Modifier
+                .size(210.dp)
+                .align(Alignment.TopEnd)
+                .clip(CircleShape)
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            secondary.copy(alpha = 0.10f),
+                            Color.Transparent
+                        )
+                    )
+                )
+        )
+
+        // Bottom ambient glow
+        Box(
+            modifier = Modifier
+                .size(180.dp)
+                .align(Alignment.BottomStart)
+                .clip(CircleShape)
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            primary.copy(alpha = 0.08f),
+                            Color.Transparent
+                        )
+                    )
+                )
+        )
+
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 20.dp, vertical = 16.dp),
+                .padding(
+                    horizontal = 18.dp,
+                    vertical = 12.dp
+                ),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Spacer(Modifier.height(8.dp))
+
+            Spacer(modifier = Modifier.height(4.dp))
 
             AnimatedVisibility(
                 visible = showContent,
-                enter = fadeIn(tween(500)) + scaleIn(tween(500))
+                enter = fadeIn(
+                    tween(500)
+                ) + scaleIn(
+                    tween(500)
+                )
             ) {
-                DoctorHero(
+                AIDoctorHero(
                     biometricMode = biometricMode,
-                    scale = logoScale
+                    botScale = botScale
                 )
             }
 
-            Spacer(Modifier.height(18.dp))
+            Spacer(modifier = Modifier.height(17.dp))
 
             AnimatedVisibility(
                 visible = showContent,
-                enter = fadeIn(tween(650)) + slideInVertically(
-                    initialOffsetY = { it / 4 },
-                    animationSpec = tween(650)
+                enter = fadeIn(
+                    tween(
+                        durationMillis = 600,
+                        delayMillis = 100
+                    )
+                ) + slideInVertically(
+                    initialOffsetY = { it / 5 },
+                    animationSpec = tween(
+                        durationMillis = 600,
+                        delayMillis = 100
+                    )
                 )
             ) {
+
                 if (biometricMode) {
-                    BiometricLoginCard(
+
+                    SecureLoginCard(
                         onBiometricClick = onBiometricClick,
                         onUsePasswordClick = onUsePasswordClick,
                         isLoading = isLoading,
                         error = loginError
                     )
+
                 } else {
+
                     LoginFormCard(
                         email = email,
                         onEmailChange = { email = it },
@@ -156,8 +227,14 @@ fun LoginScreen(
                             passwordVisible = it
                         },
                         onLoginClick = {
-                            if (email.isNotBlank() && password.isNotBlank()) {
-                                onLoginClick(email.trim(), password)
+                            if (
+                                email.isNotBlank() &&
+                                password.isNotBlank()
+                            ) {
+                                onLoginClick(
+                                    email.trim(),
+                                    password
+                                )
                             }
                         },
                         onRegisterClick = onRegisterClick,
@@ -168,60 +245,196 @@ fun LoginScreen(
                 }
             }
 
-            Spacer(Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
             if (!biometricMode) {
-                Text(
-                    text = "🔒  Secure authentication powered by Supabase",
-                    color = Color(0xFF607D8B),
-                    fontSize = 11.sp,
-                    textAlign = TextAlign.Center
+                SecurityFooter(
+                    primary = primary,
+                    textSecondary = textSecondary
                 )
             }
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(8.dp))
         }
     }
 }
 
+
+/* ============================================================
+   AI DOCTOR HERO
+   ============================================================ */
+
 @Composable
-private fun DoctorHero(
+private fun AIDoctorHero(
     biometricMode: Boolean,
-    scale: Float
+    botScale: Float
 ) {
+    val primary = MaterialTheme.colorScheme.primary
+    val secondary = MaterialTheme.colorScheme.secondary
+    val primaryContainer = MaterialTheme.colorScheme.primaryContainer
+
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .height(if (biometricMode) 245.dp else 225.dp)
+            .height(
+                if (biometricMode) {
+                    245.dp
+                } else {
+                    225.dp
+                }
+            )
             .clip(RoundedCornerShape(30.dp))
             .background(
                 Brush.linearGradient(
                     colors = listOf(
-                        Color(0xFF092A49),
-                        Color(0xFF0B5D79),
-                        Color(0xFF0B89A5)
+                        primary,
+                        Color(0xFF1976D2),
+                        secondary
                     )
                 )
             )
     ) {
-        Image(
-            painter = painterResource(R.drawable.doctor_ai),
-            contentDescription = "AI Doctor",
+
+        // Soft background circles
+        Box(
             modifier = Modifier
-                .fillMaxSize()
-                .scale(scale),
-            contentScale = ContentScale.Crop,
-            alignment = Alignment.TopCenter
+                .size(145.dp)
+                .align(Alignment.TopEnd)
+                .clip(CircleShape)
+                .background(
+                    Color.White.copy(alpha = 0.08f)
+                )
         )
 
         Box(
             modifier = Modifier
-                .fillMaxSize()
+                .size(95.dp)
+                .align(Alignment.BottomStart)
+                .clip(CircleShape)
                 .background(
-                    Brush.horizontalGradient(
+                    Color.White.copy(alpha = 0.06f)
+                )
+        )
+
+        Column(
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .padding(
+                    start = 20.dp,
+                    end = 150.dp
+                )
+        ) {
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+
+                Box(
+                    modifier = Modifier
+                        .size(37.dp)
+                        .clip(CircleShape)
+                        .background(
+                            Color.White.copy(alpha = 0.16f)
+                        )
+                        .border(
+                            1.dp,
+                            Color.White.copy(alpha = 0.25f),
+                            CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+
+                    Text(
+                        text = "✚",
+                        color = Color.White,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Spacer(modifier = Modifier.width(9.dp))
+
+                Column {
+
+                    Text(
+                        text = "MEDASSIST",
+                        color = Color.White,
+                        fontSize = 21.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        letterSpacing = 0.5.sp
+                    )
+
+                    Text(
+                        text = "AI HEALTH ASSISTANT",
+                        color = Color(0xFFB9FFF5),
+                        fontSize = 8.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            Text(
+                text = if (biometricMode) {
+                    "Welcome back."
+                } else {
+                    "Your intelligent\nhealthcare companion."
+                },
+                color = Color.White,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.SemiBold,
+                lineHeight = 20.sp
+            )
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            Row(
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+
+                SmallHeroBadge("AI POWERED")
+
+                Spacer(modifier = Modifier.width(6.dp))
+
+                SmallHeroBadge("24/7 CARE")
+            }
+        }
+
+        // AI Doctor Bot
+        AIDoctorBot(
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .padding(end = 17.dp)
+                .scale(botScale)
+        )
+    }
+}
+
+
+/* ============================================================
+   AI DOCTOR BOT
+   ============================================================ */
+
+@Composable
+private fun AIDoctorBot(
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier.size(125.dp),
+        contentAlignment = Alignment.Center
+    ) {
+
+        // Bot glow
+        Box(
+            modifier = Modifier
+                .size(115.dp)
+                .clip(CircleShape)
+                .background(
+                    Brush.radialGradient(
                         colors = listOf(
-                            Color(0xE6092A49),
-                            Color(0x55092A49),
+                            Color.White.copy(alpha = 0.18f),
                             Color.Transparent
                         )
                     )
@@ -229,39 +442,185 @@ private fun DoctorHero(
         )
 
         Column(
-            modifier = Modifier
-                .align(Alignment.CenterStart)
-                .padding(start = 20.dp, end = 110.dp)
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Text(
-                text = "MEDASSIST AI",
-                color = Color.White,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.Bold
+
+            // Antenna
+            Box(
+                modifier = Modifier
+                    .width(3.dp)
+                    .height(13.dp)
+                    .background(
+                        Color.White.copy(alpha = 0.9f)
+                    )
             )
 
-            Spacer(Modifier.height(5.dp))
-
-            Text(
-                text = if (biometricMode)
-                    "Welcome back.\nLet's keep your health secure."
-                else
-                    "Your intelligent\nhealthcare companion",
-                color = Color.White.copy(alpha = 0.92f),
-                fontSize = 13.sp,
-                lineHeight = 19.sp
+            Box(
+                modifier = Modifier
+                    .size(9.dp)
+                    .clip(CircleShape)
+                    .background(Color(0xFF9CFFF0))
             )
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(3.dp))
 
-            Text(
-                text = "✦ AI Powered  •  ✓ Trusted  •  ♥ Your Health",
-                color = Color(0xFFB9F4FF),
-                fontSize = 9.sp
-            )
+            // Robot head
+            Box(
+                modifier = Modifier
+                    .size(82.dp, 68.dp)
+                    .clip(RoundedCornerShape(23.dp))
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color.White,
+                                Color(0xFFDCEFF8)
+                            )
+                        )
+                    )
+                    .border(
+                        width = 2.dp,
+                        color = Color.White.copy(alpha = 0.8f),
+                        shape = RoundedCornerShape(23.dp)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(18.dp)
+                    ) {
+
+                        Box(
+                            modifier = Modifier
+                                .size(12.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    Color(0xFF1976D2)
+                                )
+                        )
+
+                        Box(
+                            modifier = Modifier
+                                .size(12.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    Color(0xFF1976D2)
+                                )
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(7.dp))
+
+                    Box(
+                        modifier = Modifier
+                            .width(30.dp)
+                            .height(4.dp)
+                            .clip(RoundedCornerShape(50))
+                            .background(
+                                Color(0xFF009688)
+                            )
+                    )
+                }
+
+                // Medical cross
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(6.dp)
+                        .size(20.dp)
+                        .clip(CircleShape)
+                        .background(
+                            Color(0xFF009688)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+
+                    Text(
+                        text = "+",
+                        color = Color.White,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(4.dp))
+
+            // Body
+            Box(
+                modifier = Modifier
+                    .size(65.dp, 28.dp)
+                    .clip(
+                        RoundedCornerShape(
+                            topStart = 16.dp,
+                            topEnd = 16.dp,
+                            bottomStart = 8.dp,
+                            bottomEnd = 8.dp
+                        )
+                    )
+                    .background(
+                        Color.White.copy(alpha = 0.92f)
+                    )
+            ) {
+
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .width(24.dp)
+                        .height(3.dp)
+                        .clip(RoundedCornerShape(50))
+                        .background(
+                            Color(0xFF1976D2)
+                        )
+                )
+            }
         }
     }
 }
+
+
+/* ============================================================
+   HERO BADGE
+   ============================================================ */
+
+@Composable
+private fun SmallHeroBadge(
+    text: String
+) {
+    Box(
+        modifier = Modifier
+            .clip(RoundedCornerShape(50))
+            .background(
+                Color.White.copy(alpha = 0.12f)
+            )
+            .border(
+                width = 1.dp,
+                color = Color.White.copy(alpha = 0.18f),
+                shape = RoundedCornerShape(50)
+            )
+            .padding(
+                horizontal = 8.dp,
+                vertical = 4.dp
+            )
+    ) {
+
+        Text(
+            text = text,
+            color = Color.White.copy(alpha = 0.92f),
+            fontSize = 7.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.5.sp
+        )
+    }
+}
+
+
+/* ============================================================
+   LOGIN FORM
+   ============================================================ */
 
 @Composable
 private fun LoginFormCard(
@@ -277,103 +636,184 @@ private fun LoginFormCard(
     isLoading: Boolean,
     loginError: String
 ) {
+    val primary = MaterialTheme.colorScheme.primary
+    val secondary = MaterialTheme.colorScheme.secondary
+    val surface = MaterialTheme.colorScheme.surface
+    val textPrimary = MaterialTheme.colorScheme.onSurface
+    val textSecondary = MaterialTheme.colorScheme.onSurfaceVariant
+    val border = MaterialTheme.colorScheme.outline
+
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(28.dp),
-        colors = CardDefaults.cardColors(Color.White),
-        elevation = CardDefaults.cardElevation(8.dp)
+        shape = RoundedCornerShape(27.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = surface
+        ),
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = 4.dp
+        ),
+        border = BorderStroke(
+            width = 1.dp,
+            color = border.copy(alpha = 0.45f)
+        )
     ) {
+
         Column(
-            modifier = Modifier.padding(22.dp)
+            modifier = Modifier.padding(
+                horizontal = 20.dp,
+                vertical = 21.dp
+            )
         ) {
+
             Text(
-                text = "Welcome Back 👋",
-                color = Color(0xFF102A43),
-                fontSize = 25.sp,
-                fontWeight = FontWeight.Bold
+                text = "Welcome Back",
+                color = textPrimary,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.ExtraBold
             )
 
-            Spacer(Modifier.height(5.dp))
+            Spacer(modifier = Modifier.height(4.dp))
 
             Text(
                 text = "Sign in to continue to your health dashboard.",
-                color = Color(0xFF708090),
-                fontSize = 13.sp
+                color = textSecondary,
+                fontSize = 12.sp,
+                lineHeight = 18.sp
             )
 
-            Spacer(Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(18.dp))
 
             OutlinedTextField(
                 value = email,
                 onValueChange = onEmailChange,
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("Email address") },
-                placeholder = { Text("Enter your email") },
+                label = {
+                    Text("Email address")
+                },
+                placeholder = {
+                    Text("Enter your email")
+                },
                 leadingIcon = {
-                    Icon(Icons.Default.Email, contentDescription = "Email")
+                    Icon(
+                        imageVector = Icons.Default.Email,
+                        contentDescription = "Email",
+                        tint = primary
+                    )
                 },
                 singleLine = true,
-                shape = RoundedCornerShape(16.dp)
+                shape = RoundedCornerShape(16.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = primary,
+                    unfocusedBorderColor = border,
+                    focusedLabelColor = primary,
+                    cursorColor = primary
+                )
             )
 
-            Spacer(Modifier.height(13.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
             OutlinedTextField(
                 value = password,
                 onValueChange = onPasswordChange,
                 modifier = Modifier.fillMaxWidth(),
-                label = { Text("Password") },
-                placeholder = { Text("Enter your password") },
+                label = {
+                    Text("Password")
+                },
+                placeholder = {
+                    Text("Enter your password")
+                },
                 leadingIcon = {
-                    Icon(Icons.Default.Lock, contentDescription = "Password")
+                    Icon(
+                        imageVector = Icons.Default.Lock,
+                        contentDescription = "Password",
+                        tint = primary
+                    )
                 },
                 trailingIcon = {
                     TextButton(
                         onClick = {
-                            onPasswordVisibilityChange(!passwordVisible)
+                            onPasswordVisibilityChange(
+                                !passwordVisible
+                            )
                         }
                     ) {
+
                         Text(
-                            text = if (passwordVisible) "HIDE" else "SHOW",
-                            color = Color(0xFF087EA4),
-                            fontSize = 11.sp,
+                            text = if (passwordVisible) {
+                                "HIDE"
+                            } else {
+                                "SHOW"
+                            },
+                            color = primary,
+                            fontSize = 10.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
                 },
-                visualTransformation = if (passwordVisible) {
-                    VisualTransformation.None
-                } else {
-                    PasswordVisualTransformation()
-                },
+                visualTransformation =
+                    if (passwordVisible) {
+                        VisualTransformation.None
+                    } else {
+                        PasswordVisualTransformation()
+                    },
                 singleLine = true,
-                shape = RoundedCornerShape(16.dp)
+                shape = RoundedCornerShape(16.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = primary,
+                    unfocusedBorderColor = border,
+                    focusedLabelColor = primary,
+                    cursorColor = primary
+                )
             )
-
-            Spacer(Modifier.height(5.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.End
             ) {
-                TextButton(onClick = onForgotPasswordClick) {
+
+                TextButton(
+                    onClick = onForgotPasswordClick
+                ) {
+
                     Text(
                         text = "Forgot Password?",
-                        color = Color(0xFF087EA4),
+                        color = secondary,
+                        fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold
                     )
                 }
             }
 
             if (loginError.isNotBlank()) {
-                Text(
-                    text = loginError,
-                    color = Color(0xFFD32F2F),
-                    fontSize = 12.sp,
+
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(bottom = 10.dp)
-                )
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(
+                            MaterialTheme.colorScheme.error.copy(
+                                alpha = 0.07f
+                            )
+                        )
+                        .border(
+                            width = 1.dp,
+                            color = MaterialTheme.colorScheme.error.copy(
+                                alpha = 0.15f
+                            ),
+                            shape = RoundedCornerShape(12.dp)
+                        )
+                        .padding(10.dp)
+                ) {
+
+                    Text(
+                        text = loginError,
+                        color = MaterialTheme.colorScheme.error,
+                        fontSize = 12.sp,
+                        lineHeight = 17.sp
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
             }
 
             Button(
@@ -381,21 +821,29 @@ private fun LoginFormCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(54.dp),
-                enabled = !isLoading &&
-                    email.isNotBlank() &&
-                    password.isNotBlank(),
+                enabled =
+                    !isLoading &&
+                            email.isNotBlank() &&
+                            password.isNotBlank(),
                 shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF087EA4)
+                    containerColor = primary,
+                    disabledContainerColor = primary.copy(
+                        alpha = 0.40f
+                    )
                 )
             ) {
+
                 if (isLoading) {
+
                     CircularProgressIndicator(
-                        modifier = Modifier.size(22.dp),
+                        modifier = Modifier.size(21.dp),
                         color = Color.White,
                         strokeWidth = 2.dp
                     )
+
                 } else {
+
                     Text(
                         text = "Sign In  →",
                         fontSize = 16.sp,
@@ -404,70 +852,85 @@ private fun LoginFormCard(
                 }
             }
 
-            Spacer(Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(15.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
+
                 Spacer(
-                    Modifier
+                    modifier = Modifier
                         .weight(1f)
                         .height(1.dp)
-                        .background(Color(0xFFD9E2EC))
+                        .background(
+                            border.copy(alpha = 0.55f)
+                        )
                 )
 
                 Text(
                     text = "  OR  ",
-                    color = Color(0xFF9AA7B2),
-                    fontSize = 11.sp
+                    color = textSecondary,
+                    fontSize = 10.sp
                 )
 
                 Spacer(
-                    Modifier
+                    modifier = Modifier
                         .weight(1f)
                         .height(1.dp)
-                        .background(Color(0xFFD9E2EC))
+                        .background(
+                            border.copy(alpha = 0.55f)
+                        )
                 )
             }
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(13.dp))
 
             OutlinedButton(
                 onClick = onRegisterClick,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(52.dp),
+                    .height(51.dp),
                 shape = RoundedCornerShape(15.dp),
+                border = BorderStroke(
+                    width = 1.2.dp,
+                    color = secondary
+                ),
                 colors = ButtonDefaults.outlinedButtonColors(
-                    contentColor = Color(0xFF087EA4)
+                    contentColor = secondary
                 )
             ) {
+
                 Text(
                     text = "＋  Create New Account",
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 14.sp
                 )
             }
 
-            Spacer(Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(5.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.Center,
                 verticalAlignment = Alignment.CenterVertically
             ) {
+
                 Text(
-                    text = "Don't have an account?",
-                    color = Color(0xFF71818C),
-                    fontSize = 13.sp
+                    text = "Already have an account?",
+                    color = textSecondary,
+                    fontSize = 11.sp
                 )
 
-                TextButton(onClick = onRegisterClick) {
+                TextButton(
+                    onClick = onRegisterClick
+                ) {
+
                     Text(
-                        text = "Create Account",
-                        color = Color(0xFF087EA4),
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 13.sp
+                        text = "Register",
+                        color = primary,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Bold
                     )
                 }
             }
@@ -475,128 +938,238 @@ private fun LoginFormCard(
     }
 }
 
+
+/* ============================================================
+   SECURE LOGIN CARD
+   ============================================================ */
+
 @Composable
-private fun BiometricLoginCard(
+private fun SecureLoginCard(
     onBiometricClick: () -> Unit,
     onUsePasswordClick: () -> Unit,
     isLoading: Boolean,
     error: String
 ) {
+    val primary = MaterialTheme.colorScheme.primary
+    val secondary = MaterialTheme.colorScheme.secondary
+    val surface = MaterialTheme.colorScheme.surface
+    val textPrimary = MaterialTheme.colorScheme.onSurface
+    val textSecondary = MaterialTheme.colorScheme.onSurfaceVariant
+    val border = MaterialTheme.colorScheme.outline
+
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(28.dp),
-        colors = CardDefaults.cardColors(Color.White),
-        elevation = CardDefaults.cardElevation(9.dp)
+        shape = RoundedCornerShape(27.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = surface
+        ),
+        elevation = CardDefaults.cardElevation(
+            defaultElevation = 5.dp
+        ),
+        border = BorderStroke(
+            width = 1.dp,
+            color = border.copy(alpha = 0.45f)
+        )
     ) {
+
         Column(
-            modifier = Modifier.padding(24.dp),
+            modifier = Modifier.padding(
+                horizontal = 22.dp,
+                vertical = 24.dp
+            ),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
+
             Box(
                 modifier = Modifier
-                    .size(92.dp)
-                    .clip(RoundedCornerShape(28.dp))
+                    .size(88.dp)
+                    .clip(CircleShape)
                     .background(
                         Brush.linearGradient(
                             colors = listOf(
-                                Color(0xFF0B5D79),
-                                Color(0xFF08A5C2)
+                                primary,
+                                secondary
                             )
                         )
                     ),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = "🔐",
-                    fontSize = 45.sp
+
+                Icon(
+                    imageVector = Icons.Default.Lock,
+                    contentDescription = "Secure Login",
+                    tint = Color.White,
+                    modifier = Modifier.size(42.dp)
                 )
             }
 
-            Spacer(Modifier.height(18.dp))
+            Spacer(modifier = Modifier.height(17.dp))
 
             Text(
                 text = "Secure Login",
-                color = Color(0xFF102A43),
-                fontSize = 25.sp,
-                fontWeight = FontWeight.Bold
+                color = textPrimary,
+                fontSize = 24.sp,
+                fontWeight = FontWeight.ExtraBold
             )
 
-            Spacer(Modifier.height(6.dp))
+            Spacer(modifier = Modifier.height(5.dp))
+
+            Text(
+                text = "Welcome back to MEDASSIST AI",
+                color = primary,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold
+            )
+
+            Spacer(modifier = Modifier.height(7.dp))
 
             Text(
                 text = "Use fingerprint, face unlock,\nor your device PIN / pattern.",
-                color = Color(0xFF71818C),
+                color = textSecondary,
                 fontSize = 13.sp,
                 textAlign = TextAlign.Center,
                 lineHeight = 19.sp
             )
 
-            Spacer(Modifier.height(22.dp))
+            Spacer(modifier = Modifier.height(20.dp))
 
             Button(
                 onClick = onBiometricClick,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(55.dp),
+                    .height(54.dp),
                 enabled = !isLoading,
                 shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = Color(0xFF087EA4)
+                    containerColor = primary
                 )
             ) {
+
                 if (isLoading) {
+
                     CircularProgressIndicator(
                         modifier = Modifier.size(21.dp),
                         color = Color.White,
                         strokeWidth = 2.dp
                     )
+
                 } else {
+
+                    Icon(
+                        imageVector = Icons.Default.Lock,
+                        contentDescription = null,
+                        modifier = Modifier.size(20.dp)
+                    )
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
                     Text(
-                        text = "🔐  Unlock Securely",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 16.sp
+                        text = "Unlock Securely",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.Bold
                     )
                 }
             }
 
-            Spacer(Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(11.dp))
 
             OutlinedButton(
                 onClick = onUsePasswordClick,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(52.dp),
-                shape = RoundedCornerShape(16.dp)
+                    .height(51.dp),
+                shape = RoundedCornerShape(15.dp),
+                border = BorderStroke(
+                    width = 1.1.dp,
+                    color = border
+                )
             ) {
+
                 Icon(
-                    Icons.Default.Lock,
-                    contentDescription = null
+                    imageVector = Icons.Default.Lock,
+                    contentDescription = null,
+                    tint = primary
                 )
 
-                Spacer(Modifier.width(8.dp))
+                Spacer(modifier = Modifier.width(8.dp))
 
-                Text("Use Email & Password")
+                Text(
+                    text = "Use Email & Password",
+                    color = textPrimary,
+                    fontWeight = FontWeight.SemiBold
+                )
             }
 
             if (error.isNotBlank()) {
-                Spacer(Modifier.height(12.dp))
 
-                Text(
-                    text = error,
-                    color = Color(0xFFD32F2F),
-                    fontSize = 12.sp,
-                    textAlign = TextAlign.Center
-                )
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(
+                            MaterialTheme.colorScheme.error.copy(
+                                alpha = 0.07f
+                            )
+                        )
+                        .padding(10.dp)
+                ) {
+
+                    Text(
+                        text = error,
+                        color = MaterialTheme.colorScheme.error,
+                        fontSize = 12.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             }
 
-            Spacer(Modifier.height(14.dp))
+            Spacer(modifier = Modifier.height(15.dp))
 
             Text(
-                text = "Your fingerprint, face and device PIN stay on your phone.",
-                color = Color(0xFF8A99A6),
+                text = "Your biometric data stays on your device.",
+                color = textSecondary,
                 fontSize = 10.sp,
                 textAlign = TextAlign.Center
             )
         }
+    }
+}
+
+
+/* ============================================================
+   FOOTER
+   ============================================================ */
+
+@Composable
+private fun SecurityFooter(
+    primary: Color,
+    textSecondary: Color
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 12.dp),
+        horizontalArrangement = Arrangement.Center,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+
+        Icon(
+            imageVector = Icons.Default.Lock,
+            contentDescription = null,
+            tint = primary.copy(alpha = 0.75f),
+            modifier = Modifier.size(13.dp)
+        )
+
+        Spacer(modifier = Modifier.width(5.dp))
+
+        Text(
+            text = "Secure authentication powered by Supabase",
+            color = textSecondary,
+            fontSize = 10.sp,
+            textAlign = TextAlign.Center
+        )
     }
 }
