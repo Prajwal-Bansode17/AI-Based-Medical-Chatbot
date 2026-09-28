@@ -1,7 +1,19 @@
 package ui
 
 import android.util.Patterns
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.slideInVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -11,8 +23,10 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -26,6 +40,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -34,6 +49,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
@@ -51,6 +68,10 @@ fun RegisterScreen(
     onLoginClick: () -> Unit = {},
     onBackToLogin: () -> Unit
 ) {
+
+    // ============================================================
+    // INPUT STATE
+    // ============================================================
 
     var fullName by remember {
         mutableStateOf("")
@@ -75,6 +96,10 @@ fun RegisterScreen(
     var confirmPasswordVisible by remember {
         mutableStateOf(false)
     }
+
+    // ============================================================
+    // ERROR STATE
+    // ============================================================
 
     var nameError by remember {
         mutableStateOf("")
@@ -103,20 +128,65 @@ fun RegisterScreen(
     val scope = rememberCoroutineScope()
 
     // ============================================================
-    // MEDASSIST AI THEME
+    // MEDASSIST AI COLORS
     // ============================================================
 
-    val primary = Color(0xFF4F7CFF)
-    val darkBlue = Color(0xFFF8FAFC)
-    val gray = Color(0xFF94A3B8)
+    val backgroundTop = Color(0xFFF7FCFF)
+    val backgroundBottom = Color(0xFFE8F7FA)
 
-    val backgroundTop = Color(0xFF080D18)
-    val backgroundBottom = Color(0xFF0D1422)
+    val primaryBlue = Color(0xFF1976D2)
+    val primaryBlueDark = Color(0xFF123A56)
 
-    val lightPrimary = Color(0xFF16233A)
+    val teal = Color(0xFF009688)
+    val softTeal = Color(0xFF4DB6AC)
+
+    val textGray = Color(0xFF71818C)
+    val borderColor = Color(0xFFDDECEF)
 
     // ============================================================
-    // MAIN SCREEN
+    // ANIMATION
+    // ============================================================
+
+    var showContent by remember {
+        mutableStateOf(false)
+    }
+
+    val infiniteTransition = rememberInfiniteTransition(
+        label = "registerAnimation"
+    )
+
+    val botScale by infiniteTransition.animateFloat(
+        initialValue = 0.98f,
+        targetValue = 1.03f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(
+                durationMillis = 1800,
+                easing = FastOutSlowInEasing
+            ),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "botScale"
+    )
+
+    val glowScale by infiniteTransition.animateFloat(
+        initialValue = 0.94f,
+        targetValue = 1.06f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(
+                durationMillis = 1800,
+                easing = FastOutSlowInEasing
+            ),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "glowScale"
+    )
+
+    androidx.compose.runtime.LaunchedEffect(Unit) {
+        showContent = true
+    }
+
+    // ============================================================
+    // ROOT
     // ============================================================
 
     Box(
@@ -130,7 +200,39 @@ fun RegisterScreen(
                     )
                 )
             )
+            .statusBarsPadding()
+            .navigationBarsPadding()
     ) {
+
+        // ========================================================
+        // BACKGROUND GLOW
+        // ========================================================
+
+        Box(
+            modifier = Modifier
+                .size(220.dp)
+                .align(Alignment.TopEnd)
+                .scale(glowScale)
+                .clip(CircleShape)
+                .background(
+                    primaryBlue.copy(alpha = 0.055f)
+                )
+        )
+
+        Box(
+            modifier = Modifier
+                .size(180.dp)
+                .align(Alignment.BottomStart)
+                .scale(glowScale)
+                .clip(CircleShape)
+                .background(
+                    teal.copy(alpha = 0.05f)
+                )
+        )
+
+        // ========================================================
+        // MAIN CONTENT
+        // ========================================================
 
         Column(
             modifier = Modifier
@@ -139,48 +241,531 @@ fun RegisterScreen(
                     rememberScrollState()
                 )
                 .padding(
-                    horizontal = 20.dp,
-                    vertical = 22.dp
+                    horizontal = 18.dp,
+                    vertical = 10.dp
                 ),
-
-            horizontalAlignment =
-                Alignment.CenterHorizontally
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
 
             // ====================================================
-            // LOGO
+            // BACK
             // ====================================================
 
-            Box(
-                modifier = Modifier
-                    .size(82.dp)
-                    .background(
-                        Color(0xFF111A2A),
-                        CircleShape
-                    ),
-
-                contentAlignment =
-                    Alignment.Center
+            AnimatedVisibility(
+                visible = showContent,
+                enter = fadeIn(
+                    tween(450)
+                )
             ) {
 
-                Box(
-                    modifier = Modifier
-                        .size(65.dp)
-                        .background(
-                            lightPrimary,
-                            CircleShape
-                        ),
-
-                    contentAlignment =
-                        Alignment.Center
+                TextButton(
+                    onClick = onBackToLogin,
+                    modifier = Modifier.fillMaxWidth()
                 ) {
 
                     Text(
-                        text = "+",
-                        color = primary,
-                        fontSize = 43.sp,
-                        fontWeight = FontWeight.Light
+                        text = "←  Back to Login",
+                        modifier = Modifier.fillMaxWidth(),
+                        color = primaryBlue,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
                     )
+                }
+            }
+
+            Spacer(
+                modifier = Modifier.height(2.dp)
+            )
+
+            // ====================================================
+            // AI DOCTOR HERO
+            // ====================================================
+
+            AnimatedVisibility(
+                visible = showContent,
+                enter = fadeIn(
+                    tween(500)
+                ) + scaleIn(
+                    initialScale = 0.82f,
+                    animationSpec = tween(
+                        durationMillis = 550,
+                        easing = FastOutSlowInEasing
+                    )
+                )
+            ) {
+
+                RegisterHero(
+                    botScale = botScale
+                )
+            }
+
+            Spacer(
+                modifier = Modifier.height(17.dp)
+            )
+
+            // ====================================================
+            // REGISTER CARD
+            // ====================================================
+
+            AnimatedVisibility(
+                visible = showContent,
+                enter = fadeIn(
+                    tween(
+                        durationMillis = 600,
+                        delayMillis = 100
+                    )
+                ) + slideInVertically(
+                    initialOffsetY = { it / 6 },
+                    animationSpec = tween(
+                        durationMillis = 600,
+                        delayMillis = 100
+                    )
+                )
+            ) {
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(27.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color.White
+                    ),
+                    elevation = CardDefaults.cardElevation(
+                        defaultElevation = 5.dp
+                    ),
+                    border = BorderStroke(
+                        width = 1.dp,
+                        color = borderColor
+                    )
+                ) {
+
+                    Column(
+                        modifier = Modifier.padding(
+                            horizontal = 20.dp,
+                            vertical = 21.dp
+                        )
+                    ) {
+
+                        Text(
+                            text = "Create Account",
+                            color = primaryBlueDark,
+                            fontSize = 25.sp,
+                            fontWeight = FontWeight.ExtraBold
+                        )
+
+                        Spacer(
+                            modifier = Modifier.height(4.dp)
+                        )
+
+                        Text(
+                            text = "Create your MEDASSIST AI account to access your personal health assistant.",
+                            color = textGray,
+                            fontSize = 12.sp,
+                            lineHeight = 18.sp
+                        )
+
+                        Spacer(
+                            modifier = Modifier.height(18.dp)
+                        )
+
+                        // =================================================
+                        // FULL NAME
+                        // =================================================
+
+                        RegisterField(
+                            value = fullName,
+                            onValueChange = {
+                                fullName = it
+                                nameError = ""
+                                registerError = ""
+                            },
+                            label = "Full Name",
+                            placeholder = "Enter your full name",
+                            leadingText = "✦",
+                            isError = nameError.isNotEmpty()
+                        )
+
+                        if (nameError.isNotEmpty()) {
+                            ErrorText(nameError)
+                        }
+
+                        Spacer(
+                            modifier = Modifier.height(12.dp)
+                        )
+
+                        // =================================================
+                        // EMAIL
+                        // =================================================
+
+                        RegisterField(
+                            value = email,
+                            onValueChange = {
+                                email = it
+                                emailError = ""
+                                registerError = ""
+                            },
+                            label = "Email Address",
+                            placeholder = "Enter your email",
+                            leadingText = "@",
+                            isError = emailError.isNotEmpty()
+                        )
+
+                        if (emailError.isNotEmpty()) {
+                            ErrorText(emailError)
+                        }
+
+                        Spacer(
+                            modifier = Modifier.height(12.dp)
+                        )
+
+                        // =================================================
+                        // PASSWORD
+                        // =================================================
+
+                        PasswordRegisterField(
+                            value = password,
+                            onValueChange = {
+                                password = it
+                                passwordError = ""
+                                registerError = ""
+
+                                confirmPasswordError =
+                                    if (
+                                        confirmPassword.isNotEmpty() &&
+                                        confirmPassword != it
+                                    ) {
+                                        "Passwords do not match"
+                                    } else {
+                                        ""
+                                    }
+                            },
+                            label = "Password",
+                            placeholder = "Create a strong password",
+                            visible = passwordVisible,
+                            onVisibilityChange = {
+                                passwordVisible =
+                                    !passwordVisible
+                            },
+                            isError = passwordError.isNotEmpty()
+                        )
+
+                        if (passwordError.isNotEmpty()) {
+                            ErrorText(passwordError)
+                        }
+
+                        Spacer(
+                            modifier = Modifier.height(12.dp)
+                        )
+
+                        // =================================================
+                        // CONFIRM PASSWORD
+                        // =================================================
+
+                        PasswordRegisterField(
+                            value = confirmPassword,
+                            onValueChange = {
+                                confirmPassword = it
+                                registerError = ""
+
+                                confirmPasswordError =
+                                    when {
+                                        it.isEmpty() -> ""
+                                        it != password ->
+                                            "Passwords do not match"
+                                        else -> ""
+                                    }
+                            },
+                            label = "Confirm Password",
+                            placeholder = "Re-enter your password",
+                            visible = confirmPasswordVisible,
+                            onVisibilityChange = {
+                                confirmPasswordVisible =
+                                    !confirmPasswordVisible
+                            },
+                            isError =
+                                confirmPasswordError.isNotEmpty()
+                        )
+
+                        if (confirmPasswordError.isNotEmpty()) {
+                            ErrorText(confirmPasswordError)
+                        }
+
+                        Spacer(
+                            modifier = Modifier.height(10.dp)
+                        )
+
+                        // =================================================
+                        // PASSWORD REQUIREMENT
+                        // =================================================
+
+                        Row(
+                            verticalAlignment =
+                                Alignment.CenterVertically
+                        ) {
+
+                            Box(
+                                modifier = Modifier
+                                    .size(7.dp)
+                                    .clip(CircleShape)
+                                    .background(
+                                        if (password.length >= 6) {
+                                            teal
+                                        } else {
+                                            Color(0xFFB8C7CD)
+                                        }
+                                    )
+                            )
+
+                            Spacer(
+                                modifier = Modifier.width(8.dp)
+                            )
+
+                            Text(
+                                text =
+                                    "Password must contain at least 6 characters",
+                                color = textGray,
+                                fontSize = 11.sp
+                            )
+                        }
+
+                        // =================================================
+                        // REGISTER ERROR / SUCCESS
+                        // =================================================
+
+                        if (registerError.isNotEmpty()) {
+
+                            Spacer(
+                                modifier = Modifier.height(12.dp)
+                            )
+
+                            val success =
+                                registerError ==
+                                        "Account created successfully!"
+
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(
+                                        RoundedCornerShape(13.dp)
+                                    )
+                                    .background(
+                                        if (success) {
+                                            Color(0xFFEAF8F1)
+                                        } else {
+                                            Color(0xFFFFF1F1)
+                                        }
+                                    )
+                                    .border(
+                                        width = 1.dp,
+                                        color =
+                                            if (success) {
+                                                Color(0xFFB9E5CF)
+                                            } else {
+                                                Color(0xFFF1C4C4)
+                                            },
+                                        shape =
+                                            RoundedCornerShape(13.dp)
+                                    )
+                                    .padding(11.dp)
+                            ) {
+
+                                Text(
+                                    text = registerError,
+                                    color =
+                                        if (success) {
+                                            Color(0xFF21824D)
+                                        } else {
+                                            Color(0xFFC62828)
+                                        },
+                                    fontSize = 12.sp,
+                                    lineHeight = 17.sp,
+                                    textAlign = TextAlign.Center,
+                                    modifier =
+                                        Modifier.fillMaxWidth()
+                                )
+                            }
+                        }
+
+                        Spacer(
+                            modifier = Modifier.height(19.dp)
+                        )
+
+                        // =================================================
+                        // CREATE ACCOUNT BUTTON
+                        // =================================================
+
+                        Button(
+                            onClick = {
+
+                                nameError = ""
+                                emailError = ""
+                                passwordError = ""
+                                confirmPasswordError = ""
+                                registerError = ""
+
+                                var valid = true
+
+                                // NAME
+
+                                if (
+                                    fullName.trim().isEmpty()
+                                ) {
+                                    nameError =
+                                        "Name is required"
+                                    valid = false
+                                }
+
+                                // EMAIL
+
+                                val cleanEmail =
+                                    email.trim()
+
+                                if (cleanEmail.isEmpty()) {
+
+                                    emailError =
+                                        "Email is required"
+                                    valid = false
+
+                                } else if (
+                                    !Patterns.EMAIL_ADDRESS
+                                        .matcher(cleanEmail)
+                                        .matches()
+                                ) {
+
+                                    emailError =
+                                        "Enter a valid email address"
+                                    valid = false
+                                }
+
+                                // PASSWORD
+
+                                if (password.isEmpty()) {
+
+                                    passwordError =
+                                        "Password is required"
+                                    valid = false
+
+                                } else if (
+                                    password.length < 6
+                                ) {
+
+                                    passwordError =
+                                        "Password must be at least 6 characters"
+                                    valid = false
+                                }
+
+                                // CONFIRM PASSWORD
+
+                                if (confirmPassword.isEmpty()) {
+
+                                    confirmPasswordError =
+                                        "Please confirm your password"
+                                    valid = false
+
+                                } else if (
+                                    password != confirmPassword
+                                ) {
+
+                                    confirmPasswordError =
+                                        "Passwords do not match"
+                                    valid = false
+                                }
+
+                                if (!valid) {
+                                    return@Button
+                                }
+
+                                val registrationEmail =
+                                    cleanEmail
+
+                                val registrationPassword =
+                                    password
+
+                                val registrationName =
+                                    fullName.trim()
+
+                                scope.launch {
+
+                                    isLoading = true
+                                    registerError = ""
+
+                                    try {
+
+                                        val result =
+                                            SupabaseClient.registerUser(
+                                                email =
+                                                    registrationEmail,
+                                                password =
+                                                    registrationPassword,
+                                                fullName =
+                                                    registrationName
+                                            )
+
+                                        result.onSuccess {
+
+                                            isLoading = false
+
+                                            registerError =
+                                                "Account created successfully!"
+
+                                            onRegisterClick()
+                                        }
+
+                                        result.onFailure { error ->
+
+                                            isLoading = false
+
+                                            registerError =
+                                                error.message
+                                                    ?: "Registration failed. Please try again."
+                                        }
+
+                                    } catch (
+                                        e: Exception
+                                    ) {
+
+                                        isLoading = false
+
+                                        registerError =
+                                            e.message
+                                                ?: "Registration failed. Please try again."
+                                    }
+                                }
+                            },
+                            enabled = !isLoading,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(54.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = primaryBlue,
+                                disabledContainerColor =
+                                    primaryBlue.copy(
+                                        alpha = 0.40f
+                                    )
+                            )
+                        ) {
+
+                            if (isLoading) {
+
+                                CircularProgressIndicator(
+                                    modifier =
+                                        Modifier.size(21.dp),
+                                    color = Color.White,
+                                    strokeWidth = 2.dp
+                                )
+
+                            } else {
+
+                                Text(
+                                    text =
+                                        "Create Account  →",
+                                    fontSize = 15.sp,
+                                    fontWeight =
+                                        FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
                 }
             }
 
@@ -189,595 +774,12 @@ fun RegisterScreen(
             )
 
             // ====================================================
-            // TITLE
-            // ====================================================
-
-            Text(
-                text = "Create Account",
-                color = darkBlue,
-                fontSize = 28.sp,
-                fontWeight = FontWeight.Bold
-            )
-
-            Spacer(
-                modifier = Modifier.height(6.dp)
-            )
-
-            Text(
-                text = "Create your MedAssist AI account",
-                color = gray,
-                fontSize = 13.sp,
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(
-                modifier = Modifier.height(22.dp)
-            )
-
-            // ====================================================
-            // REGISTRATION CARD
-            // ====================================================
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-
-                shape = RoundedCornerShape(28.dp),
-
-                colors = CardDefaults.cardColors(
-                    containerColor = Color(0xFF111A2A)
-                ),
-
-                elevation = CardDefaults.cardElevation(
-                    defaultElevation = 7.dp
-                )
-            ) {
-
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(20.dp)
-                ) {
-
-                    Text(
-                        text = "Personal Details",
-                        color = darkBlue,
-                        fontSize = 18.sp,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    Spacer(
-                        modifier = Modifier.height(17.dp)
-                    )
-
-                    // =================================================
-                    // FULL NAME
-                    // =================================================
-
-                    RegisterField(
-                        value = fullName,
-
-                        onValueChange = {
-                            fullName = it
-                            nameError = ""
-                            registerError = ""
-                        },
-
-                        label = "Full Name",
-
-                        placeholder = "Enter your full name",
-
-                        leadingText = "👤",
-
-                        isError =
-                            nameError.isNotEmpty()
-                    )
-
-                    if (nameError.isNotEmpty()) {
-
-                        ErrorText(
-                            text = nameError
-                        )
-                    }
-
-                    Spacer(
-                        modifier = Modifier.height(13.dp)
-                    )
-
-                    // =================================================
-                    // EMAIL
-                    // =================================================
-
-                    RegisterField(
-                        value = email,
-
-                        onValueChange = {
-                            email = it
-                            emailError = ""
-                            registerError = ""
-                        },
-
-                        label = "Email Address",
-
-                        placeholder = "Enter your email",
-
-                        leadingText = "@",
-
-                        isError =
-                            emailError.isNotEmpty()
-                    )
-
-                    if (emailError.isNotEmpty()) {
-
-                        ErrorText(
-                            text = emailError
-                        )
-                    }
-
-                    Spacer(
-                        modifier = Modifier.height(13.dp)
-                    )
-
-                    // =================================================
-                    // PASSWORD
-                    // =================================================
-
-                    PasswordRegisterField(
-                        value = password,
-
-                        onValueChange = {
-
-                            password = it
-
-                            passwordError = ""
-                            registerError = ""
-
-                            if (
-                                confirmPassword.isNotEmpty() &&
-                                confirmPassword != it
-                            ) {
-
-                                confirmPasswordError =
-                                    "Passwords do not match"
-
-                            } else {
-
-                                confirmPasswordError = ""
-                            }
-                        },
-
-                        label = "Password",
-
-                        placeholder =
-                            "Create a strong password",
-
-                        visible =
-                            passwordVisible,
-
-                        onVisibilityChange = {
-
-                            passwordVisible =
-                                !passwordVisible
-                        },
-
-                        isError =
-                            passwordError.isNotEmpty()
-                    )
-
-                    if (passwordError.isNotEmpty()) {
-
-                        ErrorText(
-                            text = passwordError
-                        )
-                    }
-
-                    Spacer(
-                        modifier = Modifier.height(13.dp)
-                    )
-
-                    // =================================================
-                    // CONFIRM PASSWORD
-                    // =================================================
-
-                    PasswordRegisterField(
-                        value =
-                            confirmPassword,
-
-                        onValueChange = {
-
-                            confirmPassword = it
-
-                            registerError = ""
-
-                            confirmPasswordError =
-                                when {
-
-                                    it.isEmpty() ->
-                                        ""
-
-                                    it != password ->
-                                        "Passwords do not match"
-
-                                    else ->
-                                        ""
-                                }
-                        },
-
-                        label =
-                            "Confirm Password",
-
-                        placeholder =
-                            "Re-enter your password",
-
-                        visible =
-                            confirmPasswordVisible,
-
-                        onVisibilityChange = {
-
-                            confirmPasswordVisible =
-                                !confirmPasswordVisible
-                        },
-
-                        isError =
-                            confirmPasswordError.isNotEmpty()
-                    )
-
-                    if (
-                        confirmPasswordError.isNotEmpty()
-                    ) {
-
-                        ErrorText(
-                            text =
-                                confirmPasswordError
-                        )
-                    }
-
-                    Spacer(
-                        modifier =
-                            Modifier.height(10.dp)
-                    )
-
-                    // =================================================
-                    // PASSWORD REQUIREMENT
-                    // =================================================
-
-                    Row(
-                        verticalAlignment =
-                            Alignment.CenterVertically
-                    ) {
-
-                        Box(
-                            modifier =
-                                Modifier
-                                    .size(7.dp)
-                                    .background(
-                                        color =
-                                            if (
-                                                password.length >= 6
-                                            ) {
-                                                primary
-                                            } else {
-                                                Color(0xFF475569)
-                                            },
-
-                                        shape =
-                                            CircleShape
-                                    )
-                        )
-
-                        Spacer(
-                            modifier =
-                                Modifier.width(8.dp)
-                        )
-
-                        Text(
-                            text =
-                                "Password must contain at least 6 characters",
-
-                            color =
-                                gray,
-
-                            fontSize =
-                                11.sp
-                        )
-                    }
-
-                    // =================================================
-                    // REGISTER MESSAGE
-                    // =================================================
-
-                    if (
-                        registerError.isNotEmpty()
-                    ) {
-
-                        Spacer(
-                            modifier =
-                                Modifier.height(12.dp)
-                        )
-
-                        Card(
-                            modifier =
-                                Modifier.fillMaxWidth(),
-
-                            shape =
-                                RoundedCornerShape(14.dp),
-
-                            colors =
-                                CardDefaults.cardColors(
-                                    containerColor =
-                                        if (
-                                            registerError ==
-                                            "Account created successfully!"
-                                        ) {
-                                            Color(0xFFE7F7EF)
-                                        } else {
-                                            Color(0xFFFFF1F1)
-                                        }
-                                )
-                        ) {
-
-                            Text(
-                                text =
-                                    registerError,
-
-                                modifier =
-                                    Modifier.padding(12.dp),
-
-                                color =
-                                    if (
-                                        registerError ==
-                                        "Account created successfully!"
-                                    ) {
-                                        Color(0xFF217A4A)
-                                    } else {
-                                        Color(0xFFC62828)
-                                    },
-
-                                fontSize =
-                                    12.sp,
-
-                                textAlign =
-                                    TextAlign.Center
-                            )
-                        }
-                    }
-
-                    Spacer(
-                        modifier =
-                            Modifier.height(20.dp)
-                    )
-
-                    // =================================================
-                    // CREATE ACCOUNT
-                    // =================================================
-
-                    Button(
-
-                        enabled =
-                            !isLoading,
-
-                        onClick = {
-
-                            nameError = ""
-                            emailError = ""
-                            passwordError = ""
-                            confirmPasswordError = ""
-                            registerError = ""
-
-                            var valid = true
-
-                            // NAME
-
-                            if (
-                                fullName.trim().isEmpty()
-                            ) {
-
-                                nameError =
-                                    "Name is required"
-
-                                valid = false
-                            }
-
-                            // EMAIL
-
-                            val cleanEmail =
-                                email.trim()
-
-                            if (
-                                cleanEmail.isEmpty()
-                            ) {
-
-                                emailError =
-                                    "Email is required"
-
-                                valid = false
-
-                            } else if (
-                                !Patterns.EMAIL_ADDRESS
-                                    .matcher(cleanEmail)
-                                    .matches()
-                            ) {
-
-                                emailError =
-                                    "Enter a valid email address"
-
-                                valid = false
-                            }
-
-                            // PASSWORD
-
-                            if (
-                                password.isEmpty()
-                            ) {
-
-                                passwordError =
-                                    "Password is required"
-
-                                valid = false
-
-                            } else if (
-                                password.length < 6
-                            ) {
-
-                                passwordError =
-                                    "Password must be at least 6 characters"
-
-                                valid = false
-                            }
-
-                            // CONFIRM PASSWORD
-
-                            if (
-                                confirmPassword.isEmpty()
-                            ) {
-
-                                confirmPasswordError =
-                                    "Please confirm your password"
-
-                                valid = false
-
-                            } else if (
-                                password != confirmPassword
-                            ) {
-
-                                confirmPasswordError =
-                                    "Passwords do not match"
-
-                                valid = false
-                            }
-
-                            if (!valid) {
-                                return@Button
-                            }
-
-                            // SAVE VALUES
-
-                            val registrationEmail =
-                                cleanEmail
-
-                            val registrationPassword =
-                                password
-
-                            val registrationName =
-                                fullName.trim()
-
-                            // SUPABASE
-
-                            scope.launch {
-
-                                isLoading = true
-
-                                registerError = ""
-
-                                try {
-
-                                    val result =
-                                        SupabaseClient.registerUser(
-
-                                            email =
-                                                registrationEmail,
-
-                                            password =
-                                                registrationPassword,
-
-                                            fullName =
-                                                registrationName
-                                        )
-
-                                    result.onSuccess {
-
-                                        isLoading = false
-
-                                        registerError =
-                                            "Account created successfully!"
-
-                                        onRegisterClick()
-                                    }
-
-                                    result.onFailure { error ->
-
-                                        isLoading = false
-
-                                        registerError =
-                                            error.message
-                                                ?: "Registration failed. Please try again."
-                                    }
-
-                                } catch (
-                                    e: Exception
-                                ) {
-
-                                    isLoading = false
-
-                                    registerError =
-                                        e.message
-                                            ?: "Registration failed. Please try again."
-                                }
-                            }
-                        },
-
-                        modifier =
-                            Modifier
-                                .fillMaxWidth()
-                                .height(55.dp),
-
-                        shape =
-                            RoundedCornerShape(17.dp),
-
-                        colors =
-                            ButtonDefaults.buttonColors(
-
-                                containerColor =
-                                    primary,
-
-                                disabledContainerColor =
-                                    Color(0xFF475569)
-                            )
-                    ) {
-
-                        if (isLoading) {
-
-                            CircularProgressIndicator(
-
-                                modifier =
-                                    Modifier.size(21.dp),
-
-                                color =
-                                    Color(0xFF111A2A),
-
-                                strokeWidth =
-                                    2.dp
-                            )
-
-                        } else {
-
-                            Text(
-                                text =
-                                    "Create Account",
-
-                                fontSize =
-                                    15.sp,
-
-                                fontWeight =
-                                    FontWeight.Bold
-                            )
-                        }
-                    }
-                }
-            }
-
-            Spacer(
-                modifier =
-                    Modifier.height(18.dp)
-            )
-
-            // ====================================================
-            // LOGIN
+            // LOGIN LINK
             // ====================================================
 
             Row(
                 horizontalArrangement =
                     Arrangement.Center,
-
                 verticalAlignment =
                     Alignment.CenterVertically
             ) {
@@ -785,77 +787,519 @@ fun RegisterScreen(
                 Text(
                     text =
                         "Already have an account?",
-
-                    color =
-                        gray,
-
-                    fontSize =
-                        13.sp
+                    color = textGray,
+                    fontSize = 12.sp
                 )
 
                 Spacer(
-                    modifier =
-                        Modifier.width(5.dp)
+                    modifier = Modifier.width(4.dp)
                 )
 
                 Text(
-                    text =
-                        "Login",
-
-                    color =
-                        primary,
-
-                    fontSize =
-                        13.sp,
-
-                    fontWeight =
-                        FontWeight.Bold,
-
-                    modifier =
-                        Modifier
-                            .padding(4.dp)
-                            .clickable {
-
-                                if (!isLoading) {
-                                    onBackToLogin()
-                                }
+                    text = "Login",
+                    color = primaryBlue,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier
+                        .clickable {
+                            if (!isLoading) {
+                                onLoginClick()
                             }
+                        }
+                        .padding(5.dp)
                 )
             }
 
             Spacer(
-                modifier =
-                    Modifier.height(10.dp)
+                modifier = Modifier.height(12.dp)
             )
 
             // ====================================================
-            // SECURITY TEXT
+            // SECURITY
             // ====================================================
 
-            Text(
-                text =
-                    "Your account information is securely managed through Supabase.",
+            Row(
+                horizontalArrangement =
+                    Arrangement.Center,
+                verticalAlignment =
+                    Alignment.CenterVertically
+            ) {
 
-                color =
-                    gray,
+                Box(
+                    modifier = Modifier
+                        .size(29.dp)
+                        .clip(CircleShape)
+                        .background(
+                            Color.White.copy(
+                                alpha = 0.85f
+                            )
+                        )
+                        .border(
+                            1.dp,
+                            borderColor,
+                            CircleShape
+                        ),
+                    contentAlignment =
+                        Alignment.Center
+                ) {
 
-                fontSize =
-                    10.sp,
+                    Text(
+                        text = "✓",
+                        color = teal,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
 
-                textAlign =
-                    TextAlign.Center,
+                Spacer(
+                    modifier = Modifier.width(7.dp)
+                )
 
-                modifier =
-                    Modifier.fillMaxWidth()
+                Text(
+                    text =
+                        "Secure account creation with MEDASSIST AI",
+                    color = textGray,
+                    fontSize = 10.sp
+                )
+            }
+
+            Spacer(
+                modifier = Modifier.height(10.dp)
             )
         }
     }
 }
 
 
-// =================================================================
-// NORMAL REGISTER FIELD
-// =================================================================
+/* ================================================================
+   REGISTER HERO
+   ================================================================ */
+
+@Composable
+private fun RegisterHero(
+    botScale: Float
+) {
+
+    val primaryBlue = Color(0xFF1976D2)
+    val teal = Color(0xFF009688)
+
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(215.dp)
+            .clip(
+                RoundedCornerShape(30.dp)
+            )
+            .background(
+                Brush.linearGradient(
+                    colors = listOf(
+                        primaryBlue,
+                        Color(0xFF1976B8),
+                        teal
+                    )
+                )
+            )
+    ) {
+
+        // Decorative glow
+
+        Box(
+            modifier = Modifier
+                .size(150.dp)
+                .align(Alignment.TopEnd)
+                .clip(CircleShape)
+                .background(
+                    Color.White.copy(
+                        alpha = 0.07f
+                    )
+                )
+        )
+
+        Box(
+            modifier = Modifier
+                .size(100.dp)
+                .align(Alignment.BottomStart)
+                .clip(CircleShape)
+                .background(
+                    Color.White.copy(
+                        alpha = 0.06f
+                    )
+                )
+        )
+
+        // Left content
+
+        Column(
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .padding(
+                    start = 20.dp,
+                    end = 145.dp
+                )
+        ) {
+
+            Row(
+                verticalAlignment =
+                    Alignment.CenterVertically
+            ) {
+
+                Box(
+                    modifier = Modifier
+                        .size(36.dp)
+                        .clip(CircleShape)
+                        .background(
+                            Color.White.copy(
+                                alpha = 0.15f
+                            )
+                        )
+                        .border(
+                            width = 1.dp,
+                            color = Color.White.copy(
+                                alpha = 0.25f
+                            ),
+                            shape = CircleShape
+                        ),
+                    contentAlignment =
+                        Alignment.Center
+                ) {
+
+                    Text(
+                        text = "✚",
+                        color = Color.White,
+                        fontSize = 19.sp,
+                        fontWeight =
+                            FontWeight.Bold
+                    )
+                }
+
+                Spacer(
+                    modifier = Modifier.width(9.dp)
+                )
+
+                Column {
+
+                    Text(
+                        text = "MEDASSIST",
+                        color = Color.White,
+                        fontSize = 19.sp,
+                        fontWeight =
+                            FontWeight.ExtraBold
+                    )
+
+                    Text(
+                        text = "AI HEALTH ASSISTANT",
+                        color = Color(0xFFB9FFF5),
+                        fontSize = 7.sp,
+                        fontWeight =
+                            FontWeight.Bold,
+                        letterSpacing = 0.8.sp
+                    )
+                }
+            }
+
+            Spacer(
+                modifier = Modifier.height(12.dp)
+            )
+
+            Text(
+                text =
+                    "Start your journey\nwith MEDASSIST AI.",
+                color = Color.White,
+                fontSize = 14.sp,
+                lineHeight = 20.sp,
+                fontWeight =
+                    FontWeight.Bold
+            )
+
+            Spacer(
+                modifier = Modifier.height(9.dp)
+            )
+
+            Row(
+                horizontalArrangement =
+                    Arrangement.spacedBy(5.dp)
+            ) {
+
+                HeroBadge("AI POWERED")
+
+                HeroBadge("SECURE")
+            }
+        }
+
+        // AI Doctor Bot
+
+        RegisterDoctorBot(
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .padding(end = 13.dp)
+                .scale(botScale)
+        )
+    }
+}
+
+
+/* ================================================================
+   AI DOCTOR BOT
+   ================================================================ */
+
+@Composable
+private fun RegisterDoctorBot(
+    modifier: Modifier = Modifier
+) {
+
+    val primaryBlue = Color(0xFF1976D2)
+    val teal = Color(0xFF009688)
+
+    Box(
+        modifier = modifier.size(119.dp),
+        contentAlignment = Alignment.Center
+    ) {
+
+        // Glow
+
+        Box(
+            modifier = Modifier
+                .size(110.dp)
+                .clip(CircleShape)
+                .background(
+                    Brush.radialGradient(
+                        colors = listOf(
+                            Color.White.copy(
+                                alpha = 0.18f
+                            ),
+                            Color.Transparent
+                        )
+                    )
+                )
+        )
+
+        Column(
+            horizontalAlignment =
+                Alignment.CenterHorizontally
+        ) {
+
+            // Antenna
+
+            Box(
+                modifier = Modifier
+                    .width(3.dp)
+                    .height(12.dp)
+                    .background(
+                        Color.White.copy(
+                            alpha = 0.9f
+                        )
+                    )
+            )
+
+            Box(
+                modifier = Modifier
+                    .size(8.dp)
+                    .clip(CircleShape)
+                    .background(
+                        Color(0xFF9CFFF0)
+                    )
+            )
+
+            Spacer(
+                modifier = Modifier.height(3.dp)
+            )
+
+            // Robot head
+
+            Box(
+                modifier = Modifier
+                    .size(
+                        width = 80.dp,
+                        height = 66.dp
+                    )
+                    .clip(
+                        RoundedCornerShape(22.dp)
+                    )
+                    .background(
+                        Brush.verticalGradient(
+                            colors = listOf(
+                                Color.White,
+                                Color(0xFFDCEFF8)
+                            )
+                        )
+                    )
+                    .border(
+                        width = 2.dp,
+                        color = Color.White.copy(
+                            alpha = 0.8f
+                        ),
+                        shape =
+                            RoundedCornerShape(22.dp)
+                    ),
+                contentAlignment =
+                    Alignment.Center
+            ) {
+
+                Column(
+                    horizontalAlignment =
+                        Alignment.CenterHorizontally
+                ) {
+
+                    Row(
+                        horizontalArrangement =
+                            Arrangement.spacedBy(17.dp)
+                    ) {
+
+                        Box(
+                            modifier = Modifier
+                                .size(11.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    primaryBlue
+                                )
+                        )
+
+                        Box(
+                            modifier = Modifier
+                                .size(11.dp)
+                                .clip(CircleShape)
+                                .background(
+                                    primaryBlue
+                                )
+                        )
+                    }
+
+                    Spacer(
+                        modifier = Modifier.height(7.dp)
+                    )
+
+                    Box(
+                        modifier = Modifier
+                            .width(27.dp)
+                            .height(4.dp)
+                            .clip(
+                                RoundedCornerShape(50)
+                            )
+                            .background(
+                                teal
+                            )
+                    )
+                }
+
+                // Medical cross
+
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(5.dp)
+                        .size(19.dp)
+                        .clip(CircleShape)
+                        .background(
+                            teal
+                        ),
+                    contentAlignment =
+                        Alignment.Center
+                ) {
+
+                    Text(
+                        text = "+",
+                        color = Color.White,
+                        fontSize = 13.sp,
+                        fontWeight =
+                            FontWeight.Bold
+                    )
+                }
+            }
+
+            Spacer(
+                modifier = Modifier.height(4.dp)
+            )
+
+            // Body
+
+            Box(
+                modifier = Modifier
+                    .size(
+                        width = 62.dp,
+                        height = 27.dp
+                    )
+                    .clip(
+                        RoundedCornerShape(
+                            topStart = 15.dp,
+                            topEnd = 15.dp,
+                            bottomStart = 8.dp,
+                            bottomEnd = 8.dp
+                        )
+                    )
+                    .background(
+                        Color.White.copy(
+                            alpha = 0.94f
+                        )
+                    )
+            ) {
+
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .width(23.dp)
+                        .height(3.dp)
+                        .clip(
+                            RoundedCornerShape(50)
+                        )
+                        .background(
+                            primaryBlue
+                        )
+                )
+            }
+        }
+    }
+}
+
+
+/* ================================================================
+   HERO BADGE
+   ================================================================ */
+
+@Composable
+private fun HeroBadge(
+    text: String
+) {
+
+    Box(
+        modifier = Modifier
+            .clip(
+                RoundedCornerShape(50)
+            )
+            .background(
+                Color.White.copy(
+                    alpha = 0.12f
+                )
+            )
+            .border(
+                width = 1.dp,
+                color = Color.White.copy(
+                    alpha = 0.18f
+                ),
+                shape =
+                    RoundedCornerShape(50)
+            )
+            .padding(
+                horizontal = 7.dp,
+                vertical = 4.dp
+            )
+    ) {
+
+        Text(
+            text = text,
+            color = Color.White.copy(
+                alpha = 0.92f
+            ),
+            fontSize = 7.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = 0.4.sp
+        )
+    }
+}
+
+
+/* ================================================================
+   NORMAL FIELD
+   ================================================================ */
 
 @Composable
 private fun RegisterField(
@@ -867,112 +1311,70 @@ private fun RegisterField(
     isError: Boolean
 ) {
 
-    val primary =
-        Color(0xFF087EA4)
-
-    val darkBlue =
-        Color(0xFF123A56)
-
-    val gray =
-        Color(0xFF71818C)
+    val primaryBlue = Color(0xFF1976D2)
+    val primaryBlueDark = Color(0xFF123A56)
+    val textGray = Color(0xFF71818C)
+    val borderColor = Color(0xFFD8E5E9)
 
     OutlinedTextField(
-
-        value =
-            value,
-
-        onValueChange =
-            onValueChange,
-
-        modifier =
-            Modifier.fillMaxWidth(),
-
+        value = value,
+        onValueChange = onValueChange,
+        modifier = Modifier.fillMaxWidth(),
         label = {
-            Text(
-                text = label
-            )
+            Text(label)
         },
-
         placeholder = {
-            Text(
-                text = placeholder
-            )
+            Text(placeholder)
         },
-
         leadingIcon = {
 
             Box(
-                modifier =
-                    Modifier
-                        .size(30.dp)
-                        .background(
-                            Color(0xFFE8F7FB),
-                            CircleShape
-                        ),
-
+                modifier = Modifier
+                    .size(30.dp)
+                    .clip(CircleShape)
+                    .background(
+                        Color(0xFFE8F7FB)
+                    ),
                 contentAlignment =
                     Alignment.Center
             ) {
 
                 Text(
-                    text =
-                        leadingText,
-
-                    color =
-                        primary,
-
-                    fontSize =
-                        13.sp,
-
-                    fontWeight =
-                        FontWeight.Bold
+                    text = leadingText,
+                    color = primaryBlue,
+                    fontSize = 13.sp,
+                    fontWeight = FontWeight.Bold
                 )
             }
         },
-
-        singleLine =
-            true,
-
-        isError =
-            isError,
-
-        shape =
-            RoundedCornerShape(17.dp),
-
-        colors =
-            OutlinedTextFieldDefaults.colors(
-
-                focusedBorderColor =
-                    primary,
-
-                unfocusedBorderColor =
-                    Color(0xFFD8E5E9),
-
-                focusedLabelColor =
-                    primary,
-
-                unfocusedLabelColor =
-                    gray,
-
-                focusedTextColor =
-                    darkBlue,
-
-                unfocusedTextColor =
-                    darkBlue,
-
-                cursorColor =
-                    primary,
-
-                errorBorderColor =
-                    Color(0xFFD32F2F)
-            )
+        singleLine = true,
+        isError = isError,
+        shape = RoundedCornerShape(16.dp),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor =
+                primaryBlue,
+            unfocusedBorderColor =
+                borderColor,
+            focusedLabelColor =
+                primaryBlue,
+            unfocusedLabelColor =
+                textGray,
+            focusedTextColor =
+                primaryBlueDark,
+            unfocusedTextColor =
+                primaryBlueDark,
+            cursorColor =
+                primaryBlue,
+            errorBorderColor =
+                Color(0xFFD32F2F)
+        )
     )
 }
 
 
-// =================================================================
-// PASSWORD FIELD
-// =================================================================
+/* ================================================================
+   PASSWORD FIELD
+   ================================================================ */
 
 @Composable
 private fun PasswordRegisterField(
@@ -985,150 +1387,97 @@ private fun PasswordRegisterField(
     isError: Boolean
 ) {
 
-    val primary =
-        Color(0xFF087EA4)
-
-    val darkBlue =
-        Color(0xFF123A56)
-
-    val gray =
-        Color(0xFF71818C)
+    val primaryBlue = Color(0xFF1976D2)
+    val primaryBlueDark = Color(0xFF123A56)
+    val textGray = Color(0xFF71818C)
+    val borderColor = Color(0xFFD8E5E9)
 
     OutlinedTextField(
-
-        value =
-            value,
-
-        onValueChange =
-            onValueChange,
-
-        modifier =
-            Modifier.fillMaxWidth(),
-
+        value = value,
+        onValueChange = onValueChange,
+        modifier = Modifier.fillMaxWidth(),
         label = {
-            Text(
-                text =
-                    label
-            )
+            Text(label)
         },
-
         placeholder = {
-            Text(
-                text =
-                    placeholder
-            )
+            Text(placeholder)
         },
-
         leadingIcon = {
 
             Box(
-                modifier =
-                    Modifier
-                        .size(30.dp)
-                        .background(
-                            Color(0xFFE8F7FB),
-                            CircleShape
-                        ),
-
+                modifier = Modifier
+                    .size(30.dp)
+                    .clip(CircleShape)
+                    .background(
+                        Color(0xFFE8F7FB)
+                    ),
                 contentAlignment =
                     Alignment.Center
             ) {
 
                 Text(
                     text = "•",
-
-                    color =
-                        primary,
-
-                    fontSize =
-                        20.sp,
-
-                    fontWeight =
-                        FontWeight.Bold
+                    color = primaryBlue,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold
                 )
             }
         },
-
         trailingIcon = {
 
             Text(
                 text =
                     if (visible) {
-                        "Hide"
+                        "HIDE"
                     } else {
-                        "Show"
+                        "SHOW"
                     },
-
-                color =
-                    primary,
-
-                fontSize =
-                    11.sp,
-
-                fontWeight =
-                    FontWeight.Bold,
-
-                modifier =
-                    Modifier
-                        .padding(
-                            end = 12.dp
-                        )
-                        .clickable {
-                            onVisibilityChange()
-                        }
+                color = primaryBlue,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier
+                    .clickable {
+                        onVisibilityChange()
+                    }
+                    .padding(
+                        end = 12.dp
+                    )
             )
         },
-
         visualTransformation =
             if (visible) {
                 VisualTransformation.None
             } else {
                 PasswordVisualTransformation()
             },
-
-        singleLine =
-            true,
-
-        isError =
-            isError,
-
-        shape =
-            RoundedCornerShape(17.dp),
-
-        colors =
-            OutlinedTextFieldDefaults.colors(
-
-                focusedBorderColor =
-                    primary,
-
-                unfocusedBorderColor =
-                    Color(0xFFD8E5E9),
-
-                focusedLabelColor =
-                    primary,
-
-                unfocusedLabelColor =
-                    gray,
-
-                focusedTextColor =
-                    darkBlue,
-
-                unfocusedTextColor =
-                    darkBlue,
-
-                cursorColor =
-                    primary,
-
-                errorBorderColor =
-                    Color(0xFFD32F2F)
-            )
+        singleLine = true,
+        isError = isError,
+        shape = RoundedCornerShape(16.dp),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor =
+                primaryBlue,
+            unfocusedBorderColor =
+                borderColor,
+            focusedLabelColor =
+                primaryBlue,
+            unfocusedLabelColor =
+                textGray,
+            focusedTextColor =
+                primaryBlueDark,
+            unfocusedTextColor =
+                primaryBlueDark,
+            cursorColor =
+                primaryBlue,
+            errorBorderColor =
+                Color(0xFFD32F2F)
+        )
     )
 }
 
 
-// =================================================================
-// ERROR TEXT
-// =================================================================
+/* ================================================================
+   ERROR TEXT
+   ================================================================ */
 
 @Composable
 private fun ErrorText(
@@ -1136,21 +1485,15 @@ private fun ErrorText(
 ) {
 
     Text(
-        text =
-            text,
-
-        color =
-            Color(0xFFD32F2F),
-
-        fontSize =
-            11.sp,
-
-        modifier =
-            Modifier
-                .fillMaxWidth()
-                .padding(
-                    start = 5.dp,
-                    top = 4.dp
-                )
+        text = text,
+        color = Color(0xFFD32F2F),
+        fontSize = 11.sp,
+        lineHeight = 15.sp,
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(
+                start = 5.dp,
+                top = 4.dp
+            )
     )
 }
