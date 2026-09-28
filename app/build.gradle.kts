@@ -83,12 +83,38 @@ android {
 
 dependencies {
 
-    // Android
+    // =========================================================
+    // ANDROID
+    // =========================================================
+
     implementation(libs.androidx.core.ktx)
-    implementation(libs.androidx.lifecycle.runtime.ktx)
-    implementation(libs.androidx.activity.compose)
-    implementation("com.squareup.okhttp3:okhttp:4.12.0")
-    // Compose
+
+    implementation(
+        libs.androidx.lifecycle.runtime.ktx
+    )
+
+    implementation(
+        libs.androidx.activity.compose
+    )
+
+    implementation(
+        "com.squareup.okhttp3:okhttp:4.12.0"
+    )
+
+
+    // =========================================================
+    // BIOMETRIC / DEVICE AUTHENTICATION
+    // =========================================================
+
+    implementation(
+        "androidx.biometric:biometric:1.1.0"
+    )
+
+
+    // =========================================================
+    // COMPOSE
+    // =========================================================
+
     implementation(
         platform(
             libs.androidx.compose.bom
@@ -111,7 +137,11 @@ dependencies {
         libs.androidx.compose.material3
     )
 
-    // Supabase
+
+    // =========================================================
+    // SUPABASE
+    // =========================================================
+
     implementation(
         platform(
             "io.github.jan-tennert.supabase:bom:3.2.0"
@@ -130,7 +160,11 @@ dependencies {
         "io.github.jan-tennert.supabase:storage-kt"
     )
 
-    // Ktor
+
+    // =========================================================
+    // KTOR
+    // =========================================================
+
     implementation(
         "io.ktor:ktor-client-android:3.2.1"
     )
@@ -140,12 +174,19 @@ dependencies {
     )
 
 
-    // Google ML Kit - Language Identification
+    // =========================================================
+    // GOOGLE ML KIT - LANGUAGE IDENTIFICATION
+    // =========================================================
+
     implementation(
         "com.google.mlkit:language-id:17.0.6"
     )
 
-    // Retrofit
+
+    // =========================================================
+    // RETROFIT
+    // =========================================================
+
     implementation(
         "com.squareup.retrofit2:retrofit:3.0.0"
     )
@@ -154,14 +195,24 @@ dependencies {
         "com.squareup.retrofit2:converter-gson:3.0.0"
     )
 
-    // Google ML Kit - Text Recognition (OCR)
+
+    // =========================================================
+    // GOOGLE ML KIT - TEXT RECOGNITION / OCR
+    // =========================================================
+
     implementation(
         "com.google.mlkit:text-recognition:16.0.1"
     )
 
-    implementation("com.google.mlkit:translate:17.0.3")
+    implementation(
+        "com.google.mlkit:translate:17.0.3"
+    )
 
-    // Tests
+
+    // =========================================================
+    // TESTS
+    // =========================================================
+
     testImplementation(
         libs.junit
     )
@@ -184,7 +235,11 @@ dependencies {
         libs.androidx.compose.ui.test.junit4
     )
 
-    // Debug
+
+    // =========================================================
+    // DEBUG
+    // =========================================================
+
     debugImplementation(
         libs.androidx.compose.ui.tooling
     )

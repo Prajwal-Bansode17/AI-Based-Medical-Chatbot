@@ -1,10 +1,12 @@
 package com.example.ai_based_medical_chatbot
 
+import android.content.Context
 import android.os.Bundle
 import android.util.Log
-import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
+import androidx.biometric.BiometricManager
+import androidx.biometric.BiometricPrompt
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -13,6 +15,8 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
+import androidx.fragment.app.FragmentActivity
 import com.example.ai_based_medical_chatbot.data.SupabaseClient
 import com.example.ai_based_medical_chatbot.ui.theme.AIBasedMedicalChatbotTheme
 import kotlinx.coroutines.launch
@@ -30,174 +34,168 @@ import ui.RegisterScreen
 import ui.SplashScreen
 import ui.SymptomsCheckerScreen
 
+private const val AUTH_PREFS = "medassist_auth_preferences"
+private const val BIOMETRIC_ENABLED = "biometric_enabled"
 
-class MainActivity : ComponentActivity() {
+private fun biometricEnabled(context: Context): Boolean =
+    context.getSharedPreferences(AUTH_PREFS, Context.MODE_PRIVATE)
+        .getBoolean(BIOMETRIC_ENABLED, false)
 
-    override fun onCreate(
-        savedInstanceState: Bundle?
-    ) {
+private fun setBiometricEnabled(context: Context, enabled: Boolean) {
+    context.getSharedPreferences(AUTH_PREFS, Context.MODE_PRIVATE)
+        .edit()
+        .putBoolean(BIOMETRIC_ENABLED, enabled)
+        .apply()
+}
+
+private fun deviceAuthenticationAvailable(context: Context): Boolean {
+    val authenticators =
+        BiometricManager.Authenticators.BIOMETRIC_STRONG or
+                BiometricManager.Authenticators.DEVICE_CREDENTIAL
+
+    return BiometricManager.from(context).canAuthenticate(authenticators) ==
+            BiometricManager.BIOMETRIC_SUCCESS
+}
+
+private fun openDeviceAuthentication(
+    activity: FragmentActivity,
+    onSuccess: () -> Unit,
+    onError: (String) -> Unit
+) {
+    val executor = ContextCompat.getMainExecutor(activity)
+
+    val prompt = BiometricPrompt(
+        activity,
+        executor,
+        object : BiometricPrompt.AuthenticationCallback() {
+
+            override fun onAuthenticationSucceeded(
+                result: BiometricPrompt.AuthenticationResult
+            ) {
+                super.onAuthenticationSucceeded(result)
+                onSuccess()
+            }
+
+            override fun onAuthenticationError(
+                errorCode: Int,
+                errString: CharSequence
+            ) {
+                super.onAuthenticationError(errorCode, errString)
+                onError(errString.toString())
+            }
+
+            override fun onAuthenticationFailed() {
+                super.onAuthenticationFailed()
+            }
+        }
+    )
+
+    val promptInfo = BiometricPrompt.PromptInfo.Builder()
+        .setTitle("Unlock MEDASSIST AI")
+        .setSubtitle("Use fingerprint, face, PIN, pattern, or device password")
+        .setAllowedAuthenticators(
+            BiometricManager.Authenticators.BIOMETRIC_STRONG or
+                    BiometricManager.Authenticators.DEVICE_CREDENTIAL
+        )
+        .build()
+
+    prompt.authenticate(promptInfo)
+}
+
+class MainActivity : FragmentActivity() {
+
+    override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         setContent {
-
             AIBasedMedicalChatbotTheme {
-
                 MedicalChatbotNavigation()
             }
         }
     }
 }
 
-
 @Composable
 private fun MedicalChatbotNavigation() {
 
-    // =========================================================
-    // CONTEXT
-    // =========================================================
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
-    val context =
-        LocalContext.current
-
-
-    // =========================================================
-    // NAVIGATION STACK
-    // =========================================================
-
-    val screenStack =
-        remember {
-            mutableStateListOf("splash")
-        }
-
-
-    // =========================================================
-    // COROUTINE SCOPE
-    // =========================================================
-
-    val scope =
-        rememberCoroutineScope()
-
-
-    // =========================================================
-    // USER INFORMATION
-    // =========================================================
-
-    var userName by remember {
-        mutableStateOf("")
+    val screenStack = remember {
+        mutableStateListOf("splash")
     }
 
-    var userEmail by remember {
-        mutableStateOf("")
-    }
+    var userName by remember { mutableStateOf("") }
+    var userEmail by remember { mutableStateOf("") }
+    var loginLoading by remember { mutableStateOf(false) }
+    var loginError by remember { mutableStateOf("") }
+    var biometricError by remember { mutableStateOf("") }
+    var selectedMedicine by remember { mutableStateOf<ui.Medicine?>(null) }
 
+    val currentScreen = screenStack.lastOrNull() ?: "login"
 
-    // =========================================================
-    // LOGIN STATE
-    // =========================================================
-
-    var loginLoading by remember {
-        mutableStateOf(false)
-    }
-
-    var loginError by remember {
-        mutableStateOf("")
-    }
-
-
-    // =========================================================
-    // SELECTED MEDICINE
-    // =========================================================
-
-    var selectedMedicine by remember {
-        mutableStateOf<ui.Medicine?>(null)
-    }
-
-
-    // =========================================================
-    // CURRENT SCREEN
-    // =========================================================
-
-    val currentScreen =
-        screenStack.lastOrNull()
-            ?: "login"
-
-
-    // =========================================================
-    // NAVIGATION
-    // =========================================================
-
-    fun navigateTo(
-        screen: String
-    ) {
-
+    fun go(screen: String) {
         screenStack.add(screen)
     }
 
-
-    fun navigateBack() {
-
-        if (
-            screenStack.size > 1
-        ) {
-
-            screenStack.removeAt(
-                screenStack.lastIndex
-            )
+    fun back() {
+        if (screenStack.size > 1) {
+            screenStack.removeAt(screenStack.lastIndex)
         }
     }
 
-
-    // =========================================================
-    // ANDROID BACK BUTTON
-    // =========================================================
-
-    BackHandler(
-        enabled =
-            screenStack.size > 1
-    ) {
-
-        navigateBack()
+    BackHandler(enabled = currentScreen != "login" && currentScreen != "dashboard") {
+        when (currentScreen) {
+            "forgotPassword", "register", "biometric" -> {
+                screenStack.clear()
+                screenStack.add("login")
+            }
+            else -> back()
+        }
     }
-
-
-    // =========================================================
-    // SCREEN ROUTING
-    // =========================================================
 
     when (currentScreen) {
 
-
-        // =====================================================
-        // SPLASH
-        // =====================================================
-
         "splash" -> {
-
             SplashScreen(
-
                 onSplashFinished = {
+
+                    val savedUser =
+                        SupabaseClient.getSavedUser(context)
 
                     screenStack.clear()
 
-                    screenStack.add(
-                        "login"
-                    )
+                    /*
+                     * IMPORTANT:
+                     * If Supabase has a saved user, always show
+                     * the secure login screen. We do NOT require
+                     * biometric availability just to display it.
+                     */
+                    if (savedUser != null && biometricEnabled(context)) {
+
+                        userEmail = savedUser.email
+                        userName =
+                            if (savedUser.fullName.isNotBlank()) {
+                                savedUser.fullName
+                            } else {
+                                savedUser.email
+                                    .substringBefore("@")
+                                    .replaceFirstChar { it.uppercase() }
+                            }
+
+                        biometricError = ""
+                        screenStack.add("biometric")
+
+                    } else {
+                        screenStack.add("login")
+                    }
                 }
             )
         }
 
-
-        // =====================================================
-        // LOGIN
-        // =====================================================
-
         "login" -> {
-
             LoginScreen(
-
-                onLoginClick = {
-                        email,
-                        password ->
+                onLoginClick = { email, password ->
 
                     scope.launch {
 
@@ -206,56 +204,42 @@ private fun MedicalChatbotNavigation() {
 
                         try {
 
-                            val result =
-                                SupabaseClient.loginUser(
-                                    email = email,
-                                    password = password,
-                                    context = context
-                                )
-
-
-                            // =================================
-                            // LOGIN SUCCESS
-                            // =================================
+                            val result = SupabaseClient.loginUser(
+                                email = email,
+                                password = password,
+                                context = context
+                            )
 
                             result.onSuccess { user ->
 
-                                userEmail =
-                                    user.email
+                                userEmail = user.email
 
                                 userName =
-                                    if (
+                                    if (user.fullName.isNotBlank()) {
                                         user.fullName
-                                            .isNotBlank()
-                                    ) {
-
-                                        user.fullName
-
                                     } else {
-
                                         user.email
-                                            .substringBefore(
-                                                "@"
-                                            )
-                                            .replaceFirstChar {
-                                                it.uppercase()
-                                            }
+                                            .substringBefore("@")
+                                            .replaceFirstChar { it.uppercase() }
                                     }
 
                                 loginLoading = false
                                 loginError = ""
 
-                                screenStack.clear()
-
-                                screenStack.add(
-                                    "dashboard"
+                                /*
+                                 * IMPORTANT:
+                                 * Enable the secure-login gate after every
+                                 * successful normal login. Do not depend on
+                                 * biometric hardware here.
+                                 */
+                                setBiometricEnabled(
+                                    context,
+                                    true
                                 )
+
+                                screenStack.clear()
+                                screenStack.add("dashboard")
                             }
-
-
-                            // =================================
-                            // LOGIN FAILURE
-                            // =================================
 
                             result.onFailure { error ->
 
@@ -272,9 +256,7 @@ private fun MedicalChatbotNavigation() {
                                 )
                             }
 
-                        } catch (
-                            e: Exception
-                        ) {
+                        } catch (e: Exception) {
 
                             loginLoading = false
 
@@ -291,343 +273,276 @@ private fun MedicalChatbotNavigation() {
                     }
                 },
 
-
-                // =============================================
-                // REGISTER
-                // =============================================
-
                 onRegisterClick = {
-
                     loginError = ""
-
-                    navigateTo(
-                        "register"
-                    )
+                    go("register")
                 },
-
-
-                // =============================================
-                // FORGOT PASSWORD
-                // =============================================
 
                 onForgotPasswordClick = {
-
                     loginError = ""
-
-                    navigateTo(
-                        "forgotPassword"
-                    )
+                    go("forgotPassword")
                 },
 
-
-                // =============================================
-                // LOADING
-                // =============================================
-
-                isLoading =
-                    loginLoading,
-
-
-                // =============================================
-                // ERROR
-                // =============================================
-
-                loginError =
-                    loginError
+                isLoading = loginLoading,
+                loginError = loginError
             )
         }
 
-
-        // =====================================================
-        // REGISTER
-        // =====================================================
-
-        "register" -> {
-
-            RegisterScreen(
+        "biometric" -> {
+            LoginScreen(
+                onLoginClick = { _, _ -> },
 
                 onRegisterClick = {
-
-                    navigateBack()
+                    screenStack.clear()
+                    screenStack.add("login")
                 },
 
-                onLoginClick = {
-
-                    navigateBack()
+                onForgotPasswordClick = {
+                    screenStack.clear()
+                    screenStack.add("forgotPassword")
                 },
 
-                onBackToLogin = {
+                biometricMode = true,
 
-                    navigateBack()
-                }
+                onBiometricClick = {
+
+                    biometricError = ""
+
+                    if (!deviceAuthenticationAvailable(context)) {
+
+                        biometricError =
+                            "No fingerprint, face, PIN, pattern, or device password is configured on this phone."
+
+                    } else {
+
+                        val activity =
+                            context as? FragmentActivity
+
+                        if (activity == null) {
+
+                            biometricError =
+                                "Unable to open device authentication."
+
+                        } else {
+
+                            openDeviceAuthentication(
+                                activity = activity,
+
+                                onSuccess = {
+
+                                    val savedUser =
+                                        SupabaseClient.getSavedUser(context)
+
+                                    if (savedUser == null) {
+
+                                        setBiometricEnabled(
+                                            context,
+                                            false
+                                        )
+
+                                        biometricError =
+                                            "Session expired. Please login with email and password."
+
+                                        screenStack.clear()
+                                        screenStack.add("login")
+
+                                    } else {
+
+                                        userEmail =
+                                            savedUser.email
+
+                                        userName =
+                                            if (savedUser.fullName.isNotBlank()) {
+                                                savedUser.fullName
+                                            } else {
+                                                savedUser.email
+                                                    .substringBefore("@")
+                                                    .replaceFirstChar {
+                                                        it.uppercase()
+                                                    }
+                                            }
+
+                                        biometricError = ""
+
+                                        screenStack.clear()
+                                        screenStack.add("dashboard")
+                                    }
+                                },
+
+                                onError = { message ->
+                                    biometricError = message
+                                }
+                            )
+                        }
+                    }
+                },
+
+                onUsePasswordClick = {
+                    biometricError = ""
+                    loginError = ""
+                    screenStack.clear()
+                    screenStack.add("login")
+                },
+
+                isLoading = false,
+                loginError = biometricError
             )
         }
 
-
-        // =====================================================
-        // FORGOT PASSWORD
-        // =====================================================
+        "register" -> {
+            RegisterScreen(
+                onRegisterClick = {
+                    back()
+                },
+                onLoginClick = {
+                    screenStack.clear()
+                    screenStack.add("login")
+                },
+                onBackToLogin = {
+                    screenStack.clear()
+                    screenStack.add("login")
+                }
+            )
+        }
 
         "forgotPassword" -> {
-
             ForgotPasswordScreen(
-
                 onBackToLogin = {
-
-                    navigateBack()
+                    screenStack.clear()
+                    screenStack.add("login")
                 }
             )
         }
 
-
-        // =====================================================
-        // DASHBOARD
-        // =====================================================
-
         "dashboard" -> {
-
             DashboardScreen(
-
-                userName =
-                    userName,
+                userName = userName,
 
                 onProfileClick = {
-
-                    navigateTo(
-                        "profile"
-                    )
+                    go("profile")
                 },
-
-                // ============================================
-                // CHATBOT
-                // ============================================
 
                 onChatbotClick = {
-
-                    navigateTo(
-                        "chatbot"
-                    )
+                    go("chatbot")
                 },
 
-                // ============================================
-                // BMI CHECKER
-                // ============================================
-
                 onBMIClick = {
-
-                    navigateTo(
-                        "bmi"
-                    )
+                    go("bmi")
                 },
 
                 onSymptomsClick = {
-
-                    navigateTo(
-                        "symptoms"
-                    )
+                    go("symptoms")
                 },
 
                 onMedicineClick = {
-
-                    navigateTo(
-                        "medicine"
-                    )
+                    go("medicine")
                 },
 
                 onHealthTipsClick = {
-
-                    navigateTo(
-                        "healthTips"
-                    )
+                    go("healthTips")
                 },
 
                 onPrescriptionClick = {
-
-                    navigateTo(
-                        "prescription"
-                    )
+                    go("prescription")
                 }
             )
         }
 
-
-        // =====================================================
-        // PROFILE
-        // =====================================================
-
         "profile" -> {
-
             ProfileScreen(
-
-                userName =
-                    userName,
-
-                userEmail =
-                    userEmail,
+                userName = userName,
+                userEmail = userEmail,
 
                 onBackClick = {
-
-                    navigateBack()
+                    back()
                 },
 
                 onLogoutClick = {
 
-                    // Clear saved Supabase session
-                    SupabaseClient.clearSession(
-                        context
+                    SupabaseClient.clearSession(context)
+
+                    setBiometricEnabled(
+                        context,
+                        false
                     )
 
-                    // Clear UI user data
                     userName = ""
                     userEmail = ""
-
                     loginError = ""
                     loginLoading = false
+                    biometricError = ""
 
-                    // Go to login
                     screenStack.clear()
-
-                    screenStack.add(
-                        "login"
-                    )
+                    screenStack.add("login")
                 }
             )
         }
-
-
-        // =====================================================
-        // CHATBOT
-        // =====================================================
 
         "chatbot" -> {
-
             ChatbotScreen(
-
                 onBack = {
-
-                    navigateBack()
+                    back()
                 }
             )
         }
-
-
-        // =====================================================
-        // BMI CHECKER
-        // =====================================================
 
         "bmi" -> {
-
             BMICheckerScreen(
-
                 onBackClick = {
-
-                    navigateBack()
+                    back()
                 }
             )
         }
-
-
-        // =====================================================
-        // SYMPTOMS CHECKER
-        // =====================================================
 
         "symptoms" -> {
-
             SymptomsCheckerScreen(
-
                 onBackClick = {
-
-                    navigateBack()
+                    back()
                 }
             )
         }
-
-
-        // =====================================================
-        // MEDICINE INFORMATION
-        // =====================================================
 
         "medicine" -> {
-
             MedicineInfoScreen(
-
                 onBackClick = {
-
-                    navigateBack()
+                    back()
                 },
 
-                onMedicineClick = {
-                        medicine ->
-
-                    selectedMedicine =
-                        medicine
-
-                    navigateTo(
-                        "medicineDetail"
-                    )
+                onMedicineClick = { medicine ->
+                    selectedMedicine = medicine
+                    go("medicineDetail")
                 }
             )
         }
-
-
-        // =====================================================
-        // MEDICINE DETAIL
-        // =====================================================
 
         "medicineDetail" -> {
 
-            val medicine =
-                selectedMedicine
+            val medicine = selectedMedicine
 
-            if (
-                medicine == null
-            ) {
-
-                navigateBack()
-
+            if (medicine == null) {
+                back()
             } else {
-
                 MedicineDetailScreen(
-
-                    medicine =
-                        medicine,
-
+                    medicine = medicine,
                     onBackClick = {
-
-                        navigateBack()
+                        back()
                     }
                 )
             }
         }
 
-
-        // =====================================================
-        // PRESCRIPTION SCANNER
-        // =====================================================
-
         "prescription" -> {
-
             PrescriptionScannerScreen(
-
                 onBackClick = {
-
-                    navigateBack()
+                    back()
                 }
             )
         }
 
-
-        // =====================================================
-        // HEALTH TIPS
-        // =====================================================
-
         "healthTips" -> {
-
             HealthTipsScreen(
-
                 onBackClick = {
-
-                    navigateBack()
+                    back()
                 }
             )
         }
