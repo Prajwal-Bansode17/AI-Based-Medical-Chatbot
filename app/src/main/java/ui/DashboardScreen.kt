@@ -7,7 +7,6 @@ import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
-import androidx.compose.animation.scaleIn
 import androidx.compose.animation.slideInVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -29,16 +28,15 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Face
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
-import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -46,23 +44,23 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.platform.LocalContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.ai_based_medical_chatbot.R
 import com.example.ai_based_medical_chatbot.ui.theme.MedicalBackground
 import com.example.ai_based_medical_chatbot.ui.theme.MedicalBlue
 import com.example.ai_based_medical_chatbot.ui.theme.MedicalBlueDark
 import com.example.ai_based_medical_chatbot.ui.theme.MedicalSurface
-import com.example.ai_based_medical_chatbot.ui.theme.MedicalSurfaceVariant
 import com.example.ai_based_medical_chatbot.ui.theme.MedicalTeal
 import com.example.ai_based_medical_chatbot.ui.theme.MedicalTextPrimary
 import com.example.ai_based_medical_chatbot.ui.theme.MedicalTextSecondary
@@ -77,15 +75,45 @@ fun DashboardScreen(
     onSymptomsClick: () -> Unit = {},
     onMedicineClick: () -> Unit = {},
     onHealthTipsClick: () -> Unit = {},
-    onPrescriptionClick: () -> Unit = {}
+    onPrescriptionClick: () -> Unit = {},
+    onMedicineReminderClick: () -> Unit = {}
 ) {
+
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+
+    var userGender by remember {
+        mutableStateOf("")
+    }
 
     var showContent by remember {
         mutableStateOf(false)
     }
 
+    fun refreshDashboardGender() {
+        userGender = context.getSharedPreferences(
+            "medassist_bmi_preferences",
+            android.content.Context.MODE_PRIVATE
+        ).getString("gender", "") ?: ""
+    }
+
     LaunchedEffect(Unit) {
         showContent = true
+        refreshDashboardGender()
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                refreshDashboardGender()
+            }
+        }
+
+        lifecycleOwner.lifecycle.addObserver(observer)
+
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
     }
 
     val displayName = userName
@@ -241,7 +269,7 @@ fun DashboardScreen(
 
                         Box(
                             modifier = Modifier
-                                .size(56.dp)
+                                .size(60.dp)
                                 .shadow(
                                     elevation = 6.dp,
                                     shape = CircleShape
@@ -255,13 +283,7 @@ fun DashboardScreen(
                                 },
                             contentAlignment = Alignment.Center
                         ) {
-
-                            Icon(
-                                imageVector = Icons.Default.Person,
-                                contentDescription = "Profile",
-                                tint = MedicalBlue,
-                                modifier = Modifier.size(29.dp)
-                            )
+                            DashboardGenderAvatar(gender = userGender)
                         }
                     }
                 }
@@ -492,7 +514,7 @@ fun DashboardScreen(
                         )
 
                         Text(
-                            text = "Choose a health tool",
+                            text = "Choose what you need",
                             color = MedicalTextSecondary,
                             fontSize = 12.sp
                         )
@@ -516,8 +538,8 @@ fun DashboardScreen(
                 ) {
 
                     DashboardActionCard(
-                        title = "BMI Checker",
-                        subtitle = "Check your BMI",
+                        title = "Check BMI",
+                        subtitle = "Check your body weight",
                         emoji = "⚖",
                         iconTint = MedicalBlue,
                         modifier = Modifier.weight(1f),
@@ -525,7 +547,7 @@ fun DashboardScreen(
                     )
 
                     DashboardActionCard(
-                        title = "Symptoms",
+                        title = "Check Symptoms",
                         subtitle = "Check symptoms",
                         emoji = "🩺",
                         iconTint = MedicalTeal,
@@ -553,7 +575,7 @@ fun DashboardScreen(
                 ) {
 
                     DashboardActionCard(
-                        title = "Medicine",
+                        title = "Find Medicine",
                         subtitle = "Medicine info",
                         emoji = "💊",
                         iconTint = MedicalBlue,
@@ -576,6 +598,91 @@ fun DashboardScreen(
                 Spacer(
                     modifier = Modifier.height(12.dp)
                 )
+            }
+
+            // =========================================================
+            // MEDICINE REMINDER
+            // =========================================================
+
+            item {
+                AnimatedVisibility(
+                    visible = showContent,
+                    enter = fadeIn(tween(600, delayMillis = 250)) +
+                            slideInVertically(
+                                initialOffsetY = { 40 },
+                                animationSpec = tween(600, delayMillis = 250)
+                            )
+                ) {
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { onMedicineReminderClick() },
+                        shape = RoundedCornerShape(23.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = MedicalSurface
+                        ),
+                        elevation = CardDefaults.cardElevation(
+                            defaultElevation = 5.dp
+                        )
+                    ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 17.dp, vertical = 15.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(58.dp)
+                                .background(
+                                    MedicalTeal.copy(alpha = 0.10f),
+                                    RoundedCornerShape(17.dp)
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(text = "⏰", fontSize = 28.sp)
+                        }
+
+                        Spacer(modifier = Modifier.width(14.dp))
+
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "Medicine Reminder",
+                                color = MedicalTextPrimary,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(3.dp))
+                            Text(
+                                text = "Never miss your medicine dose",
+                                color = MedicalTextSecondary,
+                                fontSize = 11.sp
+                            )
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .size(34.dp)
+                                .background(
+                                    MedicalTeal.copy(alpha = 0.10f),
+                                    CircleShape
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "→",
+                                color = MedicalTeal,
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+                }
+            }
+            }
+
+            item {
+                Spacer(modifier = Modifier.height(12.dp))
             }
 
             // =========================================================
@@ -638,7 +745,7 @@ fun DashboardScreen(
                         ) {
 
                             Text(
-                                text = "Prescription Scanner",
+                                text = "Scan Prescription",
                                 color = MedicalTextPrimary,
                                 fontSize = 15.sp,
                                 fontWeight = FontWeight.Bold
@@ -649,7 +756,7 @@ fun DashboardScreen(
                             )
 
                             Text(
-                                text = "Scan and organize your prescription",
+                                text = "Take a photo of your prescription",
                                 color = MedicalTextSecondary,
                                 fontSize = 11.sp
                             )
@@ -794,6 +901,34 @@ fun DashboardScreen(
                     textAlign = TextAlign.Center
                 )
             }
+        }
+    }
+}
+
+// =============================================================
+// DASHBOARD GENDER AVATAR
+// =============================================================
+
+@Composable
+private fun DashboardGenderAvatar(
+    gender: String
+) {
+    val normalized = gender.trim().lowercase()
+
+    when {
+        normalized == "male" || normalized == "m" -> {
+            Text(text = "👨🏻", fontSize = 38.sp)
+        }
+        normalized == "female" || normalized == "f" -> {
+            Text(text = "👩🏻", fontSize = 38.sp)
+        }
+        else -> {
+            Icon(
+                imageVector = Icons.Default.Person,
+                contentDescription = "Profile",
+                tint = MedicalBlue,
+                modifier = Modifier.size(29.dp)
+            )
         }
     }
 }

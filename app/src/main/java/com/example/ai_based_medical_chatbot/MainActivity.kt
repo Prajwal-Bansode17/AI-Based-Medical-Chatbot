@@ -28,6 +28,7 @@ import ui.HealthTipsScreen
 import ui.LoginScreen
 import ui.MedicineDetailScreen
 import ui.MedicineInfoScreen
+import ui.MedicineReminderScreen
 import ui.ProfileScreen
 import ui.PrescriptionScannerScreen
 import ui.RegisterScreen
@@ -444,6 +445,10 @@ private fun MedicalChatbotNavigation() {
 
                 onPrescriptionClick = {
                     go("prescription")
+                },
+
+                onMedicineReminderClick = {
+                    go("medicineReminder")
                 }
             )
         }
@@ -529,6 +534,14 @@ private fun MedicalChatbotNavigation() {
                     }
                 )
             }
+        }
+
+        "medicineReminder" -> {
+            MedicineReminderScreen(
+                onBackClick = {
+                    back()
+                }
+            )
         }
 
         "prescription" -> {
