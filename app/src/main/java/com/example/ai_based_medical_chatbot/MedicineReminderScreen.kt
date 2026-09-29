@@ -2,15 +2,10 @@ package ui
 
 import android.Manifest
 import android.app.TimePickerDialog
-import android.content.Context
 import android.content.pm.PackageManager
 import android.content.Intent
-import android.net.Uri
 import android.provider.Settings
-import android.content.Intent
 import android.os.Build
-import android.provider.Settings
-import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
