@@ -65,19 +65,69 @@ private val ReminderRed = Color(0xFFC94B4B)
 @OptIn(ExperimentalMaterial3Api::class)
 @androidx.compose.runtime.Composable
 fun MedicineReminderScreen(
-    onBackClick: () -> Unit = {}
+    onBackClick: () -> Unit = {},
+    initialReminder: MedicineReminder? = null
 ) {
     val context = LocalContext.current
 
-    var medicineName by remember { mutableStateOf("") }
-    var strength by remember { mutableStateOf("") }
+    fun slotFromPrescription(value: String): String {
+        val text = value.lowercase()
+        return when {
+            "morning" in text -> "Morning"
+            "afternoon" in text -> "Afternoon"
+            "evening" in text -> "Evening"
+            "night" in text -> "Night"
+            else -> "Morning"
+        }
+    }
+
+    fun mealFromPrescription(value: String): String {
+        val text = value.lowercase()
+        return when {
+            "before" in text -> "Before Food"
+            "after" in text -> "After Food"
+            else -> "After Food"
+        }
+    }
+
+    var medicineName by remember(initialReminder) {
+        mutableStateOf(initialReminder?.medicineName.orEmpty())
+    }
+    var strength by remember(initialReminder) {
+        mutableStateOf(initialReminder?.strength.orEmpty())
+    }
     var selectedTime by remember { mutableStateOf("") }
-    var selectedSlot by remember { mutableStateOf("Morning") }
-    var selectedMeal by remember { mutableStateOf("After Food") }
-    var duration by remember { mutableStateOf("") }
-    var startDate by remember { mutableStateOf("") }
-    var endDate by remember { mutableStateOf("") }
-    var instructions by remember { mutableStateOf("") }
+    var selectedSlot by remember(initialReminder) {
+        mutableStateOf(
+            slotFromPrescription(
+                initialReminder?.daySlot.orEmpty()
+            )
+        )
+    }
+    var selectedMeal by remember(initialReminder) {
+        mutableStateOf(
+            mealFromPrescription(
+                initialReminder?.mealTiming.orEmpty()
+            )
+        )
+    }
+    var duration by remember(initialReminder) {
+        mutableStateOf(initialReminder?.duration.orEmpty())
+    }
+    var startDate by remember(initialReminder) {
+        mutableStateOf(initialReminder?.startDate.orEmpty())
+    }
+    var endDate by remember(initialReminder) {
+        mutableStateOf(initialReminder?.endDate.orEmpty())
+    }
+    var instructions by remember(initialReminder) {
+        mutableStateOf(
+            listOf(
+                initialReminder?.instructions.orEmpty(),
+                initialReminder?.daySlot.orEmpty()
+            ).filter { it.isNotBlank() }.joinToString(" • ")
+        )
+    }
 
     var reminders by remember {
         mutableStateOf(MedicineReminderRepository.getAll(context))

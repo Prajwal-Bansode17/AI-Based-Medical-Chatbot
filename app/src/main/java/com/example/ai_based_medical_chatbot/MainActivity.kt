@@ -132,6 +132,7 @@ private fun MedicalChatbotNavigation() {
     var loginError by remember { mutableStateOf("") }
     var biometricError by remember { mutableStateOf("") }
     var selectedMedicine by remember { mutableStateOf<ui.Medicine?>(null) }
+    var reminderPrefill by remember { mutableStateOf<MedicineReminder?>(null) }
 
     val currentScreen = screenStack.lastOrNull() ?: "login"
 
@@ -462,6 +463,22 @@ private fun MedicalChatbotNavigation() {
                     back()
                 },
 
+                onSetReminderClick = { name, strength, frequency, duration, instructions, timing, mealTiming, howToTake ->
+                    reminderPrefill = MedicineReminder(
+                        medicineName = name,
+                        strength = strength,
+                        daySlot = timing.ifBlank { frequency },
+                        mealTiming = mealTiming,
+                        duration = duration,
+                        instructions = if (howToTake.isNotBlank()) {
+                            howToTake
+                        } else {
+                            instructions
+                        }
+                    )
+                    go("medicineReminder")
+                },
+
                 onLogoutClick = {
 
                     SupabaseClient.clearSession(context)
@@ -538,7 +555,9 @@ private fun MedicalChatbotNavigation() {
 
         "medicineReminder" -> {
             MedicineReminderScreen(
+                initialReminder = reminderPrefill,
                 onBackClick = {
+                    reminderPrefill = null
                     back()
                 }
             )
