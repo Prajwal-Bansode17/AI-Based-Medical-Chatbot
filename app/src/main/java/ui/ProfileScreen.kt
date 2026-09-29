@@ -1058,11 +1058,13 @@ fun ProfileScreen(
                                             if (date.isNotBlank()) {
                                                 append(date)
                                             }
+
                                             if (medicineCount > 0) {
                                                 if (isNotEmpty()) append("  •  ")
                                                 append("$medicineCount medicine")
                                                 if (medicineCount != 1) append("s")
                                             }
+
                                             if (isEmpty()) {
                                                 append("Prescription details")
                                             }
@@ -1072,6 +1074,31 @@ fun ProfileScreen(
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
+
+                                    val medicineNames =
+                                        (0 until medicines.length())
+                                            .mapNotNull { index ->
+                                                medicines
+                                                    .optJSONObject(index)
+                                                    ?.optString("medicineName")
+                                                    ?.takeIf { it.isNotBlank() }
+                                            }
+                                            .take(2)
+
+                                    if (medicineNames.isNotEmpty()) {
+                                        Spacer(modifier = Modifier.height(5.dp))
+
+                                        androidx.compose.material3.Text(
+                                            text =
+                                                "Medicines: " +
+                                                        medicineNames.joinToString(", ") +
+                                                        if (medicineCount > 2) " +" else "",
+                                            color = primaryBlue,
+                                            fontSize = 11.sp,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
                                 }
 
                                 androidx.compose.material3.Text(

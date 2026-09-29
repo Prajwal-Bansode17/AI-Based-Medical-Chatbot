@@ -1,3 +1,4 @@
+
 package ui
 
 import android.Manifest
@@ -537,21 +538,25 @@ private fun extractPrescriptionDraft(text: String): PrescriptionDraft {
     val formRegex = Regex(
         """(?i)\b(?:tab(?:let)?s?|cap(?:sule)?s?|syp|syrup|cream|ointment|gel|drops?|inj(?:ection)?|sachet|susp(?:ension)?)\b"""
     )
+
     val strengthRegex = Regex(
         """(?i)\b\d+(?:\.\d+)?\s*(?:mg|mcg|g|kg|ml|iu|units?|%)\b"""
     )
+
     val frequencyRegexes = listOf(
         Regex("""(?i)\b(?:od|bd|tds|qid|qhs|hs|sos|stat|once|twice|thrice|daily|weekly)\b"""),
         Regex("""(?i)\b(?:once|twice|thrice)\s+(?:a|per)\s+(?:day|daily)\b"""),
         Regex("""(?i)\b(?:every|each)\s+\d+\s+(?:hours?|hrs?|days?)\b"""),
-        Regex("""\b\d+\s*[-/]\s*\d+\s*[-/]\s*\d+\b"""),
-        Regex("""\b\d+\s*(?:times?)\s*(?:a|per)\s*day\b""")
+        Regex("""\b\d+\s*[-/]\s*\d+\s*[-/]\s*\d+(?:\s*[-/]\s*\d+)?\b"""),
+        Regex("""(?i)\b\d+\s*(?:times?)\s*(?:a|per)\s*day\b""")
     )
+
     val durationRegexes = listOf(
         Regex("""(?i)\bfor\s+\d+(?:\.\d+)?\s*(?:days?|d|weeks?|wks?|months?|m)\b"""),
         Regex("""(?i)\b\d+(?:\.\d+)?\s*(?:days?|d|weeks?|wks?|months?|m)\b"""),
         Regex("""(?i)\b\d+\s*[dDwWmM]\b""")
     )
+
     val instructionRegexes = listOf(
         Regex("""(?i)\b(?:before|after|with)\s+(?:food|meal|breakfast|lunch|dinner)\b"""),
         Regex("""(?i)\bempty\s+stomach\b"""),
@@ -566,69 +571,201 @@ private fun extractPrescriptionDraft(text: String): PrescriptionDraft {
     fun firstMatch(regexes: List<Regex>, value: String): String =
         regexes.firstNotNullOfOrNull { it.find(value)?.value?.let(::clean) } ?: ""
 
-    fun looksLikeMedicine(line: String): Boolean {
-        val lower = line.lowercase()
-        if (line.length > 180) return false
-        if (lower.contains("blood pressure") || lower.contains("temperature") ||
-            lower.contains("weight") || lower.contains("height") ||
-            lower.contains("pulse") || lower.contains("diagnosis") ||
-            lower.contains("doctor") || lower.contains("patient") ||
-            lower.contains("hospital") || lower.contains("clinic") ||
-            lower.contains("medical centre") || lower.contains("medical center") ||
-            lower.contains("healthcare") || lower.contains("your health") ||
-            lower.contains("consultant physician") || lower.contains("reg no") ||
-            lower.contains("phone") || lower.contains("email")
-        ) return false
-
-        if (formRegex.containsMatchIn(line) || strengthRegex.containsMatchIn(line)) return true
-
-        val letters = line.filter { it.isLetter() }
-        val words = line.trim().split(Regex("\\s+")).filter { it.isNotBlank() }
-        val mostlyUpper = letters.isNotEmpty() &&
-                letters.count { it.isUpperCase() }.toDouble() / letters.length >= 0.75
-        return letters.length in 4..35 && words.size <= 4 && mostlyUpper
-    }
-
     fun medicineNameFromLine(line: String): String {
         var name = line
+
         name = strengthRegex.replace(name, " ")
         name = formRegex.replace(name, " ")
-        name = Regex("""(?i)\b(?:od|bd|tds|qid|qhs|hs|sos|stat|once|twice|thrice|daily|weekly)\b""")
-            .replace(name, " ")
-        name = Regex("""\b\d+\s*[-/]\s*\d+\s*[-/]\s*\d+\b""").replace(name, " ")
-        name = Regex("""(?i)\bfor\s+\d+(?:\.\d+)?\s*(?:days?|d|weeks?|wks?|months?|m)\b""")
-            .replace(name, " ")
+        name = Regex(
+            """(?i)\b(?:od|bd|tds|qid|qhs|hs|sos|stat|once|twice|thrice|daily|weekly)\b"""
+        ).replace(name, " ")
+
+        name = Regex(
+            """\b\d+\s*[-/]\s*\d+\s*[-/]\s*\d+(?:\s*[-/]\s*\d+)?\b"""
+        ).replace(name, " ")
+
+        name = Regex(
+            """(?i)\b\d+\s*(?:times?)\s*(?:a|per)\s*day\b"""
+        ).replace(name, " ")
+
+        name = Regex(
+            """(?i)\bfor\s+\d+(?:\.\d+)?\s*(?:days?|d|weeks?|wks?|months?|m)\b"""
+        ).replace(name, " ")
+
         name = Regex("""[:\-–—]+""").replace(name, " ")
         name = Regex("""[*#•]+""").replace(name, " ")
         name = Regex("""\s+""").replace(name, " ").trim()
-        name = name.replace(Regex("""(?i)^(?:rx|r\s*x)\s+"""), "").trim()
+        name = name.replace(
+            Regex("""(?i)^(?:rx|r\s*x)\s+"""),
+            ""
+        ).trim()
+
         return clean(name)
     }
 
-    val medicineStartIndices = rawLines.mapIndexedNotNull { index, line ->
-        if (looksLikeMedicine(line)) index else null
+    fun isMedicineHeader(value: String): Boolean {
+        val v = normalize(value)
+        return v.contains("sr no") ||
+                v.contains("medicine name") ||
+                v == "medicines" ||
+                v == "medications" ||
+                v.contains("strength frequency") ||
+                v.contains("strength dosage")
     }
+
+    fun isMedicineStopLine(value: String): Boolean {
+        val v = normalize(value)
+        return v == "general advice" ||
+                v == "advice" ||
+                v == "instructions" ||
+                v.startsWith("general advice") ||
+                v.contains("signature") ||
+                v.contains("doctor signature")
+    }
+
+    fun isMedicineNameCandidate(value: String): Boolean {
+        val cleanValue = clean(value)
+
+        if (cleanValue.length < 4 || cleanValue.length > 45) return false
+        if (cleanValue.any { it.isDigit() }) return false
+
+        val normalized = normalize(cleanValue)
+        if (normalized.isBlank()) return false
+
+        val blocked = listOf(
+            "hospital", "clinic", "medical centre", "medical center",
+            "patient", "patient id", "doctor", "doctor name",
+            "diagnosis", "diagnoses", "address", "contact", "phone",
+            "email", "date", "age gender", "strength", "frequency",
+            "schedule", "duration", "instructions", "medicine name",
+            "general advice", "consultant physician", "reg no",
+            "your health", "our priority", "follow up", "take",
+            "drink plenty", "after food", "before food", "with food",
+            "for fever", "for cold", "for breathing", "do not crush"
+        )
+
+        if (blocked.any { normalized == it || normalized.startsWith("$it ") }) {
+            return false
+        }
+
+        if (isInstructionLike(cleanValue)) return false
+
+        val words = cleanValue.split(Regex("""\s+"""))
+        if (words.size > 4) return false
+
+        // OCR table medicine names are normally title case / uppercase.
+        // Do not accept dosage or advice sentences as medicine names.
+        val letters = cleanValue.filter { it.isLetter() }
+        if (letters.length < 4) return false
+
+        val first = cleanValue.firstOrNull() ?: return false
+        return first.isUpperCase()
+    }
+
+    // Find the medicine table first. This prevents diagnosis/hospital text
+    // above the table from becoming a medicine.
+    val medicineHeaderIndex =
+        rawLines.indexOfFirst { isMedicineHeader(it) }
+
+    val medicineSearchStart =
+        if (medicineHeaderIndex >= 0) {
+            medicineHeaderIndex + 1
+        } else {
+            0
+        }
+
+    val medicineCandidateIndices =
+        rawLines.mapIndexedNotNull { index, line ->
+            if (index >= medicineSearchStart &&
+                isMedicineNameCandidate(line)
+            ) {
+                index
+            } else {
+                null
+            }
+        }
 
     val medicines = mutableListOf<PrescriptionMedicineDraft>()
 
-    medicineStartIndices.forEachIndexed { position, startIndex ->
-        val endExclusive = medicineStartIndices
-            .getOrNull(position + 1)
-            ?: minOf(rawLines.size, startIndex + 5)
+    medicineCandidateIndices.forEachIndexed { position, startIndex ->
 
-        val blockLines = rawLines.subList(startIndex, endExclusive)
-        val block = blockLines.joinToString(" ")
+        val nextCandidate =
+            medicineCandidateIndices.getOrNull(position + 1)
 
-        val name = medicineNameFromLine(rawLines[startIndex])
-        if (name.isBlank()) return@forEachIndexed
+        val stopIndex =
+            rawLines.indices.firstOrNull { lineIndex ->
+                lineIndex > startIndex &&
+                        isMedicineStopLine(rawLines[lineIndex])
+            } ?: rawLines.size
 
-        val strength = strengthRegex.find(block)?.value?.let(::clean) ?: ""
-        val frequency = firstMatch(frequencyRegexes, block)
-        val duration = firstMatch(durationRegexes, block)
-        val instruction = firstMatch(instructionRegexes, block)
-        val timing = deriveTiming(frequency)
-        val mealTiming = deriveMealTiming(instruction)
-        val howToTake = deriveHowToTake(instruction)
+        val endExclusive =
+            minOf(
+                nextCandidate ?: rawLines.size,
+                stopIndex,
+                startIndex + 7
+            )
+
+        if (endExclusive <= startIndex) {
+            return@forEachIndexed
+        }
+
+        val blockLines =
+            rawLines.subList(
+                startIndex,
+                endExclusive
+            )
+
+        val block =
+            blockLines.joinToString(" ")
+
+        val name =
+            medicineNameFromLine(
+                rawLines[startIndex]
+            )
+
+        if (!isMedicineNameCandidate(name)) {
+            return@forEachIndexed
+        }
+
+        val strength =
+            strengthRegex
+                .find(block)
+                ?.value
+                ?.let(::clean)
+                ?: ""
+
+        val frequency =
+            firstMatch(
+                frequencyRegexes,
+                block
+            )
+
+        val duration =
+            firstMatch(
+                durationRegexes,
+                block
+            )
+
+        val instruction =
+            firstMatch(
+                instructionRegexes,
+                block
+            )
+
+        val timing =
+            deriveTiming(frequency)
+
+        val mealTiming =
+            deriveMealTiming(block)
+
+        val howToTake =
+            deriveHowToTake(
+                if (instruction.isNotBlank()) {
+                    instruction
+                } else {
+                    block
+                }
+            )
 
         medicines.add(
             PrescriptionMedicineDraft(
@@ -644,6 +781,76 @@ private fun extractPrescriptionDraft(text: String): PrescriptionDraft {
         )
     }
 
+    // Fallback for prescriptions where the table header was not recognized.
+    // Only use explicit medicine/form/strength lines, never dosage-only lines.
+    if (medicines.isEmpty()) {
+        rawLines.forEachIndexed { index, line ->
+
+            val hasMedicineForm =
+                formRegex.containsMatchIn(line)
+
+            val hasStrength =
+                strengthRegex.containsMatchIn(line)
+
+            if (!hasMedicineForm && !hasStrength) {
+                return@forEachIndexed
+            }
+
+            val name =
+                medicineNameFromLine(line)
+
+            if (!isMedicineNameCandidate(name)) {
+                return@forEachIndexed
+            }
+
+            val block =
+                rawLines
+                    .subList(
+                        index,
+                        minOf(rawLines.size, index + 6)
+                    )
+                    .joinToString(" ")
+
+            medicines.add(
+                PrescriptionMedicineDraft(
+                    medicineName = name,
+                    strength =
+                        strengthRegex
+                            .find(block)
+                            ?.value
+                            ?.let(::clean)
+                            ?: "",
+                    frequency =
+                        firstMatch(
+                            frequencyRegexes,
+                            block
+                        ),
+                    duration =
+                        firstMatch(
+                            durationRegexes,
+                            block
+                        ),
+                    instructions =
+                        firstMatch(
+                            instructionRegexes,
+                            block
+                        ),
+                    timing =
+                        deriveTiming(
+                            firstMatch(
+                                frequencyRegexes,
+                                block
+                            )
+                        ),
+                    mealTiming =
+                        deriveMealTiming(block),
+                    howToTake =
+                        deriveHowToTake(block)
+                )
+            )
+        }
+    }
+
     // If diagnosis was not explicitly labelled, only use a high-confidence
     // medical condition found before the first medicine. Never use Rx/advice text.
     if (diagnosis.isBlank()) {
@@ -656,8 +863,8 @@ private fun extractPrescriptionDraft(text: String): PrescriptionDraft {
             "dermatitis", "eczema", "acidity", "viral infection", "bacterial infection",
             "fungal infection", "pain", "headache", "flu", "rhinitis"
         )
-        val beforeMedicines = if (medicineStartIndices.isNotEmpty()) {
-            rawLines.take(medicineStartIndices.first())
+        val beforeMedicines = if (medicineCandidateIndices.isNotEmpty()) {
+            rawLines.take(medicineCandidateIndices.first())
         } else {
             rawLines
         }
@@ -1313,7 +1520,18 @@ fun PrescriptionScannerScreen(
         fun finishWithText(text: String) {
             if (requestId != ocrRequestId) return
             extractedText = text.trim()
-            previewDraft = extractPrescriptionDraft(extractedText)
+
+            val extractedDraft =
+                extractPrescriptionDraft(extractedText)
+
+            previewDraft = extractedDraft
+            doctorName = extractedDraft.doctorName
+            patientName = extractedDraft.patientName
+            prescriptionDate = extractedDraft.date
+            diagnosis = extractedDraft.diagnosis
+            hospitalName = extractedDraft.hospitalName
+            medicineRows = extractedDraft.medicines
+
             if (extractedText.isBlank()) {
                 ocrError = when (selectedLanguage) {
                     "मराठी" -> "वाचता येणारा मजकूर सापडला नाही. कृपया फोटो सरळ आणि स्पष्ट ठेवा."
@@ -1619,13 +1837,44 @@ fun PrescriptionScannerScreen(
                     it.instructions.isNotBlank()
         }
 
+        val baseDraft = previewDraft
+
+        val finalDoctor =
+            doctorName.trim().ifBlank { baseDraft.doctorName.trim() }
+
+        val finalPatient =
+            patientName.trim().ifBlank { baseDraft.patientName.trim() }
+
+        val finalDate =
+            prescriptionDate.trim().ifBlank { baseDraft.date.trim() }
+
+        val finalDiagnosis =
+            diagnosis.trim().ifBlank { baseDraft.diagnosis.trim() }
+
+        val finalHospital =
+            hospitalName.trim().ifBlank { baseDraft.hospitalName.trim() }
+
+        val finalMedicines =
+            cleanMedicines.ifEmpty {
+                baseDraft.medicines.filter {
+                    it.medicineName.isNotBlank() ||
+                            it.strength.isNotBlank() ||
+                            it.frequency.isNotBlank() ||
+                            it.duration.isNotBlank() ||
+                            it.instructions.isNotBlank() ||
+                            it.timing.isNotBlank() ||
+                            it.mealTiming.isNotBlank() ||
+                            it.howToTake.isNotBlank()
+                }
+            }
+
         val draft = PrescriptionDraft(
-            doctorName = doctorName.trim(),
-            patientName = patientName.trim(),
-            date = prescriptionDate.trim(),
-            diagnosis = diagnosis.trim(),
-            hospitalName = hospitalName.trim(),
-            medicines = cleanMedicines.ifEmpty {
+            doctorName = finalDoctor,
+            patientName = finalPatient,
+            date = finalDate,
+            diagnosis = finalDiagnosis,
+            hospitalName = finalHospital,
+            medicines = finalMedicines.ifEmpty {
                 listOf(PrescriptionMedicineDraft())
             }
         )
@@ -1917,11 +2166,10 @@ fun PrescriptionScannerScreen(
                             ) {
 
                                 Text(
-                                    text =
-                                        "🖼️ Gallery",
-                                    fontSize = 13.sp,
-                                    fontWeight =
-                                        FontWeight.SemiBold
+                                    text = "Gallery",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1
                                 )
                             }
                         }
@@ -2019,17 +2267,16 @@ fun PrescriptionScannerScreen(
                                     RoundedCornerShape(16.dp),
                                 colors =
                                     ButtonDefaults.buttonColors(
-                                        containerColor =
-                                            Color(0xFFE8EEF2),
-                                        contentColor =
-                                            darkBlue
+                                        containerColor = Color.White,
+                                        contentColor = darkBlue
                                     )
                             ) {
 
                                 Text(
-                                    text =
-                                        chooseAgainText,
-                                    fontSize = 12.sp
+                                    text = "Gallery",
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 1
                                 )
                             }
 
@@ -2518,16 +2765,7 @@ fun PrescriptionScannerScreen(
         }
 
 
-        // =====================================================
-        // DISCLAIMER
-        // =====================================================
 
-        Text(
-            text = warningText,
-            color = gray,
-            fontSize = 11.sp,
-            lineHeight = 17.sp
-        )
     }
 }
 
