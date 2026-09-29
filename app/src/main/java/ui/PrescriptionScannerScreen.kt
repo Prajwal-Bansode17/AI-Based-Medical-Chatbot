@@ -74,6 +74,7 @@ import androidx.core.content.ContextCompat
 import com.example.ai_based_medical_chatbot.R
 
 import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.Text
 import com.google.mlkit.vision.text.TextRecognition
 import com.google.mlkit.vision.text.latin.TextRecognizerOptions
 
@@ -284,6 +285,7 @@ private fun valueAfterLabel(line: String, labels: List<String>): String {
 }
 
 
+
 private fun extractPrescriptionDraft(text: String): PrescriptionDraft {
     val rawLines = text.lines()
         .map { it.replace('\u00A0', ' ').trim() }
@@ -295,46 +297,9 @@ private fun extractPrescriptionDraft(text: String): PrescriptionDraft {
             .trim(':', '-', '–', '—', '.', ',', ';', ' ')
 
     fun normalize(value: String): String =
-        clean(value).lowercase().replace(Regex("[^a-z0-9]+"), " ").trim()
-
-    fun isInstructionLike(value: String): Boolean {
-        val v = normalize(value)
-        return v.contains("drink plenty") ||
-                v.contains("follow up") ||
-                v.contains("after food") ||
-                v.contains("before food") ||
-                v.contains("with food") ||
-                v.contains("empty stomach") ||
-                v.contains("at bedtime") ||
-                v.contains("apply") ||
-                v.contains("do not crush") ||
-                v.contains("take with") ||
-                v.contains("swallow") ||
-                v.contains("continue") ||
-                v.contains("stop") ||
-                v.contains("avoid")
-    }
-
-    fun cleanPatient(value: String): String {
-        return clean(value)
-            .replace(Regex("(?i)^(mr|mrs|ms|miss)\\.?\\s+"), "")
+        clean(value).lowercase()
+            .replace(Regex("[^a-z0-9]+"), " ")
             .trim()
-    }
-
-    fun isBadField(value: String): Boolean {
-        val v = normalize(value)
-        return v.isBlank() ||
-                v in setOf("rx", "r x", "dx", "d x", "diagnosis", "diagnoses", "doctor", "doctor name")
-    }
-
-    fun extractDate(value: String): String {
-        val patterns = listOf(
-            Regex("""(?i)\b\d{1,2}[-/]\d{1,2}[-/]\d{2,4}\b"""),
-            Regex("""(?i)\b\d{1,2}[-/][A-Za-z]{3,9}[-/]\d{2,4}\b"""),
-            Regex("""(?i)\b\d{1,2}\s+[A-Za-z]{3,9}\s+\d{2,4}\b""")
-        )
-        return patterns.firstNotNullOfOrNull { it.find(value)?.value?.let(::clean) } ?: ""
-    }
 
     fun valueAfterLabel(line: String, labels: List<String>): String {
         val lower = line.lowercase()
@@ -347,27 +312,168 @@ private fun extractPrescriptionDraft(text: String): PrescriptionDraft {
         return ""
     }
 
+    fun isInstructionLike(value: String): Boolean {
+        val v = normalize(value)
+        return v.contains("drink plenty") ||
+                v.contains("plenty of fluids") ||
+                v.contains("follow up") ||
+                v.contains("after food") ||
+                v.contains("before food") ||
+                v.contains("with food") ||
+                v.contains("empty stomach") ||
+                v.contains("at bedtime") ||
+                v.contains("steam inhalation") ||
+                v.contains("apply") ||
+                v.contains("do not crush") ||
+                v.contains("take with") ||
+                v.contains("swallow") ||
+                v.contains("continue") ||
+                v.contains("stop") ||
+                v.contains("avoid")
+    }
+
+    fun isBadField(value: String): Boolean {
+        val v = normalize(value)
+        return v.isBlank() ||
+                v in setOf(
+                    "rx", "r x", "dx", "d x", "diagnosis", "diagnoses",
+                    "doctor", "doctor name", "patient", "patient name"
+                )
+    }
+
+    fun cleanPatient(value: String): String {
+        var result = clean(value)
+            .replace(Regex("(?i)^(mr|mrs|ms|miss)\\.?\\s+"), "")
+            .trim()
+        result = result.replace(
+            Regex("(?i)\\s+(?:patient\\s*id|age\\s*/?\\s*gender|age|sex|gender|bp|temp|temperature|date)\\s*[:=].*$"),
+            ""
+        ).trim()
+        return result
+    }
+
+    fun extractDate(value: String): String {
+        val patterns = listOf(
+            Regex("""(?i)\b\d{1,2}[-/]\d{1,2}[-/]\d{2,4}\b"""),
+            Regex("""(?i)\b\d{1,2}[-/][A-Za-z]{3,9}[-/]\d{2,4}\b"""),
+            Regex("""(?i)\b\d{1,2}\s+[A-Za-z]{3,9}\s+\d{2,4}\b""")
+        )
+        return patterns.firstNotNullOfOrNull {
+            it.find(value)?.value?.let(::clean)
+        } ?: ""
+    }
+
     // ---------- Hospital / Clinic ----------
     fun extractHospital(lines: List<String>): String {
         val candidates = lines.filter { line ->
             val n = normalize(line)
-            (n.contains("hospital") ||
-                    n.contains("clinic") ||
-                    n.contains("medical centre") ||
-                    n.contains("medical center") ||
-                    n.contains("healthcare")) &&
-                    !n.contains("patient") &&
-                    !n.contains("doctor") &&
-                    line.length <= 90
+            line.length <= 100 &&
+                    (Regex("\\bhospital\\b", RegexOption.IGNORE_CASE).containsMatchIn(line) ||
+                     Regex("\\bclinic\\b", RegexOption.IGNORE_CASE).containsMatchIn(line) ||
+                     n.contains("medical center") ||
+                     n.contains("medical centre") ||
+                     n.contains("healthcare"))
         }
 
-        return candidates.firstOrNull()?.let(::clean).orEmpty()
+        // Prefer the actual institution name. Never use website/email/phone lines.
+        return candidates.firstOrNull { line ->
+            val n = normalize(line)
+            !n.contains("www") &&
+                    !n.contains("email") &&
+                    !n.contains("phone") &&
+                    !n.contains("mob")
+        }?.let(::clean).orEmpty()
+    }
+    // ---------- Doctor ----------
+    fun cleanDoctor(value: String): String {
+        var result = clean(value)
+        result = result
+            .replace(
+                Regex("(?i)\\b(?:mbbs|md|ms|dm|dnb|frcs|phd)\\b.*$"),
+                ""
+            )
+            .replace(
+                Regex("(?i)\\b(?:reg\\.?\\s*no\\.?|registration\\s*no\\.?|reg\\s*no)\\b.*$"),
+                ""
+            )
+            .trim(' ', ',', '-', ':', '.')
+        return result
+    }
+    fun extractDoctor(lines: List<String>): String {
+        // Prefer an explicit Dr./Doctor line.
+        lines.forEach { line ->
+            val match = Regex(
+                """(?i)\b(?:dr|doctor|consultant|physician)\.?\s*[:.\-]?\s*(.+)$"""
+            ).find(line)
+
+            if (match != null) {
+                val candidate = cleanDoctor(match.groupValues[1])
+                val n = normalize(candidate)
+
+                if (candidate.length >= 3 &&
+                    candidate.split(Regex("\\s+")).size <= 6 &&
+                    n !in setOf("name", "ink", "signature") &&
+                    !isInstructionLike(candidate)
+                ) {
+                    return candidate
+                }
+            }
+        }
+
+        // Some OCR separates "Dr." and the name into two lines.
+        lines.forEachIndexed { index, line ->
+            if (Regex("""(?i)^\s*(dr|doctor)\.?\s*$""").matches(line)) {
+                val next = lines.getOrNull(index + 1).orEmpty()
+                val candidate = cleanDoctor(next)
+                if (candidate.length >= 3) return candidate
+            }
+        }
+
+        return ""
     }
 
-    // ---------- Medicine timing helpers ----------
-    fun deriveTiming(frequency: String): String {
-        val v = normalize(frequency)
+    // ---------- Medicine helpers ----------
+    val formRegex = Regex(
+        """(?i)\b(?:tab(?:let)?s?|cap(?:sule)?s?|syp|syrup|cream|ointment|gel|drops?|inj(?:ection)?|sachet|susp(?:ension)?)\b"""
+    )
 
+    val strengthRegex = Regex(
+        """(?i)\b\d+(?:\.\d+)?\s*(?:mg|mcg|g|kg|ml|iu|units?|%)\b"""
+    )
+
+    val frequencyRegexes = listOf(
+        Regex("""(?i)\b(?:od|bd|tds|qid|qhs|hs|sos|stat|once|twice|thrice|daily|weekly)\b"""),
+        Regex("""(?i)\b(?:once|twice|thrice)\s+(?:a|per)\s+(?:day|daily)\b"""),
+        Regex("""(?i)\b(?:every|each)\s+\d+\s+(?:hours?|hrs?|days?)\b"""),
+        Regex("""\b\d+\s*[-/]\s*\d+\s*[-/]\s*\d+(?:\s*[-/]\s*\d+)?\b"""),
+        Regex("""(?i)\b\d+\s*(?:times?)\s*(?:a|per)\s*day\b""")
+    )
+
+    val durationRegexes = listOf(
+        Regex("""(?i)\bfor\s+\d+(?:\.\d+)?\s*(?:days?|d|weeks?|wks?|months?|m)\b"""),
+        Regex("""(?i)\b\d+(?:\.\d+)?\s*(?:days?|d|weeks?|wks?|months?|m)\b""")
+    )
+
+    val instructionRegexes = listOf(
+        Regex("""(?i)\b(?:before|after|with)\s+(?:food|meal|breakfast|lunch|dinner)\b"""),
+        Regex("""(?i)\bempty\s+stomach\b"""),
+        Regex("""(?i)\bat\s+bedtime\b"""),
+        Regex("""(?i)\b(?:at|in)\s+(?:night|morning|afternoon|evening)\b"""),
+        Regex("""(?i)\bdrink\s+plenty\s+of\s+water\b"""),
+        Regex("""(?i)\b(?:plenty\s+of\s+)?fluids\b"""),
+        Regex("""(?i)\bfollow\s+up(?:\s+after\s+\d+\s*(?:days?|weeks?|months?))?\b"""),
+        Regex("""(?i)\bdo\s+not\s+crush\b"""),
+        Regex("""(?i)\bapply\s+(?:thinly|locally|to\s+\w+)\b"""),
+        Regex("""(?i)\b(?:take|swallow|inhale|dissolve)\s+[^,.;\n]+""")
+    )
+
+    fun firstMatch(regexes: List<Regex>, value: String): String =
+        regexes.firstNotNullOfOrNull {
+            it.find(value)?.value?.let(::clean)
+        } ?: ""
+
+    fun deriveTiming(frequency: String, block: String): String {
+        val v = normalize("$frequency $block")
         return when {
             v.contains("qid") ||
                     v.contains("four times") ||
@@ -391,31 +497,27 @@ private fun extractPrescriptionDraft(text: String): PrescriptionDraft {
                     v.contains("qhs") ||
                     v.contains("bedtime") ||
                     v.contains("at night") ||
-                    v.contains("night") ->
-                "Night / Bedtime"
-
-            v.contains("sos") ||
-                    v.contains("as needed") ->
-                "As needed"
-
-            v.contains("stat") ||
-                    v.contains("immediately") ->
-                "Immediately"
+                    Regex("""\b0\s*[-/]\s*0\s*[-/]\s*1\b""").containsMatchIn(v) ->
+                "Night"
 
             v.contains("once") ||
                     v.contains("daily") ||
-                    Regex("""\bonce\b""").containsMatchIn(v) ->
+                    Regex("""\b1\s*[-/]\s*0\s*[-/]\s*0\b""").containsMatchIn(v) ->
                 "Morning"
 
-            v.contains("weekly") ->
-                "Weekly"
-
+            v.contains("night") -> "Night"
+            v.contains("evening") -> "Evening"
+            v.contains("afternoon") -> "Afternoon"
+            v.contains("morning") -> "Morning"
+            v.contains("sos") || v.contains("as needed") -> "As needed"
+            v.contains("stat") || v.contains("immediately") -> "Immediately"
+            v.contains("weekly") -> "Weekly"
             else -> ""
         }
     }
 
-    fun deriveMealTiming(instruction: String): String {
-        val v = normalize(instruction)
+    fun deriveMealTiming(block: String): String {
+        val v = normalize(block)
         return when {
             v.contains("before food") ||
                     v.contains("before meal") ||
@@ -435,147 +537,26 @@ private fun extractPrescriptionDraft(text: String): PrescriptionDraft {
         }
     }
 
-    fun deriveHowToTake(instruction: String): String {
-        val value = clean(instruction)
-        if (value.isBlank()) return ""
-
-        return when {
-            value.contains("swallow", ignoreCase = true) -> value
-            value.contains("apply", ignoreCase = true) -> value
-            value.contains("dissolve", ignoreCase = true) -> value
-            value.contains("inhale", ignoreCase = true) -> value
-            value.contains("drink", ignoreCase = true) -> value
-            value.contains("take", ignoreCase = true) -> value
-            else -> ""
-        }
-    }
-
-    // ---------- Doctor ----------
-    fun extractDoctor(line: String): String {
-        val m = Regex(
-            """(?i)\b(?:dr|doctor|consultant|physician)\.?\s*[:.-]?\s*(.+)$"""
-        ).find(line) ?: return ""
-
-        var candidate = clean(m.groupValues[1])
-
-        // OCR sometimes glues the doctor's name to advice printed later.
-        val stopRegex = Regex(
-            """(?i)\b(?:patient|date|diagnosis|diagnoses|rx|medicine|medicines|drink|drinking|plenty|water|follow|follow\s+up|take|tablet|tab|capsule|cap|syrup|cream|ointment|apply|advice|instructions)\b"""
+    fun deriveHowToTake(block: String): String {
+        val patterns = listOf(
+            Regex("(?i)\\b(?:take|swallow|inhale|dissolve)\\b[^,.;\\n]*"),
+            Regex("(?i)\\bapply\\b[^,.;\\n]*"),
+            Regex("(?i)\\bdrink\\b[^,.;\\n]*")
         )
-        val stop = stopRegex.find(candidate)
-        if (stop != null) candidate = clean(candidate.substring(0, stop.range.first))
-
-        candidate = candidate
-            .replace(Regex("""\b(?:mbbs|md|ms|dm|dnb|frcs|phd)\b.*$""", RegexOption.IGNORE_CASE), "")
-            .trim()
-
-        if (candidate.length < 2 || isInstructionLike(candidate)) return ""
-        if (candidate.split(" ").size > 5) {
-            candidate = candidate.split(" ").take(5).joinToString(" ")
-        }
-
-        return if (candidate.any { it.isLetter() }) candidate else ""
+        return patterns.firstNotNullOfOrNull { it.find(block)?.value?.let(::clean) } ?: ""
     }
-
-    var doctor = ""
-    var patient = ""
-    var date = ""
-    var diagnosis = ""
-    val hospital = extractHospital(rawLines)
-
-    rawLines.forEachIndexed { index, line ->
-        val lower = line.lowercase()
-        val next = rawLines.getOrNull(index + 1).orEmpty()
-
-        if (doctor.isBlank()) {
-            val labelled = valueAfterLabel(
-                line,
-                listOf("doctor name", "doctor", "consultant", "physician")
-            )
-            val labelledDoctor = if (labelled.isNotBlank()) extractDoctor("Dr. $labelled") else ""
-            doctor = labelledDoctor.ifBlank { extractDoctor(line) }
-
-            if (doctor.isBlank() && lower.matches(Regex("""(?:dr|doctor|doctor name)\.?\s*"""))) {
-                doctor = clean(next)
-            }
-        }
-
-        if (patient.isBlank()) {
-            val labelled = valueAfterLabel(line, listOf("patient name", "patient"))
-            if (labelled.isNotBlank() && !isBadField(labelled)) {
-                patient = cleanPatient(labelled)
-            } else if (Regex("""(?i)^(mr|mrs|ms|miss)\.?\s+""").containsMatchIn(line)) {
-                patient = cleanPatient(line)
-            }
-        }
-
-        if (date.isBlank()) {
-            val same = extractDate(line)
-            val nextDate = extractDate(next)
-            if (same.isNotBlank()) date = same
-            else if (lower.contains("date") && nextDate.isNotBlank()) date = nextDate
-        }
-
-        if (diagnosis.isBlank()) {
-            val labelled = valueAfterLabel(
-                line,
-                listOf("provisional diagnosis", "final diagnosis", "diagnosis", "diagnoses", "dx")
-            )
-            if (!isBadField(labelled) && !isInstructionLike(labelled)) {
-                diagnosis = labelled
-            } else if (
-                lower.contains("diagnosis") || Regex("""(?i)^\s*dx\b""").containsMatchIn(line)
-            ) {
-                val nextValue = clean(next)
-                if (!isBadField(nextValue) && !isInstructionLike(nextValue)) {
-                    diagnosis = nextValue
-                }
-            }
-        }
-    }
-
-    // ---------- Medicine / dosage helpers ----------
-    val formRegex = Regex(
-        """(?i)\b(?:tab(?:let)?s?|cap(?:sule)?s?|syp|syrup|cream|ointment|gel|drops?|inj(?:ection)?|sachet|susp(?:ension)?)\b"""
-    )
-
-    val strengthRegex = Regex(
-        """(?i)\b\d+(?:\.\d+)?\s*(?:mg|mcg|g|kg|ml|iu|units?|%)\b"""
-    )
-
-    val frequencyRegexes = listOf(
-        Regex("""(?i)\b(?:od|bd|tds|qid|qhs|hs|sos|stat|once|twice|thrice|daily|weekly)\b"""),
-        Regex("""(?i)\b(?:once|twice|thrice)\s+(?:a|per)\s+(?:day|daily)\b"""),
-        Regex("""(?i)\b(?:every|each)\s+\d+\s+(?:hours?|hrs?|days?)\b"""),
-        Regex("""\b\d+\s*[-/]\s*\d+\s*[-/]\s*\d+(?:\s*[-/]\s*\d+)?\b"""),
-        Regex("""(?i)\b\d+\s*(?:times?)\s*(?:a|per)\s*day\b""")
-    )
-
-    val durationRegexes = listOf(
-        Regex("""(?i)\bfor\s+\d+(?:\.\d+)?\s*(?:days?|d|weeks?|wks?|months?|m)\b"""),
-        Regex("""(?i)\b\d+(?:\.\d+)?\s*(?:days?|d|weeks?|wks?|months?|m)\b"""),
-        Regex("""(?i)\b\d+\s*[dDwWmM]\b""")
-    )
-
-    val instructionRegexes = listOf(
-        Regex("""(?i)\b(?:before|after|with)\s+(?:food|meal|breakfast|lunch|dinner)\b"""),
-        Regex("""(?i)\bempty\s+stomach\b"""),
-        Regex("""(?i)\bat\s+bedtime\b"""),
-        Regex("""(?i)\bdrink\s+plenty\s+of\s+water\b"""),
-        Regex("""(?i)\bfollow\s+up(?:\s+after\s+\d+\s*(?:days?|weeks?|months?))?\b"""),
-        Regex("""(?i)\bdo\s+not\s+crush\b"""),
-        Regex("""(?i)\bapply\s+(?:thinly|locally|to\s+\w+)\b"""),
-        Regex("""(?i)\btake\s+(?:with|after|before)\s+[^,.;\n]+""")
-    )
-
-    fun firstMatch(regexes: List<Regex>, value: String): String =
-        regexes.firstNotNullOfOrNull { it.find(value)?.value?.let(::clean) } ?: ""
-
     fun medicineNameFromLine(line: String): String {
         var name = line
 
+        // Remove leading serial number: "1.", "2)", "3 -".
+        name = name.replace(
+            Regex("""^\s*\d+\s*(?:[\).:\-–—]+\s*)+"""),
+            ""
+        )
+
         name = strengthRegex.replace(name, " ")
         name = formRegex.replace(name, " ")
+
         name = Regex(
             """(?i)\b(?:od|bd|tds|qid|qhs|hs|sos|stat|once|twice|thrice|daily|weekly)\b"""
         ).replace(name, " ")
@@ -589,183 +570,193 @@ private fun extractPrescriptionDraft(text: String): PrescriptionDraft {
         ).replace(name, " ")
 
         name = Regex(
-            """(?i)\bfor\s+\d+(?:\.\d+)?\s*(?:days?|d|weeks?|wks?|months?|m)\b"""
+            """(?i)\b(?:for\s+)?\d+(?:\.\d+)?\s*(?:days?|d|weeks?|wks?|months?|m)\b"""
+        ).replace(name, " ")
+
+        name = Regex(
+            """(?i)\b(?:before|after|with)\s+(?:food|meal|breakfast|lunch|dinner)\b"""
         ).replace(name, " ")
 
         name = Regex("""[:\-–—]+""").replace(name, " ")
         name = Regex("""[*#•]+""").replace(name, " ")
         name = Regex("""\s+""").replace(name, " ").trim()
+
         name = name.replace(
             Regex("""(?i)^(?:rx|r\s*x)\s+"""),
             ""
         ).trim()
 
+        // OCR can produce artifacts such as ") ." or ". )" after the serial number.
+        name = name.replace(Regex("""^[\s\).,:;\-–—]+"""), "").trim()
+        name = name.replace(Regex("""\s+[\).,:;]+(?=\s)"""), " ").trim()
+
         return clean(name)
     }
 
-    fun isMedicineHeader(value: String): Boolean {
-        val v = normalize(value)
-        return v.contains("sr no") ||
-                v.contains("medicine name") ||
-                v == "medicines" ||
-                v == "medications" ||
-                v.contains("strength frequency") ||
-                v.contains("strength dosage")
-    }
+    fun isMedicineCandidate(line: String): Boolean {
+        val cleanLine = clean(line)
+        if (cleanLine.length < 4 || cleanLine.length > 120) return false
 
-    fun isMedicineStopLine(value: String): Boolean {
-        val v = normalize(value)
-        return v == "general advice" ||
-                v == "advice" ||
-                v == "instructions" ||
-                v.startsWith("general advice") ||
-                v.contains("signature") ||
-                v.contains("doctor signature")
-    }
-
-    fun isMedicineNameCandidate(value: String): Boolean {
-        val cleanValue = clean(value)
-
-        if (cleanValue.length < 4 || cleanValue.length > 45) return false
-        if (cleanValue.any { it.isDigit() }) return false
-
-        val normalized = normalize(cleanValue)
+        val normalized = normalize(cleanLine)
         if (normalized.isBlank()) return false
 
         val blocked = listOf(
-            "hospital", "clinic", "medical centre", "medical center",
-            "patient", "patient id", "doctor", "doctor name",
-            "diagnosis", "diagnoses", "address", "contact", "phone",
-            "email", "date", "age gender", "strength", "frequency",
-            "schedule", "duration", "instructions", "medicine name",
-            "general advice", "consultant physician", "reg no",
-            "your health", "our priority", "follow up", "take",
-            "drink plenty", "after food", "before food", "with food",
-            "for fever", "for cold", "for breathing", "do not crush"
+            "hospital", "clinic", "patient", "patient name", "patient id",
+            "doctor", "doctor name", "consultant", "physician",
+            "diagnosis", "diagnoses", "date", "age", "sex", "gender",
+            "address", "contact", "phone", "mobile", "email",
+            "blood pressure", "bp", "temperature", "temp",
+            "advice", "instructions", "general advice",
+            "signature", "consulting physician", "reg no", "registration no"
         )
+        if (blocked.any { normalized == it || normalized.startsWith("$it ") }) return false
 
-        if (blocked.any { normalized == it || normalized.startsWith("$it ") }) {
-            return false
-        }
+        // Dosage-only / duration-only / food-only lines are never medicines.
+        if (cleanLine.matches(Regex("(?i)^[0-9\\s./()x×*+\\-–—]+(?:days?|d|weeks?|wks?|months?|m)?$"))) return false
+        if (normalized in setOf("mg", "ml", "mcg", "days", "day", "after food", "before food", "at night")) return false
 
-        if (isInstructionLike(cleanValue)) return false
+        val hasStrength = strengthRegex.containsMatchIn(cleanLine)
+        val hasForm = formRegex.containsMatchIn(cleanLine)
+        val hasFrequency = frequencyRegexes.any { it.containsMatchIn(cleanLine) }
+        val hasMedicineWord = Regex("(?i)\\b(?:tablet|capsule|syrup|syp|tab|cap|cream|ointment|gel|drops?|injection|inj|sachet|suspension)\\b").containsMatchIn(cleanLine)
+        val letters = cleanLine.filter { it.isLetter() }
 
-        val words = cleanValue.split(Regex("""\s+"""))
-        if (words.size > 4) return false
-
-        // OCR table medicine names are normally title case / uppercase.
-        // Do not accept dosage or advice sentences as medicine names.
-        val letters = cleanValue.filter { it.isLetter() }
+        // A genuine medicine start needs a name plus at least one dosage/form signal.
         if (letters.length < 4) return false
-
-        val first = cleanValue.firstOrNull() ?: return false
-        return first.isUpperCase()
+        return (hasStrength || hasForm || hasFrequency || hasMedicineWord) &&
+                !isInstructionLike(cleanLine)
     }
+    var doctor = extractDoctor(rawLines)
+    var patient = ""
+    var date = ""
+    var diagnosis = ""
+    val hospital = extractHospital(rawLines)
 
-    // Find the medicine table first. This prevents diagnosis/hospital text
-    // above the table from becoming a medicine.
-    val medicineHeaderIndex =
-        rawLines.indexOfFirst { isMedicineHeader(it) }
+    rawLines.forEachIndexed { index, line ->
+        val lower = line.lowercase()
+        val next = rawLines.getOrNull(index + 1).orEmpty()
 
-    val medicineSearchStart =
-        if (medicineHeaderIndex >= 0) {
-            medicineHeaderIndex + 1
-        } else {
-            0
-        }
-
-    val medicineCandidateIndices =
-        rawLines.mapIndexedNotNull { index, line ->
-            if (index >= medicineSearchStart &&
-                isMedicineNameCandidate(line)
+        if (patient.isBlank()) {
+            val labelled = valueAfterLabel(
+                line,
+                listOf("patient name", "patient", "name")
+            )
+            if (labelled.isNotBlank() &&
+                !isBadField(labelled) &&
+                normalize(labelled) !in setOf("ink", "signature")
             ) {
-                index
-            } else {
-                null
+                patient = cleanPatient(labelled)
+            } else if (
+                Regex("""(?i)^(mr|mrs|ms|miss)\.?\s+""").containsMatchIn(line)
+            ) {
+                patient = cleanPatient(line)
             }
         }
 
+        if (date.isBlank()) {
+            val same = extractDate(line)
+            val nextDate = extractDate(next)
+            if (same.isNotBlank()) {
+                date = same
+            } else if (lower.contains("date") && nextDate.isNotBlank()) {
+                date = nextDate
+            }
+        }
+
+        if (diagnosis.isBlank()) {
+            val labelled = valueAfterLabel(
+                line,
+                listOf(
+                    "provisional diagnosis",
+                    "final diagnosis",
+                    "diagnosis",
+                    "diagnoses",
+                    "dx"
+                )
+            )
+
+            if (!isBadField(labelled) &&
+                !isInstructionLike(labelled)
+            ) {
+                diagnosis = labelled
+            } else if (
+                lower.contains("diagnosis") ||
+                Regex("""(?i)^\s*dx\b""").containsMatchIn(line)
+            ) {
+                val nextValue = clean(next)
+                if (!isBadField(nextValue) &&
+                    !isInstructionLike(nextValue)
+                ) {
+                    diagnosis = nextValue
+                }
+            }
+        }
+    }
+
+    // ---------- Medicine blocks ----------
+    // A medicine starts only on a line containing a medicine signal.
+    // Following lines are treated as dosage/duration/instruction details
+    // until the next medicine signal or an advice/signature section.
+    val medicineStartIndices = rawLines.mapIndexedNotNull { index, line ->
+        if (isMedicineCandidate(line)) index else null
+    }
+
+    fun isHardStop(line: String): Boolean {
+        val v = normalize(line)
+        return v == "advice" ||
+                v.startsWith("advice ") ||
+                v == "general advice" ||
+                v.startsWith("general advice ") ||
+                v.contains("doctor signature") ||
+                v == "signature" ||
+                v.startsWith("signature ") ||
+                v.contains("follow up") ||
+                v.contains("plenty of fluids") ||
+                v.contains("drink plenty")
+    }
+
     val medicines = mutableListOf<PrescriptionMedicineDraft>()
 
-    medicineCandidateIndices.forEachIndexed { position, startIndex ->
+    medicineStartIndices.forEachIndexed { position, startIndex ->
+        val nextMedicineIndex = medicineStartIndices.getOrNull(position + 1)
 
-        val nextCandidate =
-            medicineCandidateIndices.getOrNull(position + 1)
+        var endExclusive = nextMedicineIndex ?: rawLines.size
 
-        val stopIndex =
-            rawLines.indices.firstOrNull { lineIndex ->
-                lineIndex > startIndex &&
-                        isMedicineStopLine(rawLines[lineIndex])
-            } ?: rawLines.size
+        for (i in startIndex + 1 until endExclusive) {
+            if (isHardStop(rawLines[i])) {
+                endExclusive = i
+                break
+            }
+        }
 
-        val endExclusive =
-            minOf(
-                nextCandidate ?: rawLines.size,
-                stopIndex,
-                startIndex + 7
-            )
+        // Keep each medicine block reasonably small.
+        endExclusive = minOf(endExclusive, startIndex + 6)
 
-        if (endExclusive <= startIndex) {
+        val blockLines = rawLines.subList(startIndex, endExclusive)
+        val block = blockLines.joinToString(" ")
+
+        val name = medicineNameFromLine(rawLines[startIndex])
+
+        if (name.isBlank() ||
+            name.length < 2 ||
+            name.length > 55
+        ) {
             return@forEachIndexed
         }
 
-        val blockLines =
-            rawLines.subList(
-                startIndex,
-                endExclusive
-            )
+        val strength = strengthRegex
+            .find(block)
+            ?.value
+            ?.let(::clean)
+            ?: ""
 
-        val block =
-            blockLines.joinToString(" ")
+        val frequency = firstMatch(frequencyRegexes, block)
+        val duration = firstMatch(durationRegexes, block)
+        val instruction = firstMatch(instructionRegexes, block)
 
-        val name =
-            medicineNameFromLine(
-                rawLines[startIndex]
-            )
-
-        if (!isMedicineNameCandidate(name)) {
-            return@forEachIndexed
-        }
-
-        val strength =
-            strengthRegex
-                .find(block)
-                ?.value
-                ?.let(::clean)
-                ?: ""
-
-        val frequency =
-            firstMatch(
-                frequencyRegexes,
-                block
-            )
-
-        val duration =
-            firstMatch(
-                durationRegexes,
-                block
-            )
-
-        val instruction =
-            firstMatch(
-                instructionRegexes,
-                block
-            )
-
-        val timing =
-            deriveTiming(frequency)
-
-        val mealTiming =
-            deriveMealTiming(block)
-
-        val howToTake =
-            deriveHowToTake(
-                if (instruction.isNotBlank()) {
-                    instruction
-                } else {
-                    block
-                }
-            )
+        val timing = deriveTiming(frequency, block)
+        val mealTiming = deriveMealTiming(block)
+        val howToTake = deriveHowToTake(block)
 
         medicines.add(
             PrescriptionMedicineDraft(
@@ -781,78 +772,12 @@ private fun extractPrescriptionDraft(text: String): PrescriptionDraft {
         )
     }
 
-    // Fallback for prescriptions where the table header was not recognized.
-    // Only use explicit medicine/form/strength lines, never dosage-only lines.
-    if (medicines.isEmpty()) {
-        rawLines.forEachIndexed { index, line ->
-
-            val hasMedicineForm =
-                formRegex.containsMatchIn(line)
-
-            val hasStrength =
-                strengthRegex.containsMatchIn(line)
-
-            if (!hasMedicineForm && !hasStrength) {
-                return@forEachIndexed
-            }
-
-            val name =
-                medicineNameFromLine(line)
-
-            if (!isMedicineNameCandidate(name)) {
-                return@forEachIndexed
-            }
-
-            val block =
-                rawLines
-                    .subList(
-                        index,
-                        minOf(rawLines.size, index + 6)
-                    )
-                    .joinToString(" ")
-
-            medicines.add(
-                PrescriptionMedicineDraft(
-                    medicineName = name,
-                    strength =
-                        strengthRegex
-                            .find(block)
-                            ?.value
-                            ?.let(::clean)
-                            ?: "",
-                    frequency =
-                        firstMatch(
-                            frequencyRegexes,
-                            block
-                        ),
-                    duration =
-                        firstMatch(
-                            durationRegexes,
-                            block
-                        ),
-                    instructions =
-                        firstMatch(
-                            instructionRegexes,
-                            block
-                        ),
-                    timing =
-                        deriveTiming(
-                            firstMatch(
-                                frequencyRegexes,
-                                block
-                            )
-                        ),
-                    mealTiming =
-                        deriveMealTiming(block),
-                    howToTake =
-                        deriveHowToTake(block)
-                )
-            )
-        }
+    // Remove accidental duplicates but never invent missing medicines.
+    val uniqueMedicines = medicines.distinctBy {
+        "${normalize(it.medicineName)}|${normalize(it.strength)}|${normalize(it.frequency)}|${normalize(it.duration)}"
     }
 
-    // If diagnosis was not explicitly labelled, only use a high-confidence
-    // medical condition found before the first medicine. Never use Rx/advice text.
+    // Fallback diagnosis only from known medical terms before medicines.
     if (diagnosis.isBlank()) {
         val diagnosisTerms = listOf(
             "hypertension", "diabetes", "migraine", "asthma", "pneumonia",
@@ -860,24 +785,26 @@ private fun extractPrescriptionDraft(text: String): PrescriptionDraft {
             "common cold", "chickenpox", "thyroid", "hypothyroidism",
             "hyperthyroidism", "allergy", "allergic rhinitis", "sinusitis",
             "tonsillitis", "pharyngitis", "otitis", "uti", "urinary infection",
-            "dermatitis", "eczema", "acidity", "viral infection", "bacterial infection",
-            "fungal infection", "pain", "headache", "flu", "rhinitis"
+            "dermatitis", "eczema", "acidity", "viral infection",
+            "bacterial infection", "fungal infection", "pain", "headache",
+            "flu", "rhinitis", "urti"
         )
-        val beforeMedicines = if (medicineCandidateIndices.isNotEmpty()) {
-            rawLines.take(medicineCandidateIndices.first())
+
+        val beforeMedicines = if (medicineStartIndices.isNotEmpty()) {
+            rawLines.take(medicineStartIndices.first())
         } else {
             rawLines
         }
 
         val found = beforeMedicines.firstOrNull { line ->
             val n = normalize(line)
-            !isInstructionLike(line) && diagnosisTerms.any { n.contains(it) }
+            !isInstructionLike(line) &&
+                    diagnosisTerms.any { n.contains(it) }
         }
-        if (found != null) diagnosis = clean(found)
-    }
 
-    val uniqueMedicines = medicines.distinctBy {
-        "${normalize(it.medicineName)}|${normalize(it.strength)}|${normalize(it.frequency)}|${normalize(it.duration)}"
+        if (found != null) {
+            diagnosis = clean(found)
+        }
     }
 
     return PrescriptionDraft(
@@ -890,6 +817,134 @@ private fun extractPrescriptionDraft(text: String): PrescriptionDraft {
             listOf(PrescriptionMedicineDraft())
         }
     )
+}
+
+private fun buildPrescriptionOcrText(result: Text): String {
+    data class OcrLine(
+        val text: String,
+        val top: Int,
+        val bottom: Int,
+        val left: Int,
+        val right: Int
+    )
+
+    val lines = result.textBlocks
+        .flatMap { block -> block.lines }
+        .filter { it.text.trim().isNotBlank() }
+        .map { line ->
+            val box = line.boundingBox
+            OcrLine(
+                text = line.text.trim(),
+                top = box?.top ?: Int.MAX_VALUE,
+                bottom = box?.bottom ?: (box?.top ?: Int.MAX_VALUE),
+                left = box?.left ?: Int.MAX_VALUE,
+                right = box?.right ?: Int.MAX_VALUE
+            )
+        }
+
+    if (lines.isEmpty()) return ""
+
+    fun normalized(value: String): String =
+        value.lowercase()
+            .replace(Regex("[^a-z0-9]+"), " ")
+            .replace(Regex("\\s+"), " ")
+            .trim()
+
+    val sorted = lines.sortedWith(compareBy<OcrLine> { it.top }.thenBy { it.left })
+
+    // Detect the medicine table. Once the table header is found, rows are
+    // clustered using their Y position only, so each physical table row stays
+    // together even when ML Kit reports every cell as a separate OCR line.
+    val tableHeaderIndex = sorted.indexOfFirst { line ->
+        val n = normalized(line.text)
+        n.contains("medicine name") ||
+                n.contains("dose frequency") ||
+                n.contains("dose dosage") ||
+                n.contains("strength frequency") ||
+                (n.contains("medicine") && n.contains("strength"))
+    }
+
+    fun clusterRows(items: List<OcrLine>, tolerance: Int): List<List<OcrLine>> {
+        val rows = mutableListOf<MutableList<OcrLine>>()
+
+        for (item in items.sortedWith(compareBy<OcrLine> { it.top }.thenBy { it.left })) {
+            val itemCenter = (item.top + item.bottom) / 2
+            val row = rows.lastOrNull()
+
+            if (row == null) {
+                rows.add(mutableListOf(item))
+                continue
+            }
+
+            val rowCenter = row.map { (it.top + it.bottom) / 2 }.average()
+            val rowHeight = row.maxOf { (it.bottom - it.top).coerceAtLeast(8) }
+            // ML Kit often returns every table cell as a separate line.
+            // Keep only text sharing the same physical row; do not merge
+            // neighbouring prescription rows.
+            val dynamicTolerance = maxOf(6.0, minOf(10.0, rowHeight * 0.65))
+
+            if (kotlin.math.abs(itemCenter - rowCenter) <= dynamicTolerance) {
+                row.add(item)
+            } else {
+                rows.add(mutableListOf(item))
+            }
+        }
+
+        return rows
+    }
+
+    fun cleanOcrRow(row: List<OcrLine>): String =
+        row.sortedBy { it.left }
+            .joinToString(" ") { it.text.trim() }
+            .replace(Regex("\\s+"), " ")
+            .trim()
+
+    val output = mutableListOf<String>()
+
+    if (tableHeaderIndex >= 0) {
+        // Header and everything before the table: normal OCR grouping.
+        val beforeTable = sorted.take(tableHeaderIndex + 1)
+        clusterRows(beforeTable, 16)
+            .map(::cleanOcrRow)
+            .filter { it.isNotBlank() }
+            .forEach { output.add(it) }
+
+        // Table itself: use a larger Y tolerance. This is the key fix for
+        // digital prescriptions where each cell is returned separately.
+        val afterHeader = sorted.drop(tableHeaderIndex + 1)
+        val tableRows = clusterRows(afterHeader, 16)
+
+        tableRows.forEach { row ->
+            val joined = cleanOcrRow(row)
+            if (joined.isBlank()) return@forEach
+
+            // Advice/signature starts after the medicine table. Keep those
+            // lines separate so they can never become medicine rows.
+            val n = normalized(joined)
+            if (n == "advice" ||
+                n.startsWith("advice ") ||
+                n.contains("doctor signature") ||
+                n == "signature" ||
+                n.contains("follow up") && !n.contains("days")) {
+                output.add(joined)
+            } else {
+                output.add(joined)
+            }
+        }
+    } else {
+        // Handwritten / free-form prescriptions usually have no table header.
+        // A moderate tolerance groups the medicine name with its nearby dose,
+        // frequency and duration without swallowing distant advice lines.
+        clusterRows(sorted, 18)
+            .map(::cleanOcrRow)
+            .filter { it.isNotBlank() }
+            .forEach { output.add(it) }
+    }
+
+    return output
+        .joinToString("\n")
+        .replace(Regex("(?m)^[ \\t]+|[ \\t]+$"), "")
+        .trim()
 }
 
 @Composable
@@ -1573,16 +1628,7 @@ fun PrescriptionScannerScreen(
             val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
             recognizer.process(InputImage.fromBitmap(rotated, 0))
                 .addOnSuccessListener { result ->
-                    val text = result.textBlocks
-                        .flatMap { block -> block.lines }
-                        .sortedWith(
-                            compareBy<com.google.mlkit.vision.text.Text.Line> { it.boundingBox?.top ?: Int.MAX_VALUE }
-                                .thenBy { it.boundingBox?.left ?: Int.MAX_VALUE }
-                        )
-                        .map { it.text.trim() }
-                        .filter { it.isNotBlank() }
-                        .joinToString("\n")
-                        .trim()
+                    val text = buildPrescriptionOcrText(result)
                     recognizer.close()
                     if (rotated !== bitmap) rotated.recycle()
                     onDone(text)
@@ -1600,16 +1646,7 @@ fun PrescriptionScannerScreen(
             val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
             recognizer.process(image)
                 .addOnSuccessListener { result ->
-                    val firstText = result.textBlocks
-                        .flatMap { block -> block.lines }
-                        .sortedWith(
-                            compareBy<com.google.mlkit.vision.text.Text.Line> { it.boundingBox?.top ?: Int.MAX_VALUE }
-                                .thenBy { it.boundingBox?.left ?: Int.MAX_VALUE }
-                        )
-                        .map { it.text.trim() }
-                        .filter { it.isNotBlank() }
-                        .joinToString("\n")
-                        .trim()
+                    val firstText = buildPrescriptionOcrText(result)
                     recognizer.close()
                     if (scorePrescriptionText(firstText) >= 4 || firstText.length < 20) {
                         finishWithText(firstText)
@@ -2160,8 +2197,8 @@ fun PrescriptionScannerScreen(
                                     RoundedCornerShape(16.dp),
                                 colors =
                                     ButtonDefaults.buttonColors(
-                                        containerColor =
-                                            darkBlue
+                                        containerColor = Color(0xFFEAF5F8),
+                                            contentColor = Color(0xFF176B83)
                                     )
                             ) {
 
@@ -2267,8 +2304,8 @@ fun PrescriptionScannerScreen(
                                     RoundedCornerShape(16.dp),
                                 colors =
                                     ButtonDefaults.buttonColors(
-                                        containerColor = Color.White,
-                                        contentColor = darkBlue
+                                        containerColor = Color(0xFFEAF5F8),
+                                        contentColor = Color(0xFF176B83)
                                     )
                             ) {
 
@@ -2454,6 +2491,13 @@ fun PrescriptionScannerScreen(
                                                     if (medicine.strength.isNotBlank()) {
                                                         Text(
                                                             text = "Strength: ${medicine.strength}",
+                                                            color = gray,
+                                                            fontSize = 11.sp
+                                                        )
+                                                    }
+                                                    if (medicine.frequency.isNotBlank()) {
+                                                        Text(
+                                                            text = "Frequency: ${medicine.frequency}",
                                                             color = gray,
                                                             fontSize = 11.sp
                                                         )
