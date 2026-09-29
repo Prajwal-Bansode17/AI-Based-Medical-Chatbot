@@ -3,6 +3,7 @@ package ui
 import android.Manifest
 import android.content.ContentValues
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
@@ -23,6 +24,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
@@ -39,9 +41,6 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextFieldDefaults
 
@@ -50,7 +49,6 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
 
 import kotlinx.coroutines.Dispatchers
@@ -96,7 +94,10 @@ data class PrescriptionMedicineDraft(
     val strength: String = "",
     val frequency: String = "",
     val duration: String = "",
-    val instructions: String = ""
+    val instructions: String = "",
+    val timing: String = "",
+    val mealTiming: String = "",
+    val howToTake: String = ""
 )
 
 data class PrescriptionDraft(
@@ -104,6 +105,7 @@ data class PrescriptionDraft(
     val patientName: String = "",
     val date: String = "",
     val diagnosis: String = "",
+    val hospitalName: String = "",
     val medicines: List<PrescriptionMedicineDraft> = listOf(PrescriptionMedicineDraft())
 )
 
@@ -199,12 +201,10 @@ private fun verifyMedicineInDataset(
 
 object PrescriptionRepository {
 
-
-
     private const val PREFS_NAME = "medassist_prescription_preferences"
     private const val KEY_PRESCRIPTIONS = "saved_prescriptions"
 
-    fun save(context: Context, draft: PrescriptionDraft): String {
+    fun save(context: Context, draft: PrescriptionDraft, imageUri: String = ""): String {
         val id = "rx_${System.currentTimeMillis()}"
 
         val item = JSONObject().apply {
@@ -214,6 +214,8 @@ object PrescriptionRepository {
             put("patientName", draft.patientName)
             put("date", draft.date)
             put("diagnosis", draft.diagnosis)
+            put("hospitalName", draft.hospitalName)
+            put("imageUri", imageUri)
 
             val medicineArray = JSONArray()
             draft.medicines.forEach { medicine ->
@@ -224,6 +226,9 @@ object PrescriptionRepository {
                         put("frequency", medicine.frequency)
                         put("duration", medicine.duration)
                         put("instructions", medicine.instructions)
+                        put("timing", medicine.timing)
+                        put("mealTiming", medicine.mealTiming)
+                        put("howToTake", medicine.howToTake)
                     }
                 )
             }
@@ -341,6 +346,109 @@ private fun extractPrescriptionDraft(text: String): PrescriptionDraft {
         return ""
     }
 
+    // ---------- Hospital / Clinic ----------
+    fun extractHospital(lines: List<String>): String {
+        val candidates = lines.filter { line ->
+            val n = normalize(line)
+            (n.contains("hospital") ||
+                    n.contains("clinic") ||
+                    n.contains("medical centre") ||
+                    n.contains("medical center") ||
+                    n.contains("healthcare")) &&
+                    !n.contains("patient") &&
+                    !n.contains("doctor") &&
+                    line.length <= 90
+        }
+
+        return candidates.firstOrNull()?.let(::clean).orEmpty()
+    }
+
+    // ---------- Medicine timing helpers ----------
+    fun deriveTiming(frequency: String): String {
+        val v = normalize(frequency)
+
+        return when {
+            v.contains("qid") ||
+                    v.contains("four times") ||
+                    v.contains("4 times") ||
+                    Regex("""\b1\s*[-/]\s*1\s*[-/]\s*1\s*[-/]\s*1\b""").containsMatchIn(v) ->
+                "Morning • Afternoon • Evening • Night"
+
+            v.contains("tds") ||
+                    v.contains("three times") ||
+                    v.contains("3 times") ||
+                    Regex("""\b1\s*[-/]\s*1\s*[-/]\s*1\b""").containsMatchIn(v) ->
+                "Morning • Afternoon • Evening"
+
+            v.contains("bd") ||
+                    v.contains("twice") ||
+                    v.contains("2 times") ||
+                    Regex("""\b1\s*[-/]\s*0\s*[-/]\s*1\b""").containsMatchIn(v) ->
+                "Morning • Evening"
+
+            v.contains("hs") ||
+                    v.contains("qhs") ||
+                    v.contains("bedtime") ||
+                    v.contains("at night") ||
+                    v.contains("night") ->
+                "Night / Bedtime"
+
+            v.contains("sos") ||
+                    v.contains("as needed") ->
+                "As needed"
+
+            v.contains("stat") ||
+                    v.contains("immediately") ->
+                "Immediately"
+
+            v.contains("once") ||
+                    v.contains("daily") ||
+                    Regex("""\bonce\b""").containsMatchIn(v) ->
+                "Morning"
+
+            v.contains("weekly") ->
+                "Weekly"
+
+            else -> ""
+        }
+    }
+
+    fun deriveMealTiming(instruction: String): String {
+        val v = normalize(instruction)
+        return when {
+            v.contains("before food") ||
+                    v.contains("before meal") ||
+                    v.contains("before breakfast") ||
+                    v.contains("empty stomach") ->
+                "Before food"
+
+            v.contains("after food") ||
+                    v.contains("after meal") ||
+                    v.contains("after breakfast") ||
+                    v.contains("after lunch") ||
+                    v.contains("after dinner") ||
+                    v.contains("with food") ->
+                "After food"
+
+            else -> ""
+        }
+    }
+
+    fun deriveHowToTake(instruction: String): String {
+        val value = clean(instruction)
+        if (value.isBlank()) return ""
+
+        return when {
+            value.contains("swallow", ignoreCase = true) -> value
+            value.contains("apply", ignoreCase = true) -> value
+            value.contains("dissolve", ignoreCase = true) -> value
+            value.contains("inhale", ignoreCase = true) -> value
+            value.contains("drink", ignoreCase = true) -> value
+            value.contains("take", ignoreCase = true) -> value
+            else -> ""
+        }
+    }
+
     // ---------- Doctor ----------
     fun extractDoctor(line: String): String {
         val m = Regex(
@@ -372,6 +480,7 @@ private fun extractPrescriptionDraft(text: String): PrescriptionDraft {
     var patient = ""
     var date = ""
     var diagnosis = ""
+    val hospital = extractHospital(rawLines)
 
     rawLines.forEachIndexed { index, line ->
         val lower = line.lowercase()
@@ -463,7 +572,12 @@ private fun extractPrescriptionDraft(text: String): PrescriptionDraft {
         if (lower.contains("blood pressure") || lower.contains("temperature") ||
             lower.contains("weight") || lower.contains("height") ||
             lower.contains("pulse") || lower.contains("diagnosis") ||
-            lower.contains("doctor") || lower.contains("patient")
+            lower.contains("doctor") || lower.contains("patient") ||
+            lower.contains("hospital") || lower.contains("clinic") ||
+            lower.contains("medical centre") || lower.contains("medical center") ||
+            lower.contains("healthcare") || lower.contains("your health") ||
+            lower.contains("consultant physician") || lower.contains("reg no") ||
+            lower.contains("phone") || lower.contains("email")
         ) return false
 
         if (formRegex.containsMatchIn(line) || strengthRegex.containsMatchIn(line)) return true
@@ -512,6 +626,9 @@ private fun extractPrescriptionDraft(text: String): PrescriptionDraft {
         val frequency = firstMatch(frequencyRegexes, block)
         val duration = firstMatch(durationRegexes, block)
         val instruction = firstMatch(instructionRegexes, block)
+        val timing = deriveTiming(frequency)
+        val mealTiming = deriveMealTiming(instruction)
+        val howToTake = deriveHowToTake(instruction)
 
         medicines.add(
             PrescriptionMedicineDraft(
@@ -519,7 +636,10 @@ private fun extractPrescriptionDraft(text: String): PrescriptionDraft {
                 strength = strength,
                 frequency = frequency,
                 duration = duration,
-                instructions = instruction
+                instructions = instruction,
+                timing = timing,
+                mealTiming = mealTiming,
+                howToTake = howToTake
             )
         )
     }
@@ -558,6 +678,7 @@ private fun extractPrescriptionDraft(text: String): PrescriptionDraft {
         patientName = patient,
         date = date,
         diagnosis = diagnosis,
+        hospitalName = hospital,
         medicines = uniqueMedicines.ifEmpty {
             listOf(PrescriptionMedicineDraft())
         }
@@ -579,7 +700,7 @@ fun PrescriptionScannerScreen(
     val backgroundTop = Color(0xFFEAF8FC)
     val backgroundBottom = Color(0xFFD8F0F6)
 
-    // Review & Edit fields: keep extracted/editable text clearly visible.
+    // Save Prescription fields: keep extracted/editable text clearly visible.
     val reviewFieldColors = TextFieldDefaults.colors(
         focusedTextColor = darkBlue,
         unfocusedTextColor = darkBlue,
@@ -630,6 +751,8 @@ fun PrescriptionScannerScreen(
     var patientName by remember { mutableStateOf("") }
     var prescriptionDate by remember { mutableStateOf("") }
     var diagnosis by remember { mutableStateOf("") }
+    var hospitalName by remember { mutableStateOf("") }
+    var previewDraft by remember { mutableStateOf(PrescriptionDraft()) }
     var medicineRows by remember {
         mutableStateOf(listOf(PrescriptionMedicineDraft()))
     }
@@ -806,7 +929,7 @@ fun PrescriptionScannerScreen(
     val reviewTitle = when (selectedLanguage) {
         "मराठी" -> "✏️ माहिती तपासा व बदला"
         "हिन्दी" -> "✏️ जानकारी जाँचें और बदलें"
-        else -> "✏️ Review & Edit"
+        else -> "✏️ Save Prescription"
     }
     val doctorLabel = when (selectedLanguage) {
         "मराठी" -> "डॉक्टरचे नाव"
@@ -1190,6 +1313,7 @@ fun PrescriptionScannerScreen(
         fun finishWithText(text: String) {
             if (requestId != ocrRequestId) return
             extractedText = text.trim()
+            previewDraft = extractPrescriptionDraft(extractedText)
             if (extractedText.isBlank()) {
                 ocrError = when (selectedLanguage) {
                     "मराठी" -> "वाचता येणारा मजकूर सापडला नाही. कृपया फोटो सरळ आणि स्पष्ट ठेवा."
@@ -1339,6 +1463,8 @@ fun PrescriptionScannerScreen(
         patientName = ""
         prescriptionDate = ""
         diagnosis = ""
+        hospitalName = ""
+        previewDraft = PrescriptionDraft()
         medicineRows = listOf(PrescriptionMedicineDraft())
         medicineVerification = emptyMap()
         isVerifyingMedicines = false
@@ -1450,6 +1576,8 @@ fun PrescriptionScannerScreen(
         patientName = draft.patientName
         prescriptionDate = draft.date
         diagnosis = draft.diagnosis
+        hospitalName = draft.hospitalName
+        previewDraft = draft
         medicineRows = draft.medicines
         medicineVerification = emptyMap()
         isVerifyingMedicines = false
@@ -1496,20 +1624,76 @@ fun PrescriptionScannerScreen(
             patientName = patientName.trim(),
             date = prescriptionDate.trim(),
             diagnosis = diagnosis.trim(),
+            hospitalName = hospitalName.trim(),
             medicines = cleanMedicines.ifEmpty {
                 listOf(PrescriptionMedicineDraft())
             }
         )
 
-        savedPrescriptionId = PrescriptionRepository.save(context, draft)
+        savedPrescriptionId = PrescriptionRepository.save(
+            context,
+            draft,
+            selectedImageUri?.toString().orEmpty()
+        )
         doctorName = draft.doctorName
         patientName = draft.patientName
         prescriptionDate = draft.date
         diagnosis = draft.diagnosis
+        hospitalName = draft.hospitalName
+        previewDraft = draft
         medicineRows = draft.medicines
         isSaved = true
         isReviewMode = false
         isVerifyingMedicines = false
+    }
+
+    fun buildShareText(): String {
+        val lines = mutableListOf<String>()
+        lines += "MEDASSIST AI - Prescription"
+        if (hospitalName.isNotBlank()) lines += "Hospital/Clinic: $hospitalName"
+        if (doctorName.isNotBlank()) lines += "Doctor: $doctorName"
+        if (patientName.isNotBlank()) lines += "Patient: $patientName"
+        if (prescriptionDate.isNotBlank()) lines += "Date: $prescriptionDate"
+        if (diagnosis.isNotBlank()) lines += "Diagnosis: $diagnosis"
+
+        medicineRows.filter {
+            it.medicineName.isNotBlank() ||
+                    it.strength.isNotBlank() ||
+                    it.timing.isNotBlank() ||
+                    it.mealTiming.isNotBlank() ||
+                    it.howToTake.isNotBlank()
+        }.forEachIndexed { index, medicine ->
+            lines += ""
+            lines += "Medicine ${index + 1}: ${medicine.medicineName}"
+            if (medicine.strength.isNotBlank()) lines += "Strength: ${medicine.strength}"
+            if (medicine.timing.isNotBlank()) lines += "Time: ${medicine.timing}"
+            if (medicine.mealTiming.isNotBlank()) lines += "Food: ${medicine.mealTiming}"
+            if (medicine.duration.isNotBlank()) lines += "Duration: ${medicine.duration}"
+            if (medicine.howToTake.isNotBlank()) lines += "How to take: ${medicine.howToTake}"
+        }
+
+        return lines.joinToString("\n")
+    }
+
+    fun sharePrescription() {
+        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+            type = "text/plain"
+            putExtra(Intent.EXTRA_SUBJECT, "MEDASSIST Prescription")
+            putExtra(Intent.EXTRA_TEXT, buildShareText())
+
+            selectedImageUri?.let { uri ->
+                putExtra(Intent.EXTRA_STREAM, uri)
+                type = "image/*"
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+        }
+
+        context.startActivity(
+            Intent.createChooser(
+                shareIntent,
+                "Share Prescription"
+            )
+        )
     }
 
     // =============================================================
@@ -1594,206 +1778,6 @@ fun PrescriptionScannerScreen(
             Spacer(
                 modifier = Modifier.height(2.dp)
             )
-
-
-            // =====================================================
-            // LANGUAGE SELECTOR
-            // =====================================================
-
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(18.dp),
-                colors =
-                    CardDefaults.cardColors(
-                        containerColor = Color.White
-                    ),
-                elevation =
-                    CardDefaults.cardElevation(
-                        defaultElevation = 3.dp
-                    )
-            ) {
-
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(14.dp)
-                ) {
-
-                    Text(
-                        text = languageLabel,
-                        color = darkBlue,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
-
-
-                    Spacer(
-                        modifier = Modifier.height(8.dp)
-                    )
-
-
-                    Box(
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-
-                        Button(
-                            onClick = {
-                                languageMenuExpanded = true
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                            shape =
-                                RoundedCornerShape(14.dp),
-                            colors =
-                                ButtonDefaults.buttonColors(
-                                    containerColor =
-                                        Color(0xFFF0F6F8),
-                                    contentColor =
-                                        darkBlue
-                                )
-                        ) {
-
-                            Row(
-                                modifier =
-                                    Modifier.fillMaxWidth(),
-                                horizontalArrangement =
-                                    Arrangement.SpaceBetween,
-                                verticalAlignment =
-                                    Alignment.CenterVertically
-                            ) {
-
-                                Text(
-                                    text =
-                                        when (selectedLanguage) {
-
-                                            "मराठी" ->
-                                                "मराठी"
-
-                                            "हिन्दी" ->
-                                                "हिन्दी"
-
-                                            else ->
-                                                "English"
-                                        },
-                                    fontSize = 14.sp,
-                                    fontWeight =
-                                        FontWeight.Medium
-                                )
-
-
-                                Text(
-                                    text = "⌄",
-                                    fontSize = 20.sp
-                                )
-                            }
-                        }
-
-
-                        DropdownMenu(
-                            expanded =
-                                languageMenuExpanded,
-                            onDismissRequest = {
-                                languageMenuExpanded = false
-                            }
-                        ) {
-
-                            // -------------------------------------------------
-                            // ENGLISH
-                            // -------------------------------------------------
-
-                            DropdownMenuItem(
-                                text = {
-                                    Text("English")
-                                },
-                                onClick = {
-
-                                    selectedLanguage =
-                                        "English"
-
-                                    languageMenuExpanded =
-                                        false
-
-
-                                    if (
-                                        extractedText.isNotEmpty()
-                                    ) {
-
-                                        translatePrescriptionText(
-                                            sourceText =
-                                                extractedText,
-                                            language =
-                                                "English"
-                                        )
-                                    }
-                                }
-                            )
-
-
-                            // -------------------------------------------------
-                            // MARATHI
-                            // -------------------------------------------------
-
-                            DropdownMenuItem(
-                                text = {
-                                    Text("मराठी")
-                                },
-                                onClick = {
-
-                                    selectedLanguage =
-                                        "मराठी"
-
-                                    languageMenuExpanded =
-                                        false
-
-
-                                    if (
-                                        extractedText.isNotEmpty()
-                                    ) {
-
-                                        translatePrescriptionText(
-                                            sourceText =
-                                                extractedText,
-                                            language =
-                                                "मराठी"
-                                        )
-                                    }
-                                }
-                            )
-
-
-                            // -------------------------------------------------
-                            // HINDI
-                            // -------------------------------------------------
-
-                            DropdownMenuItem(
-                                text = {
-                                    Text("हिन्दी")
-                                },
-                                onClick = {
-
-                                    selectedLanguage =
-                                        "हिन्दी"
-
-                                    languageMenuExpanded =
-                                        false
-
-
-                                    if (
-                                        extractedText.isNotEmpty()
-                                    ) {
-
-                                        translatePrescriptionText(
-                                            sourceText =
-                                                extractedText,
-                                            language =
-                                                "हिन्दी"
-                                        )
-                                    }
-                                }
-                            )
-                        }
-                    }
-                }
-            }
 
 
             // =====================================================
@@ -2024,6 +2008,8 @@ fun PrescriptionScannerScreen(
                                     patientName = ""
                                     prescriptionDate = ""
                                     diagnosis = ""
+                                    hospitalName = ""
+                                    previewDraft = PrescriptionDraft()
                                     medicineRows = listOf(PrescriptionMedicineDraft())
                                     medicineVerification = emptyMap()
                                 },
@@ -2133,73 +2119,20 @@ fun PrescriptionScannerScreen(
                         // =================================================
                         // RESULT / REVIEW / SUMMARY
 
-                        if (!isReviewMode && !isSaved) {
+                        if (!isReviewMode && !isSaved && extractedText.isNotBlank()) {
 
-                            Card(
-                                modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(18.dp),
-                                colors = CardDefaults.cardColors(
-                                    containerColor = Color(0xFFF5F9FB)
-                                )
-                            ) {
-                                Column(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(16.dp)
-                                ) {
-                                    Text(
-                                        text = extractedTitle,
-                                        color = darkBlue,
-                                        fontSize = 16.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-
-                                    Spacer(modifier = Modifier.height(12.dp))
-
-                                    (
-                                            if (translatedText.isNotEmpty()) translatedText
-                                            else extractedText
-                                            )
-                                        .lines()
-                                        .map { it.trim() }
-                                        .filter { it.isNotEmpty() }
-                                        .forEach { line ->
-                                            Text(
-                                                text = line,
-                                                color = Color(0xFF263943),
-                                                fontSize = 13.sp,
-                                                lineHeight = 20.sp,
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(bottom = 7.dp)
-                                            )
-                                        }
-
-                                    Spacer(modifier = Modifier.height(8.dp))
-
-                                    Button(
-                                        onClick = { startReview() },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        shape = RoundedCornerShape(14.dp),
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = primary
-                                        )
-                                    ) {
-                                        Text(
-                                            text = reviewTitle,
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.SemiBold
-                                        )
-                                    }
-                                }
+                            val preview = previewDraft
+                            val previewMedicines = preview.medicines.filter {
+                                it.medicineName.isNotBlank() ||
+                                        it.strength.isNotBlank() ||
+                                        it.timing.isNotBlank() ||
+                                        it.mealTiming.isNotBlank() ||
+                                        it.howToTake.isNotBlank()
                             }
-                        }
-
-                        if (isReviewMode) {
 
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(20.dp),
+                                shape = RoundedCornerShape(22.dp),
                                 colors = CardDefaults.cardColors(
                                     containerColor = Color.White
                                 ),
@@ -2210,233 +2143,101 @@ fun PrescriptionScannerScreen(
                                 Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(16.dp)
+                                        .padding(horizontal = 18.dp, vertical = 20.dp)
                                 ) {
                                     Text(
-                                        text = reviewTitle,
+                                        text = "Prescription Summary",
                                         color = darkBlue,
-                                        fontSize = 17.sp,
+                                        fontSize = 18.sp,
                                         fontWeight = FontWeight.Bold
                                     )
 
-                                    Spacer(modifier = Modifier.height(8.dp))
+                                    Spacer(modifier = Modifier.height(14.dp))
 
-                                    Text(
-                                        text = "Review the OCR result before saving. Do not change the prescribed dosage without professional advice.",
-                                        color = gray,
-                                        fontSize = 11.sp,
-                                        lineHeight = 16.sp
-                                    )
+                                    if (preview.hospitalName.isNotBlank()) {
+                                        SummaryLine("Hospital / Clinic", preview.hospitalName, darkBlue)
+                                    }
+                                    if (preview.doctorName.isNotBlank()) {
+                                        SummaryLine("Doctor", preview.doctorName, darkBlue)
+                                    }
+                                    if (preview.patientName.isNotBlank()) {
+                                        SummaryLine("Patient", preview.patientName, darkBlue)
+                                    }
+                                    if (preview.date.isNotBlank()) {
+                                        SummaryLine("Date", preview.date, darkBlue)
+                                    }
+                                    if (preview.diagnosis.isNotBlank()) {
+                                        SummaryLine("Diagnosis", preview.diagnosis, darkBlue)
+                                    }
 
-                                    Spacer(modifier = Modifier.height(12.dp))
+                                    if (previewMedicines.isNotEmpty()) {
+                                        Spacer(modifier = Modifier.height(14.dp))
 
-                                    OutlinedTextField(
-                                        value = doctorName,
-                                        onValueChange = { doctorName = it },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        label = { Text(doctorLabel) },
-                                        singleLine = true,
-                                        colors = reviewFieldColors
-                                    )
+                                        Text(
+                                            text = "Medicines",
+                                            color = darkBlue,
+                                            fontSize = 15.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
 
-                                    Spacer(modifier = Modifier.height(9.dp))
+                                        Spacer(modifier = Modifier.height(8.dp))
 
-                                    OutlinedTextField(
-                                        value = patientName,
-                                        onValueChange = { patientName = it },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        label = { Text(patientLabel) },
-                                        singleLine = true,
-                                        colors = reviewFieldColors
-                                    )
-
-                                    Spacer(modifier = Modifier.height(9.dp))
-
-                                    OutlinedTextField(
-                                        value = prescriptionDate,
-                                        onValueChange = { prescriptionDate = it },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        label = { Text(dateLabel) },
-                                        singleLine = true,
-                                        colors = reviewFieldColors
-                                    )
-
-                                    Spacer(modifier = Modifier.height(9.dp))
-
-                                    OutlinedTextField(
-                                        value = diagnosis,
-                                        onValueChange = { diagnosis = it },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        label = { Text(diagnosisLabel) },
-                                        minLines = 2,
-                                        maxLines = 3,
-                                        colors = reviewFieldColors
-                                    )
-
-                                    Spacer(modifier = Modifier.height(16.dp))
-
-                                    Text(
-                                        text = medicinesLabel,
-                                        color = darkBlue,
-                                        fontSize = 15.sp,
-                                        fontWeight = FontWeight.Bold
-                                    )
-
-                                    Spacer(modifier = Modifier.height(10.dp))
-
-                                    medicineRows.forEachIndexed { index, medicine ->
-
-                                        Card(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(bottom = 10.dp),
-                                            shape = RoundedCornerShape(16.dp),
-                                            colors = CardDefaults.cardColors(
-                                                containerColor = Color(0xFFF5F9FB)
-                                            )
-                                        ) {
-                                            Column(
+                                        previewMedicines.forEachIndexed { index, medicine ->
+                                            Card(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
-                                                    .padding(12.dp)
+                                                    .padding(bottom = 8.dp),
+                                                shape = RoundedCornerShape(14.dp),
+                                                colors = CardDefaults.cardColors(
+                                                    containerColor = Color(0xFFF4F9FB)
+                                                )
                                             ) {
-                                                Text(
-                                                    text = "Medicine ${index + 1}",
-                                                    color = darkBlue,
-                                                    fontSize = 13.sp,
-                                                    fontWeight = FontWeight.SemiBold
-                                                )
-
-                                                Spacer(modifier = Modifier.height(8.dp))
-
-                                                OutlinedTextField(
-                                                    value = medicine.medicineName,
-                                                    onValueChange = { value ->
-                                                        medicineRows =
-                                                            medicineRows.toMutableList().also {
-                                                                it[index] =
-                                                                    it[index].copy(
-                                                                        medicineName = value
-                                                                    )
-                                                            }
-                                                    },
-                                                    modifier = Modifier.fillMaxWidth(),
-                                                    label = { Text(medicineNameLabel) },
-                                                    singleLine = true,
-                                                    colors = reviewFieldColors
-                                                )
-
-                                                Spacer(modifier = Modifier.height(8.dp))
-
-                                                OutlinedTextField(
-                                                    value = medicine.strength,
-                                                    onValueChange = { value ->
-                                                        medicineRows =
-                                                            medicineRows.toMutableList().also {
-                                                                it[index] =
-                                                                    it[index].copy(
-                                                                        strength = value
-                                                                    )
-                                                            }
-                                                    },
-                                                    modifier = Modifier.fillMaxWidth(),
-                                                    label = { Text(strengthLabel) },
-                                                    singleLine = true,
-                                                    colors = reviewFieldColors
-                                                )
-
-                                                Spacer(modifier = Modifier.height(8.dp))
-
-                                                OutlinedTextField(
-                                                    value = medicine.frequency,
-                                                    onValueChange = { value ->
-                                                        medicineRows =
-                                                            medicineRows.toMutableList().also {
-                                                                it[index] =
-                                                                    it[index].copy(
-                                                                        frequency = value
-                                                                    )
-                                                            }
-                                                    },
-                                                    modifier = Modifier.fillMaxWidth(),
-                                                    label = { Text(frequencyLabel) },
-                                                    singleLine = true,
-                                                    colors = reviewFieldColors
-                                                )
-
-                                                Spacer(modifier = Modifier.height(8.dp))
-
-                                                OutlinedTextField(
-                                                    value = medicine.duration,
-                                                    onValueChange = { value ->
-                                                        medicineRows =
-                                                            medicineRows.toMutableList().also {
-                                                                it[index] =
-                                                                    it[index].copy(
-                                                                        duration = value
-                                                                    )
-                                                            }
-                                                    },
-                                                    modifier = Modifier.fillMaxWidth(),
-                                                    label = { Text(durationLabel) },
-                                                    singleLine = true,
-                                                    colors = reviewFieldColors
-                                                )
-
-                                                Spacer(modifier = Modifier.height(8.dp))
-
-                                                OutlinedTextField(
-                                                    value = medicine.instructions,
-                                                    onValueChange = { value ->
-                                                        medicineRows =
-                                                            medicineRows.toMutableList().also {
-                                                                it[index] =
-                                                                    it[index].copy(
-                                                                        instructions = value
-                                                                    )
-                                                            }
-                                                    },
-                                                    modifier = Modifier.fillMaxWidth(),
-                                                    label = { Text(instructionsLabel) },
-                                                    minLines = 2,
-                                                    maxLines = 4,
-                                                    colors = reviewFieldColors
-                                                )
-
-
-                                                val verification =
-                                                    medicineVerification[index]
-
-                                                if (verification != null) {
-                                                    Spacer(
-                                                        modifier = Modifier.height(8.dp)
+                                                Column(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(12.dp)
+                                                ) {
+                                                    Text(
+                                                        text = "${index + 1}. ${medicine.medicineName}",
+                                                        color = darkBlue,
+                                                        fontSize = 14.sp,
+                                                        fontWeight = FontWeight.SemiBold
                                                     )
 
-                                                    androidx.compose.material3.Text(
-                                                        text = if (verification.recognized) {
-                                                            "✓ Medicine recognized in MEDASSIST database"
-                                                        } else {
-                                                            "⚠ Medicine information is not available in the local database"
-                                                        },
-                                                        color = if (verification.recognized) {
-                                                            Color(0xFF18794E)
-                                                        } else {
-                                                            Color(0xFFB45309)
-                                                        },
-                                                        fontSize = 10.sp,
-                                                        lineHeight = 15.sp
-                                                    )
-
-                                                    if (verification.recognized &&
-                                                        verification.matchedName.isNotBlank() &&
-                                                        verification.matchedName.lowercase() !=
-                                                        medicine.medicineName.trim().lowercase()
-                                                    ) {
+                                                    if (medicine.strength.isNotBlank()) {
                                                         Text(
-                                                            text = "Matched record: ${verification.matchedName}",
+                                                            text = "Strength: ${medicine.strength}",
                                                             color = gray,
-                                                            fontSize = 10.sp,
-                                                            lineHeight = 15.sp
+                                                            fontSize = 11.sp
+                                                        )
+                                                    }
+                                                    if (medicine.timing.isNotBlank()) {
+                                                        Text(
+                                                            text = "Time: ${medicine.timing}",
+                                                            color = gray,
+                                                            fontSize = 11.sp
+                                                        )
+                                                    }
+                                                    if (medicine.mealTiming.isNotBlank()) {
+                                                        Text(
+                                                            text = "Food: ${medicine.mealTiming}",
+                                                            color = gray,
+                                                            fontSize = 11.sp
+                                                        )
+                                                    }
+                                                    if (medicine.duration.isNotBlank()) {
+                                                        Text(
+                                                            text = "Duration: ${medicine.duration}",
+                                                            color = gray,
+                                                            fontSize = 11.sp
+                                                        )
+                                                    }
+                                                    if (medicine.howToTake.isNotBlank()) {
+                                                        Text(
+                                                            text = "How to take: ${medicine.howToTake}",
+                                                            color = gray,
+                                                            fontSize = 11.sp,
+                                                            lineHeight = 16.sp
                                                         )
                                                     }
                                                 }
@@ -2444,69 +2245,16 @@ fun PrescriptionScannerScreen(
                                         }
                                     }
 
-                                    Button(
-                                        onClick = {
-                                            if (!isVerifyingMedicines) {
-                                                verifyCurrentMedicines()
-                                            }
-                                        },
-                                        enabled = !isVerifyingMedicines,
-                                        modifier = Modifier.fillMaxWidth(),
-                                        shape = RoundedCornerShape(14.dp),
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = Color(0xFFEAF6FA),
-                                            contentColor = darkBlue,
-                                            disabledContainerColor = Color(0xFFEAF6FA),
-                                            disabledContentColor = gray
-                                        )
-                                    ) {
-                                        if (isVerifyingMedicines) {
-                                            CircularProgressIndicator(
-                                                modifier = Modifier.size(16.dp),
-                                                strokeWidth = 2.dp,
-                                                color = primary
-                                            )
-                                            Spacer(modifier = Modifier.size(8.dp))
-                                        }
-                                        Text(
-                                            text = if (isVerifyingMedicines) {
-                                                when (selectedLanguage) {
-                                                    "मराठी" -> "औषधे तपासत आहे..."
-                                                    "हिन्दी" -> "दवाइयाँ जाँची जा रही हैं..."
-                                                    else -> "Checking medicines..."
-                                                }
-                                            } else {
-                                                when (selectedLanguage) {
-                                                    "मराठी" -> "✓ औषध डेटाबेसमध्ये तपासा"
-                                                    "हिन्दी" -> "✓ दवा डेटाबेस में जाँचें"
-                                                    else -> "✓ Verify Medicines in MEDASSIST Database"
-                                                }
-                                            },
-                                            fontSize = 12.sp,
-                                            fontWeight = FontWeight.SemiBold
-                                        )
-                                    }
-
                                     Spacer(modifier = Modifier.height(8.dp))
 
-                                    Button(
-                                        onClick = {
-                                            medicineRows =
-                                                medicineRows + PrescriptionMedicineDraft()
-                                            medicineVerification = emptyMap()
-                                            isVerifyingMedicines = false
-                                        },
-                                        modifier = Modifier.fillMaxWidth(),
-                                        shape = RoundedCornerShape(14.dp),
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = Color(0xFFE8EEF2),
-                                            contentColor = darkBlue
-                                        )
-                                    ) {
-                                        Text(text = addMedicineText, fontSize = 12.sp)
-                                    }
+                                    Text(
+                                        text = "Verify the extracted prescription information before saving.",
+                                        color = gray,
+                                        fontSize = 10.sp,
+                                        lineHeight = 15.sp
+                                    )
 
-                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Spacer(modifier = Modifier.height(12.dp))
 
                                     Button(
                                         onClick = { saveCurrentPrescription() },
@@ -2564,6 +2312,15 @@ fun PrescriptionScannerScreen(
                                     if (doctorName.isNotBlank()) {
                                         Text(
                                             text = "$doctorLabel: $doctorName",
+                                            color = Color(0xFF263943),
+                                            fontSize = 13.sp,
+                                            modifier = Modifier.padding(bottom = 6.dp)
+                                        )
+                                    }
+
+                                    if (hospitalName.isNotBlank()) {
+                                        Text(
+                                            text = "Hospital / Clinic: $hospitalName",
                                             color = Color(0xFF263943),
                                             fontSize = 13.sp,
                                             modifier = Modifier.padding(bottom = 6.dp)
@@ -2645,9 +2402,17 @@ fun PrescriptionScannerScreen(
                                                         )
                                                     }
 
-                                                    if (medicine.frequency.isNotBlank()) {
+                                                    if (medicine.timing.isNotBlank()) {
                                                         Text(
-                                                            text = "$frequencyLabel: ${medicine.frequency}",
+                                                            text = "Time: ${medicine.timing}",
+                                                            color = Color(0xFF263943),
+                                                            fontSize = 12.sp
+                                                        )
+                                                    }
+
+                                                    if (medicine.mealTiming.isNotBlank()) {
+                                                        Text(
+                                                            text = "Food: ${medicine.mealTiming}",
                                                             color = Color(0xFF263943),
                                                             fontSize = 12.sp
                                                         )
@@ -2661,11 +2426,19 @@ fun PrescriptionScannerScreen(
                                                         )
                                                     }
 
-                                                    if (medicine.instructions.isNotBlank()) {
+                                                    if (medicine.howToTake.isNotBlank()) {
+                                                        Text(
+                                                            text = "How to take: ${medicine.howToTake}",
+                                                            color = Color(0xFF263943),
+                                                            fontSize = 12.sp,
+                                                            lineHeight = 16.sp
+                                                        )
+                                                    } else if (medicine.instructions.isNotBlank()) {
                                                         Text(
                                                             text = "$instructionsLabel: ${medicine.instructions}",
                                                             color = Color(0xFF263943),
-                                                            fontSize = 12.sp
+                                                            fontSize = 12.sp,
+                                                            lineHeight = 16.sp
                                                         )
                                                     }
                                                 }
@@ -2680,6 +2453,23 @@ fun PrescriptionScannerScreen(
                                         fontSize = 11.sp,
                                         lineHeight = 17.sp
                                     )
+
+                                    Spacer(modifier = Modifier.height(12.dp))
+
+                                    Button(
+                                        onClick = { sharePrescription() },
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(14.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = darkBlue
+                                        )
+                                    ) {
+                                        Text(
+                                            text = "↗ Share Prescription",
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -2729,33 +2519,6 @@ fun PrescriptionScannerScreen(
 
 
         // =====================================================
-        // LANGUAGE INFO
-        // =====================================================
-
-        Card(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(20.dp),
-            colors =
-                CardDefaults.cardColors(
-                    containerColor =
-                        primary.copy(alpha = 0.08f)
-                )
-        ) {
-
-            Text(
-                text =
-                    "$languageLabel: English • मराठी • हिन्दी",
-                modifier =
-                    Modifier.padding(16.dp),
-                color = darkBlue,
-                fontSize = 13.sp,
-                fontWeight =
-                    FontWeight.Medium
-            )
-        }
-
-
-        // =====================================================
         // DISCLAIMER
         // =====================================================
 
@@ -2768,6 +2531,35 @@ fun PrescriptionScannerScreen(
     }
 }
 
+
+@Composable
+private fun SummaryLine(
+    label: String,
+    value: String,
+    labelColor: Color
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(bottom = 7.dp),
+        verticalAlignment = Alignment.Top
+    ) {
+        Text(
+            text = "$label:",
+            color = labelColor,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.width(105.dp)
+        )
+        Text(
+            text = value,
+            color = Color(0xFF263943),
+            fontSize = 12.sp,
+            lineHeight = 17.sp,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
 
 // =================================================================
 // CAMERA IMAGE URI

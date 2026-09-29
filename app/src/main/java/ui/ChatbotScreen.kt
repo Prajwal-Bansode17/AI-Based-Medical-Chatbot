@@ -70,7 +70,109 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-import java.security.MessageDigest
+
+
+// =============================================================
+// PRESCRIPTION MEMORY
+// =============================================================
+
+object PrescriptionMemory {
+
+    fun build(context: Context): String {
+
+        val prescriptions =
+            PrescriptionRepository.getSavedPrescriptions(context)
+
+        if (prescriptions.length() == 0) {
+            return ""
+        }
+
+        val builder = StringBuilder()
+
+        for (i in 0 until prescriptions.length()) {
+
+            val prescription =
+                prescriptions.optJSONObject(i) ?: continue
+
+            builder.append("Prescription ${i + 1}:\n")
+            builder.append("Doctor: ")
+            builder.append(
+                prescription.optString(
+                    "doctorName",
+                    "Not available"
+                )
+            )
+            builder.append("\n")
+
+            builder.append("Patient: ")
+            builder.append(
+                prescription.optString(
+                    "patientName",
+                    "Not available"
+                )
+            )
+            builder.append("\n")
+
+            builder.append("Date: ")
+            builder.append(
+                prescription.optString(
+                    "date",
+                    "Not available"
+                )
+            )
+            builder.append("\n")
+
+            builder.append("Diagnosis: ")
+            builder.append(
+                prescription.optString(
+                    "diagnosis",
+                    "Not available"
+                )
+            )
+            builder.append("\n")
+
+            val medicines =
+                prescription.optJSONArray("medicines")
+
+            if (medicines != null && medicines.length() > 0) {
+
+                builder.append("Medicines:\n")
+
+                for (j in 0 until medicines.length()) {
+
+                    val medicine =
+                        medicines.optJSONObject(j) ?: continue
+
+                    builder.append("- Medicine: ")
+                    builder.append(
+                        medicine.optString("medicineName")
+                    )
+                    builder.append(", Strength: ")
+                    builder.append(
+                        medicine.optString("strength")
+                    )
+                    builder.append(", Frequency: ")
+                    builder.append(
+                        medicine.optString("frequency")
+                    )
+                    builder.append(", Duration: ")
+                    builder.append(
+                        medicine.optString("duration")
+                    )
+                    builder.append(", Instructions: ")
+                    builder.append(
+                        medicine.optString("instructions")
+                    )
+                    builder.append("\n")
+                }
+            }
+
+            builder.append("\n")
+        }
+
+        return builder.toString().trim()
+    }
+}
 
 
 // =============================================================
@@ -336,17 +438,37 @@ fun ChatbotScreen(
                         Dispatchers.IO
                     ) {
 
+                        val prescriptionMemory =
+                            PrescriptionMemory.build(context)
+
+                        val chatbotText =
+                            if (prescriptionMemory.isBlank()) {
+                                cleanText
+                            } else {
+                                """
+                                USER'S SAVED PRESCRIPTION MEMORY:
+
+                                $prescriptionMemory
+
+                                IMPORTANT: Use the saved prescription only as
+                                the user's personal medical context. Do not
+                                invent or change medicine name, strength,
+                                dosage, frequency, duration, diagnosis,
+                                doctor name, patient name, or instructions.
+                                If information is missing, say that it is
+                                not available in the saved prescription.
+
+                                USER QUESTION:
+                                $cleanText
+                                """.trimIndent()
+                            }
+
                         RetrofitClient
                             .apiService
                             .predict(
-
                                 PredictionRequest(
-
-                                    sessionId =
-                                        sessionId,
-
-                                    text =
-                                        cleanText
+                                    sessionId = sessionId,
+                                    text = chatbotText
                                 )
                             )
                     }
@@ -1940,37 +2062,4 @@ private fun TypingDot() {
                     )
                 )
     )
-}
-
-
-// =============================================================
-// SHA-256 HELPER
-// =============================================================
-
-private fun sha256(
-    value: String
-): String {
-
-    val digest =
-        MessageDigest.getInstance(
-            "SHA-256"
-        )
-
-
-    val bytes =
-        digest.digest(
-            value.toByteArray(
-                Charsets.UTF_8
-            )
-        )
-
-
-    return bytes.joinToString(
-        ""
-    ) {
-
-        "%02x".format(
-            it
-        )
-    }
 }

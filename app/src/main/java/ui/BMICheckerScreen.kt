@@ -1,5 +1,6 @@
 package ui
 
+import android.app.DatePickerDialog
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -16,10 +17,10 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.Button
@@ -29,9 +30,9 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
-import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -41,11 +42,22 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.foundation.text.KeyboardOptions
+import com.example.ai_based_medical_chatbot.ui.theme.MedicalBackground
+import com.example.ai_based_medical_chatbot.ui.theme.MedicalBlue
+import com.example.ai_based_medical_chatbot.ui.theme.MedicalBlueDark
+import com.example.ai_based_medical_chatbot.ui.theme.MedicalSurface
+import com.example.ai_based_medical_chatbot.ui.theme.MedicalSurfaceVariant
+import com.example.ai_based_medical_chatbot.ui.theme.MedicalTeal
+import com.example.ai_based_medical_chatbot.ui.theme.MedicalTextPrimary
+import com.example.ai_based_medical_chatbot.ui.theme.MedicalTextSecondary
+import com.example.ai_based_medical_chatbot.ui.theme.PureWhite
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
@@ -55,42 +67,7 @@ fun BMICheckerScreen(
     onBackClick: () -> Unit
 ) {
 
-    // =========================================================
-    // COLORS
-    // =========================================================
-
-    val backgroundTop = Color(0xFFF7FBFF)
-    val backgroundBottom = Color(0xFFEAF5FA)
-
-    val darkBlue = Color(0xFF123A56)
-    val primaryBlue = Color(0xFF1976D2)
-    val bannerBlue = Color(0xFF17609A)
-
-    val textPrimary = Color(0xFF172B4D)
-    val textSecondary = Color(0xFF667085)
-
-    val fieldText = Color(0xFF173F63)
-    val fieldBorder = Color(0xFF7B8C9B)
-    val focusedBorder = Color(0xFF5B9BE8)
-    val placeholderColor = Color(0xFF71879A)
-
-    val surface = Color.White
-    val surfaceVariant = Color(0xFFEAF5FA)
-
-    // =========================================================
-    // CONTEXT
-    // =========================================================
-
-    val context =
-        androidx.compose.ui.platform.LocalContext.current
-
-    // =========================================================
-    // IMPORTANT
-    // =========================================================
-    // Every time this screen is opened, the input fields start
-    // EMPTY. Saved BMI data is NOT loaded into these fields.
-    // Data will only be saved when "Update BMI" is pressed.
-    // =========================================================
+    val context = LocalContext.current
 
     var dateOfBirth by remember {
         mutableStateOf("")
@@ -108,8 +85,16 @@ fun BMICheckerScreen(
         mutableStateOf("")
     }
 
+    var validationMessage by remember {
+        mutableStateOf("")
+    }
+
+    var saved by remember {
+        mutableStateOf(false)
+    }
+
     // =========================================================
-    // CALCULATE AGE FROM DOB
+    // AGE
     // =========================================================
 
     val calculatedAge =
@@ -123,7 +108,7 @@ fun BMICheckerScreen(
         }
 
     // =========================================================
-    // LIVE BMI PREVIEW
+    // BMI
     // =========================================================
 
     val heightValue =
@@ -139,11 +124,13 @@ fun BMICheckerScreen(
             heightValue > 0f &&
             weightValue > 0f
         ) {
+
             val heightMeters =
                 heightValue / 100f
 
             weightValue /
                     (heightMeters * heightMeters)
+
         } else {
             0f
         }
@@ -151,7 +138,7 @@ fun BMICheckerScreen(
     val bmiText =
         if (liveBmi > 0f) {
             String.format(
-                Locale.getDefault(),
+                Locale.US,
                 "%.1f",
                 liveBmi
             )
@@ -161,290 +148,319 @@ fun BMICheckerScreen(
 
     val bmiStatus =
         when {
+
             liveBmi <= 0f ->
-                "Not Available"
+                "Enter your details"
 
             liveBmi < 18.5f ->
                 "Underweight"
 
             liveBmi < 25f ->
-                "Normal"
+                "Normal weight"
 
             liveBmi < 30f ->
                 "Overweight"
 
             else ->
-                "Obese"
+                "Obesity"
         }
+
+    val bmiStatusColor =
+        when {
+
+            liveBmi <= 0f ->
+                MedicalTextSecondary
+
+            liveBmi < 18.5f ->
+                Color(0xFF1976D2)
+
+            liveBmi < 25f ->
+                Color(0xFF16805C)
+
+            liveBmi < 30f ->
+                Color(0xFFE28A00)
+
+            else ->
+                Color(0xFFD64545)
+        }
+
+    // =========================================================
+    // DATE PICKER
+    // =========================================================
+
+    fun openDatePicker() {
+
+        val calendar =
+            Calendar.getInstance()
+
+        val currentYear =
+            calendar.get(Calendar.YEAR)
+
+        val currentMonth =
+            calendar.get(Calendar.MONTH)
+
+        val currentDay =
+            calendar.get(Calendar.DAY_OF_MONTH)
+
+        // If valid DOB already exists, open picker on that date.
+        val existingDate =
+            parseDateOfBirth(dateOfBirth)
+
+        if (existingDate != null) {
+            calendar.time = existingDate
+        }
+
+        val dialog =
+            DatePickerDialog(
+                context,
+                { _, year, month, dayOfMonth ->
+
+                    val selectedDate =
+                        String.format(
+                            Locale.US,
+                            "%02d/%02d/%04d",
+                            dayOfMonth,
+                            month + 1,
+                            year
+                        )
+
+                    dateOfBirth = selectedDate
+
+                    validationMessage = ""
+
+                    saved = false
+                },
+                calendar.get(Calendar.YEAR),
+                calendar.get(Calendar.MONTH),
+                calendar.get(Calendar.DAY_OF_MONTH)
+            )
+
+        // Future DOB is not allowed.
+        dialog.datePicker.maxDate =
+            System.currentTimeMillis()
+
+        dialog.show()
+    }
 
     // =========================================================
     // ROOT
     // =========================================================
 
     Box(
-        modifier =
-            Modifier
-                .fillMaxSize()
-                .background(
-                    Brush.verticalGradient(
-                        colors =
-                            listOf(
-                                backgroundTop,
-                                backgroundBottom
-                            )
+        modifier = Modifier
+            .fillMaxSize()
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color(0xFFF8FCFF),
+                        MedicalBackground,
+                        Color(0xFFF1FAFC)
                     )
                 )
+            )
     ) {
 
         Column(
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .statusBarsPadding()
-                    .navigationBarsPadding()
-                    .verticalScroll(
-                        rememberScrollState()
-                    )
-                    .padding(
-                        horizontal = 20.dp,
-                        vertical = 12.dp
-                    )
+            modifier = Modifier
+                .fillMaxSize()
+                .statusBarsPadding()
+                .navigationBarsPadding()
+                .verticalScroll(
+                    rememberScrollState()
+                )
+                .padding(
+                    horizontal = 20.dp,
+                    vertical = 12.dp
+                )
         ) {
 
-            // =================================================
+            // =====================================================
             // HEADER
-            // =================================================
+            // =====================================================
 
             Row(
-                modifier =
-                    Modifier.fillMaxWidth(),
-                verticalAlignment =
-                    Alignment.CenterVertically
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
             ) {
 
                 IconButton(
-                    onClick =
-                        onBackClick
+                    onClick = onBackClick
                 ) {
 
                     Icon(
                         imageVector =
                             Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription =
-                            "Back",
-                        tint =
-                            darkBlue,
-                        modifier =
-                            Modifier.size(27.dp)
+                        contentDescription = "Back",
+                        tint = MedicalBlueDark,
+                        modifier = Modifier.size(27.dp)
                     )
                 }
 
                 Spacer(
-                    modifier =
-                        Modifier.width(5.dp)
+                    modifier = Modifier.width(5.dp)
                 )
 
-                Column {
+                Column(
+                    modifier = Modifier.weight(1f)
+                ) {
 
                     Text(
-                        text =
-                            "BMI Checker",
-                        color =
-                            darkBlue,
-                        fontSize =
-                            22.sp,
-                        fontWeight =
-                            FontWeight.Bold
+                        text = "BMI Checker",
+                        color = MedicalBlueDark,
+                        fontSize = 23.sp,
+                        fontWeight = FontWeight.Bold
                     )
 
                     Spacer(
-                        modifier =
-                            Modifier.height(2.dp)
+                        modifier = Modifier.height(2.dp)
                     )
 
                     Text(
-                        text =
-                            "Check and manage your body mass index",
-                        color =
-                            textSecondary,
-                        fontSize =
-                            12.sp
+                        text = "Calculate and understand your BMI",
+                        color = MedicalTextSecondary,
+                        fontSize = 12.sp
                     )
                 }
             }
 
             Spacer(
-                modifier =
-                    Modifier.height(22.dp)
+                modifier = Modifier.height(20.dp)
             )
 
-            // =================================================
-            // KNOW YOUR BMI BANNER
-            // =================================================
+            // =====================================================
+            // HERO CARD
+            // =====================================================
 
             Card(
-                modifier =
-                    Modifier.fillMaxWidth(),
-                shape =
-                    RoundedCornerShape(27.dp),
-                colors =
-                    CardDefaults.cardColors(
-                        containerColor =
-                            bannerBlue
-                    ),
-                elevation =
-                    CardDefaults.cardElevation(
-                        defaultElevation =
-                            5.dp
-                    )
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(28.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MedicalBlueDark
+                ),
+                elevation = CardDefaults.cardElevation(
+                    defaultElevation = 7.dp
+                )
             ) {
 
                 Row(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(20.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp),
                     verticalAlignment =
                         Alignment.CenterVertically
                 ) {
 
                     Box(
-                        modifier =
-                            Modifier
-                                .size(62.dp)
-                                .background(
-                                    Color.White.copy(
-                                        alpha = 0.13f
-                                    ),
-                                    RoundedCornerShape(18.dp)
+                        modifier = Modifier
+                            .size(62.dp)
+                            .background(
+                                PureWhite.copy(
+                                    alpha = 0.13f
                                 ),
+                                RoundedCornerShape(19.dp)
+                            ),
                         contentAlignment =
                             Alignment.Center
                     ) {
 
-                        Icon(
-                            imageVector =
-                                Icons.Default.Info,
-                            contentDescription =
-                                "BMI information",
-                            tint =
-                                Color.White,
-                            modifier =
-                                Modifier.size(31.dp)
+                        Text(
+                            text = "⚖",
+                            color = PureWhite,
+                            fontSize = 31.sp
                         )
                     }
 
                     Spacer(
-                        modifier =
-                            Modifier.width(15.dp)
+                        modifier = Modifier.width(15.dp)
                     )
 
                     Column {
 
                         Text(
-                            text =
-                                "Know your BMI",
-                            color =
-                                Color.White,
-                            fontSize =
-                                20.sp,
-                            fontWeight =
-                                FontWeight.Bold
+                            text = "Know your BMI",
+                            color = PureWhite,
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold
                         )
 
                         Spacer(
-                            modifier =
-                                Modifier.height(4.dp)
+                            modifier = Modifier.height(4.dp)
                         )
 
                         Text(
                             text =
-                                "Keep your health information updated",
+                                "Enter accurate details for calculation",
                             color =
-                                Color.White.copy(
-                                    alpha = 0.85f
-                                ),
-                            fontSize =
-                                12.sp
+                                PureWhite.copy(alpha = 0.82f),
+                            fontSize = 12.sp
                         )
                     }
                 }
             }
 
             Spacer(
-                modifier =
-                    Modifier.height(28.dp)
+                modifier = Modifier.height(25.dp)
             )
 
-            // =================================================
+            // =====================================================
             // PERSONAL INFORMATION
-            // =================================================
+            // =====================================================
 
             Text(
-                text =
-                    "Personal Information",
-                color =
-                    darkBlue,
-                fontSize =
-                    21.sp,
-                fontWeight =
-                    FontWeight.Bold
+                text = "Personal Information",
+                color = MedicalTextPrimary,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold
             )
 
             Spacer(
-                modifier =
-                    Modifier.height(12.dp)
+                modifier = Modifier.height(12.dp)
             )
 
-            // =================================================
+            // =====================================================
             // DATE OF BIRTH
-            // =================================================
+            // =====================================================
 
             OutlinedTextField(
-                value =
-                    dateOfBirth,
+                value = dateOfBirth,
+
                 onValueChange = { input ->
 
-                    val digitsOnly =
-                        input.filter {
-                            it.isDigit()
-                        }.take(8)
+                    val digits =
+                        input
+                            .filter { it.isDigit() }
+                            .take(8)
 
                     dateOfBirth =
-                        when {
-                            digitsOnly.length <= 2 ->
-                                digitsOnly
+                        formatDateInput(digits)
 
-                            digitsOnly.length <= 4 ->
-                                digitsOnly.substring(0, 2) +
-                                        "/" +
-                                        digitsOnly.substring(2)
+                    saved = false
 
-                            else ->
-                                digitsOnly.substring(0, 2) +
-                                        "/" +
-                                        digitsOnly.substring(2, 4) +
-                                        "/" +
-                                        digitsOnly.substring(4)
+                    validationMessage =
+                        if (
+                            dateOfBirth.length == 10 &&
+                            parseDateOfBirth(dateOfBirth) == null
+                        ) {
+                            "Please enter a valid date in DD/MM/YYYY format."
+                        } else {
+                            ""
                         }
                 },
-                modifier =
-                    Modifier.fillMaxWidth(),
-                singleLine =
-                    true,
+
+                modifier = Modifier.fillMaxWidth(),
+
+                singleLine = true,
+
                 label = {
-                    Text(
-                        text =
-                            "Date of Birth"
-                    )
+                    Text("Date of Birth")
                 },
+
                 placeholder = {
-                    Text(
-                        text =
-                            "DD/MM/YYYY"
-                    )
+                    Text("DD/MM/YYYY")
                 },
+
                 leadingIcon = {
+
                     Icon(
                         imageVector =
                             Icons.Default.Info,
@@ -452,88 +468,90 @@ fun BMICheckerScreen(
                             "Date of Birth"
                     )
                 },
+
+                trailingIcon = {
+
+                    IconButton(
+                        onClick = {
+                            openDatePicker()
+                        }
+                    ) {
+
+                        Icon(
+                            imageVector =
+                                Icons.Default.DateRange,
+                            contentDescription =
+                                "Select date",
+                            tint = MedicalBlue,
+                            modifier =
+                                Modifier.size(25.dp)
+                        )
+                    }
+                },
+
                 keyboardOptions =
                     KeyboardOptions(
                         keyboardType =
                             KeyboardType.Number
                     ),
+
                 colors =
-                    OutlinedTextFieldDefaults.colors(
-                        focusedTextColor =
-                            fieldText,
-                        unfocusedTextColor =
-                            fieldText,
+                    bmiFieldColors(),
 
-                        focusedBorderColor =
-                            focusedBorder,
-                        unfocusedBorderColor =
-                            fieldBorder,
-
-                        focusedLabelColor =
-                            primaryBlue,
-                        unfocusedLabelColor =
-                            textSecondary,
-
-                        focusedPlaceholderColor =
-                            placeholderColor,
-                        unfocusedPlaceholderColor =
-                            placeholderColor,
-
-                        focusedLeadingIconColor =
-                            primaryBlue,
-                        unfocusedLeadingIconColor =
-                            primaryBlue,
-
-                        cursorColor =
-                            primaryBlue,
-
-                        focusedContainerColor =
-                            Color.Transparent,
-                        unfocusedContainerColor =
-                            Color.Transparent
-                    ),
                 shape =
-                    RoundedCornerShape(22.dp)
+                    RoundedCornerShape(21.dp)
             )
+
+            // Date error
+
+            if (
+                dateOfBirth.length == 10 &&
+                parseDateOfBirth(dateOfBirth) == null
+            ) {
+
+                Text(
+                    text =
+                        "Invalid date. Please use DD/MM/YYYY.",
+                    color =
+                        Color(0xFFD64545),
+                    fontSize = 11.sp,
+                    modifier =
+                        Modifier.padding(
+                            start = 6.dp,
+                            top = 5.dp
+                        )
+                )
+            }
 
             Spacer(
-                modifier =
-                    Modifier.height(14.dp)
+                modifier = Modifier.height(13.dp)
             )
 
-            // =================================================
+            // =====================================================
             // AGE
-            // =================================================
-            // Age is automatically calculated from DOB.
-            // It is intentionally NOT editable.
-            // =================================================
+            // =====================================================
 
             OutlinedTextField(
-                value =
-                    ageText,
-                onValueChange = {
-                    // Age cannot be manually changed.
-                    // It is calculated from Date of Birth.
-                },
-                modifier =
-                    Modifier.fillMaxWidth(),
-                readOnly =
-                    true,
-                singleLine =
-                    true,
+                value = ageText,
+
+                onValueChange = {},
+
+                modifier = Modifier.fillMaxWidth(),
+
+                readOnly = true,
+
+                singleLine = true,
+
                 label = {
-                    Text(
-                        text =
-                            "Age"
-                    )
+                    Text("Age")
                 },
+
                 placeholder = {
-                    Text(
-                        text =
-                            "Calculated from date of birth"
-                    )
+                    Text("Automatically calculated")
                 },
+
                 leadingIcon = {
+
                     Icon(
                         imageVector =
                             Icons.Default.Person,
@@ -541,114 +559,65 @@ fun BMICheckerScreen(
                             "Age"
                     )
                 },
+
                 trailingIcon = {
-                    Text(
-                        text =
-                            "years",
-                        color =
-                            fieldText,
-                        fontSize =
-                            14.sp,
-                        fontWeight =
-                            FontWeight.Medium
-                    )
+
+                    if (ageText.isNotBlank()) {
+
+                        Text(
+                            text = "years",
+                            color =
+                                MedicalTextSecondary,
+                            fontSize = 13.sp
+                        )
+                    }
                 },
+
                 colors =
-                    OutlinedTextFieldDefaults.colors(
-                        focusedTextColor =
-                            fieldText,
-                        unfocusedTextColor =
-                            fieldText,
+                    bmiFieldColors(),
 
-                        focusedBorderColor =
-                            focusedBorder,
-                        unfocusedBorderColor =
-                            fieldBorder,
-
-                        focusedLabelColor =
-                            primaryBlue,
-                        unfocusedLabelColor =
-                            textSecondary,
-
-                        focusedPlaceholderColor =
-                            placeholderColor,
-                        unfocusedPlaceholderColor =
-                            placeholderColor,
-
-                        focusedLeadingIconColor =
-                            primaryBlue,
-                        unfocusedLeadingIconColor =
-                            primaryBlue,
-
-                        focusedTrailingIconColor =
-                            fieldText,
-                        unfocusedTrailingIconColor =
-                            fieldText,
-
-                        cursorColor =
-                            primaryBlue,
-
-                        focusedContainerColor =
-                            Color.Transparent,
-                        unfocusedContainerColor =
-                            Color.Transparent
-                    ),
                 shape =
-                    RoundedCornerShape(22.dp)
+                    RoundedCornerShape(21.dp)
             )
 
             Spacer(
-                modifier =
-                    Modifier.height(14.dp)
+                modifier = Modifier.height(14.dp)
             )
 
-            // =================================================
+            // =====================================================
             // GENDER
-            // =================================================
+            // =====================================================
 
             Card(
-                modifier =
-                    Modifier.fillMaxWidth(),
-                shape =
-                    RoundedCornerShape(22.dp),
-                colors =
-                    CardDefaults.cardColors(
-                        containerColor =
-                            surface
-                    ),
-                elevation =
-                    CardDefaults.cardElevation(
-                        defaultElevation =
-                            3.dp
-                    )
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(21.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MedicalSurface
+                ),
+                elevation = CardDefaults.cardElevation(
+                    defaultElevation = 2.dp
+                )
             ) {
 
                 Column(
-                    modifier =
-                        Modifier
-                            .fillMaxWidth()
-                            .padding(18.dp)
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(17.dp)
                 ) {
 
                     Text(
-                        text =
-                            "Gender",
-                        color =
-                            darkBlue,
-                        fontSize =
-                            16.sp,
-                        fontWeight =
-                            FontWeight.Bold
+                        text = "Gender",
+                        color = MedicalTextPrimary,
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold
                     )
 
                     Spacer(
-                        modifier =
-                            Modifier.height(9.dp)
+                        modifier = Modifier.height(8.dp)
                     )
 
                     Row(
-                        modifier =
-                            Modifier.fillMaxWidth(),
+                        modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement =
                             Arrangement.SpaceBetween,
                         verticalAlignment =
@@ -656,35 +625,35 @@ fun BMICheckerScreen(
                     ) {
 
                         GenderOption(
-                            text =
-                                "Male",
+                            text = "Male",
                             selected =
                                 gender == "Male",
                             onClick = {
-                                gender =
-                                    "Male"
+                                gender = "Male"
+                                validationMessage = ""
+                                saved = false
                             }
                         )
 
                         GenderOption(
-                            text =
-                                "Female",
+                            text = "Female",
                             selected =
                                 gender == "Female",
                             onClick = {
-                                gender =
-                                    "Female"
+                                gender = "Female"
+                                validationMessage = ""
+                                saved = false
                             }
                         )
 
                         GenderOption(
-                            text =
-                                "Other",
+                            text = "Other",
                             selected =
                                 gender == "Other",
                             onClick = {
-                                gender =
-                                    "Other"
+                                gender = "Other"
+                                validationMessage = ""
+                                saved = false
                             }
                         )
                     }
@@ -692,247 +661,201 @@ fun BMICheckerScreen(
             }
 
             Spacer(
-                modifier =
-                    Modifier.height(27.dp)
+                modifier = Modifier.height(25.dp)
             )
 
-            // =================================================
+            // =====================================================
             // BODY MEASUREMENTS
-            // =================================================
+            // =====================================================
 
             Text(
-                text =
-                    "Body Measurements",
-                color =
-                    darkBlue,
-                fontSize =
-                    21.sp,
-                fontWeight =
-                    FontWeight.Bold
+                text = "Body Measurements",
+                color = MedicalTextPrimary,
+                fontSize = 20.sp,
+                fontWeight = FontWeight.Bold
             )
 
             Spacer(
-                modifier =
-                    Modifier.height(12.dp)
+                modifier = Modifier.height(12.dp)
             )
 
-            // =================================================
+            // =====================================================
             // HEIGHT
-            // =================================================
+            // =====================================================
 
             OutlinedTextField(
-                value =
-                    height,
-                onValueChange = {
+                value = height,
+
+                onValueChange = { input ->
+
                     height =
-                        it
-                            .filter {
-                                    character ->
-                                character.isDigit() ||
-                                        character == '.'
-                            }
-                            .take(6)
+                        sanitizeDecimalInput(
+                            input,
+                            6
+                        )
+
+                    validationMessage = ""
+                    saved = false
                 },
-                modifier =
-                    Modifier.fillMaxWidth(),
-                singleLine =
-                    true,
+
+                modifier = Modifier.fillMaxWidth(),
+
+                singleLine = true,
+
                 label = {
-                    Text(
-                        text =
-                            "Height"
-                    )
+                    Text("Height")
                 },
+
                 placeholder = {
-                    Text(
-                        text =
-                            "Enter your height"
-                    )
+                    Text("Example: 170")
                 },
+
                 leadingIcon = {
-                    Icon(
-                        imageVector =
-                            Icons.Default.Info,
-                        contentDescription =
-                            "Height"
-                    )
-                },
-                trailingIcon = {
+
                     Text(
-                        text =
-                            "cm",
-                        color =
-                            fieldText,
-                        fontSize =
-                            14.sp,
-                        fontWeight =
-                            FontWeight.Medium
+                        text = "↕",
+                        color = MedicalBlue,
+                        fontSize = 22.sp,
+                        fontWeight = FontWeight.Bold
                     )
                 },
+
+                trailingIcon = {
+
+                    Text(
+                        text = "cm",
+                        color =
+                            MedicalTextSecondary,
+                        fontSize = 13.sp
+                    )
+                },
+
                 keyboardOptions =
                     KeyboardOptions(
                         keyboardType =
                             KeyboardType.Decimal
                     ),
+
                 colors =
-                    OutlinedTextFieldDefaults.colors(
-                        focusedTextColor =
-                            fieldText,
-                        unfocusedTextColor =
-                            fieldText,
+                    bmiFieldColors(),
 
-                        focusedBorderColor =
-                            focusedBorder,
-                        unfocusedBorderColor =
-                            fieldBorder,
-
-                        focusedLabelColor =
-                            primaryBlue,
-                        unfocusedLabelColor =
-                            textSecondary,
-
-                        focusedPlaceholderColor =
-                            placeholderColor,
-                        unfocusedPlaceholderColor =
-                            placeholderColor,
-
-                        focusedLeadingIconColor =
-                            primaryBlue,
-                        unfocusedLeadingIconColor =
-                            primaryBlue,
-
-                        focusedTrailingIconColor =
-                            fieldText,
-                        unfocusedTrailingIconColor =
-                            fieldText,
-
-                        cursorColor =
-                            primaryBlue,
-
-                        focusedContainerColor =
-                            Color.Transparent,
-                        unfocusedContainerColor =
-                            Color.Transparent
-                    ),
                 shape =
-                    RoundedCornerShape(22.dp)
+                    RoundedCornerShape(21.dp)
             )
 
             Spacer(
-                modifier =
-                    Modifier.height(14.dp)
+                modifier = Modifier.height(13.dp)
             )
 
-            // =================================================
+            // =====================================================
             // WEIGHT
-            // =================================================
+            // =====================================================
 
             OutlinedTextField(
-                value =
-                    weight,
-                onValueChange = {
+                value = weight,
+
+                onValueChange = { input ->
+
                     weight =
-                        it
-                            .filter {
-                                    character ->
-                                character.isDigit() ||
-                                        character == '.'
-                            }
-                            .take(6)
+                        sanitizeDecimalInput(
+                            input,
+                            6
+                        )
+
+                    validationMessage = ""
+                    saved = false
                 },
-                modifier =
-                    Modifier.fillMaxWidth(),
-                singleLine =
-                    true,
+
+                modifier = Modifier.fillMaxWidth(),
+
+                singleLine = true,
+
                 label = {
-                    Text(
-                        text =
-                            "Weight"
-                    )
+                    Text("Weight")
                 },
+
                 placeholder = {
-                    Text(
-                        text =
-                            "Enter your weight"
-                    )
+                    Text("Example: 65")
                 },
+
                 leadingIcon = {
-                    Icon(
-                        imageVector =
-                            Icons.Default.Info,
-                        contentDescription =
-                            "Weight"
-                    )
-                },
-                trailingIcon = {
+
                     Text(
-                        text =
-                            "kg",
-                        color =
-                            fieldText,
-                        fontSize =
-                            14.sp,
-                        fontWeight =
-                            FontWeight.Medium
+                        text = "⚖",
+                        color = MedicalTeal,
+                        fontSize = 20.sp
                     )
                 },
+
+                trailingIcon = {
+
+                    Text(
+                        text = "kg",
+                        color =
+                            MedicalTextSecondary,
+                        fontSize = 13.sp
+                    )
+                },
+
                 keyboardOptions =
                     KeyboardOptions(
                         keyboardType =
                             KeyboardType.Decimal
                     ),
+
                 colors =
-                    OutlinedTextFieldDefaults.colors(
-                        focusedTextColor =
-                            fieldText,
-                        unfocusedTextColor =
-                            fieldText,
+                    bmiFieldColors(),
 
-                        focusedBorderColor =
-                            focusedBorder,
-                        unfocusedBorderColor =
-                            fieldBorder,
-
-                        focusedLabelColor =
-                            primaryBlue,
-                        unfocusedLabelColor =
-                            textSecondary,
-
-                        focusedPlaceholderColor =
-                            placeholderColor,
-                        unfocusedPlaceholderColor =
-                            placeholderColor,
-
-                        focusedLeadingIconColor =
-                            primaryBlue,
-                        unfocusedLeadingIconColor =
-                            primaryBlue,
-
-                        focusedTrailingIconColor =
-                            fieldText,
-                        unfocusedTrailingIconColor =
-                            fieldText,
-
-                        cursorColor =
-                            primaryBlue,
-
-                        focusedContainerColor =
-                            Color.Transparent,
-                        unfocusedContainerColor =
-                            Color.Transparent
-                    ),
                 shape =
-                    RoundedCornerShape(22.dp)
+                    RoundedCornerShape(21.dp)
             )
 
             Spacer(
-                modifier =
-                    Modifier.height(22.dp)
+                modifier = Modifier.height(21.dp)
             )
 
-            // =================================================
+            // =====================================================
+            // VALIDATION
+            // =====================================================
+
+            if (validationMessage.isNotBlank()) {
+
+                Card(
+                    modifier =
+                        Modifier.fillMaxWidth(),
+
+                    shape =
+                        RoundedCornerShape(15.dp),
+
+                    colors =
+                        CardDefaults.cardColors(
+                            containerColor =
+                                Color(0xFFFFF2F2)
+                        )
+                ) {
+
+                    Text(
+                        text =
+                            validationMessage,
+                        modifier =
+                            Modifier.padding(13.dp),
+                        color =
+                            Color(0xFFD64545),
+                        fontSize = 12.sp,
+                        fontWeight =
+                            FontWeight.Medium
+                    )
+                }
+
+                Spacer(
+                    modifier =
+                        Modifier.height(12.dp)
+                )
+            }
+
+            // =====================================================
             // UPDATE BMI
-            // =================================================
+            // =====================================================
 
             Button(
                 onClick = {
@@ -943,52 +866,104 @@ fun BMICheckerScreen(
                     val finalWeight =
                         weight.toFloatOrNull()
 
+                    validationMessage =
+                        when {
+
+                            dateOfBirth.length != 10 ->
+                                "Please enter your date of birth."
+
+                            parseDateOfBirth(
+                                dateOfBirth
+                            ) == null ->
+                                "Please enter a valid date of birth."
+
+                            calculatedAge <= 0 ->
+                                "Please enter a valid date of birth."
+
+                            calculatedAge > 120 ->
+                                "Please enter a valid age."
+
+                            gender.isBlank() ->
+                                "Please select your gender."
+
+                            finalHeight == null ||
+                                    finalHeight !in 50f..250f ->
+                                "Please enter a valid height between 50 and 250 cm."
+
+                            finalWeight == null ||
+                                    finalWeight !in 2f..300f ->
+                                "Please enter a valid weight between 2 and 300 kg."
+
+                            else ->
+                                ""
+                        }
+
                     if (
-                        finalHeight != null &&
-                        finalWeight != null &&
-                        finalHeight > 0f &&
-                        finalWeight > 0f &&
-                        dateOfBirth.isNotBlank() &&
-                        calculatedAge > 0 &&
-                        gender.isNotBlank()
+                        validationMessage.isBlank()
                     ) {
 
                         BMIRepository.saveBMIData(
                             context =
                                 context,
                             heightCm =
-                                finalHeight,
+                                finalHeight!!,
                             weightKg =
-                                finalWeight,
+                                finalWeight!!,
                             dateOfBirth =
                                 dateOfBirth,
                             gender =
                                 gender
                         )
+
+                        saved = true
                     }
+
                 },
+
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .height(60.dp),
+                        .height(58.dp),
+
                 shape =
-                    RoundedCornerShape(22.dp),
+                    RoundedCornerShape(20.dp),
+
                 colors =
                     ButtonDefaults.buttonColors(
                         containerColor =
-                            primaryBlue,
+                            MedicalBlue,
                         contentColor =
-                            Color.White
+                            PureWhite
                     )
             ) {
 
                 Text(
-                    text =
-                        "Update BMI",
-                    fontSize =
-                        16.sp,
+                    text = "Update BMI",
+                    fontSize = 16.sp,
                     fontWeight =
                         FontWeight.Bold
+                )
+            }
+
+            if (saved) {
+
+                Spacer(
+                    modifier =
+                        Modifier.height(9.dp)
+                )
+
+                Text(
+                    text =
+                        "✓ BMI information saved successfully",
+                    modifier =
+                        Modifier.fillMaxWidth(),
+                    color =
+                        Color(0xFF16805C),
+                    fontSize = 12.sp,
+                    fontWeight =
+                        FontWeight.Medium,
+                    textAlign =
+                        TextAlign.Center
                 )
             }
 
@@ -997,24 +972,26 @@ fun BMICheckerScreen(
                     Modifier.height(22.dp)
             )
 
-            // =================================================
+            // =====================================================
             // BMI RESULT
-            // =================================================
+            // =====================================================
 
             Card(
                 modifier =
                     Modifier.fillMaxWidth(),
+
                 shape =
-                    RoundedCornerShape(25.dp),
+                    RoundedCornerShape(26.dp),
+
                 colors =
                     CardDefaults.cardColors(
                         containerColor =
-                            surface
+                            MedicalSurface
                     ),
+
                 elevation =
                     CardDefaults.cardElevation(
-                        defaultElevation =
-                            4.dp
+                        defaultElevation = 4.dp
                     )
             ) {
 
@@ -1023,60 +1000,57 @@ fun BMICheckerScreen(
                         Modifier
                             .fillMaxWidth()
                             .padding(22.dp),
+
                     horizontalAlignment =
                         Alignment.CenterHorizontally
                 ) {
 
                     Text(
-                        text =
-                            "Your BMI",
+                        text = "Your BMI",
                         color =
-                            textSecondary,
-                        fontSize =
-                            15.sp
+                            MedicalTextSecondary,
+                        fontSize = 14.sp
                     )
 
                     Spacer(
                         modifier =
-                            Modifier.height(5.dp)
+                            Modifier.height(4.dp)
                     )
 
                     Text(
-                        text =
-                            bmiText,
+                        text = bmiText,
                         color =
-                            Color(0xFF17619A),
-                        fontSize =
-                            52.sp,
+                            MedicalBlueDark,
+                        fontSize = 50.sp,
                         fontWeight =
                             FontWeight.Bold
                     )
 
                     Spacer(
                         modifier =
-                            Modifier.height(7.dp)
+                            Modifier.height(6.dp)
                     )
 
                     Box(
                         modifier =
                             Modifier
                                 .background(
-                                    surfaceVariant,
+                                    bmiStatusColor.copy(
+                                        alpha = 0.10f
+                                    ),
                                     RoundedCornerShape(30.dp)
                                 )
                                 .padding(
-                                    horizontal = 22.dp,
-                                    vertical = 10.dp
+                                    horizontal = 20.dp,
+                                    vertical = 9.dp
                                 )
                     ) {
 
                         Text(
-                            text =
-                                bmiStatus,
+                            text = bmiStatus,
                             color =
-                                Color(0xFF17619A),
-                            fontSize =
-                                14.sp,
+                                bmiStatusColor,
+                            fontSize = 14.sp,
                             fontWeight =
                                 FontWeight.Bold
                         )
@@ -1084,7 +1058,40 @@ fun BMICheckerScreen(
 
                     Spacer(
                         modifier =
-                            Modifier.height(17.dp)
+                            Modifier.height(16.dp)
+                    )
+
+                    Text(
+                        text =
+                            "BMI categories for adults",
+                        color =
+                            MedicalTextPrimary,
+                        fontSize = 12.sp,
+                        fontWeight =
+                            FontWeight.SemiBold
+                    )
+
+                    Spacer(
+                        modifier =
+                            Modifier.height(8.dp)
+                    )
+
+                    Text(
+                        text =
+                            "Underweight < 18.5  •  Normal 18.5–24.9  •  Overweight 25–29.9  •  Obesity ≥ 30",
+                        modifier =
+                            Modifier.fillMaxWidth(),
+                        color =
+                            MedicalTextSecondary,
+                        fontSize = 10.sp,
+                        lineHeight = 15.sp,
+                        textAlign =
+                            TextAlign.Center
+                    )
+
+                    Spacer(
+                        modifier =
+                            Modifier.height(14.dp)
                     )
 
                     Row(
@@ -1092,10 +1099,11 @@ fun BMICheckerScreen(
                             Modifier
                                 .fillMaxWidth()
                                 .background(
-                                    Color(0xFFF0F6FB),
+                                    MedicalSurfaceVariant,
                                     RoundedCornerShape(15.dp)
                                 )
                                 .padding(12.dp),
+
                         verticalAlignment =
                             Alignment.CenterVertically
                     ) {
@@ -1106,9 +1114,9 @@ fun BMICheckerScreen(
                             contentDescription =
                                 "BMI information",
                             tint =
-                                primaryBlue,
+                                MedicalBlue,
                             modifier =
-                                Modifier.size(20.dp)
+                                Modifier.size(19.dp)
                         )
 
                         Spacer(
@@ -1118,13 +1126,11 @@ fun BMICheckerScreen(
 
                         Text(
                             text =
-                                "BMI is a general indicator and may not be accurate for everyone.",
+                                "BMI is a screening measure and does not diagnose health conditions.",
                             color =
-                                textSecondary,
-                            fontSize =
-                                10.sp,
-                            lineHeight =
-                                15.sp
+                                MedicalTextSecondary,
+                            fontSize = 10.sp,
+                            lineHeight = 15.sp
                         )
                     }
                 }
@@ -1132,12 +1138,8 @@ fun BMICheckerScreen(
 
             Spacer(
                 modifier =
-                    Modifier.height(25.dp)
+                    Modifier.height(24.dp)
             )
-
-            // =================================================
-            // FOOTER
-            // =================================================
 
             Text(
                 text =
@@ -1145,32 +1147,70 @@ fun BMICheckerScreen(
                 modifier =
                     Modifier.fillMaxWidth(),
                 color =
-                    textSecondary,
-                fontSize =
-                    9.sp,
+                    MedicalTextSecondary,
+                fontSize = 9.sp,
                 textAlign =
                     TextAlign.Center
             )
 
             Spacer(
                 modifier =
-                    Modifier.height(15.dp)
+                    Modifier.height(12.dp)
             )
         }
     }
 }
 
 // =============================================================
-// AGE CALCULATOR
+// DATE INPUT FORMATTER
 // =============================================================
 
+private fun formatDateInput(
+    digits: String
+): String {
 
- private fun calculateAgeFromDateOfBirth(
-    dateOfBirth: String
-): Int {
+    return when {
 
-    if (dateOfBirth.length != 10) {
-        return 0
+        digits.length <= 2 ->
+            digits
+
+        digits.length <= 4 ->
+            digits.substring(
+                0,
+                2
+            ) +
+                    "/" +
+                    digits.substring(
+                        2
+                    )
+
+        else ->
+            digits.substring(
+                0,
+                2
+            ) +
+                    "/" +
+                    digits.substring(
+                        2,
+                        4
+                    ) +
+                    "/" +
+                    digits.substring(
+                        4
+                    )
+    }
+}
+
+// =============================================================
+// PARSE + VALIDATE DOB
+// =============================================================
+
+private fun parseDateOfBirth(
+    value: String
+): java.util.Date? {
+
+    if (value.length != 10) {
+        return null
     }
 
     return try {
@@ -1178,14 +1218,83 @@ fun BMICheckerScreen(
         val format =
             SimpleDateFormat(
                 "dd/MM/yyyy",
-                Locale.getDefault()
+                Locale.US
             )
 
         format.isLenient = false
 
-        val birthDate =
-            format.parse(dateOfBirth)
-                ?: return 0
+        val date =
+            format.parse(value)
+                ?: return null
+
+        // Do not allow future DOB.
+        if (
+            date.after(
+                Calendar.getInstance().time
+            )
+        ) {
+            null
+        } else {
+            date
+        }
+
+    } catch (
+        exception: Exception
+    ) {
+        null
+    }
+}
+
+// =============================================================
+// DECIMAL INPUT
+// =============================================================
+
+private fun sanitizeDecimalInput(
+    input: String,
+    maxLength: Int
+): String {
+
+    var result =
+        input
+            .filter {
+                it.isDigit() || it == '.'
+            }
+            .take(maxLength)
+
+    val firstDot =
+        result.indexOf('.')
+
+    if (firstDot >= 0) {
+
+        result =
+            result.substring(
+                0,
+                firstDot + 1
+            ) +
+                    result.substring(
+                        firstDot + 1
+                    ).replace(
+                        ".",
+                        ""
+                    )
+    }
+
+    return result
+}
+
+// =============================================================
+// AGE CALCULATOR
+// =============================================================
+
+private fun calculateAgeFromDateOfBirth(
+    dateOfBirth: String
+): Int {
+
+    val birthDate =
+        parseDateOfBirth(dateOfBirth)
+            ?: return 0
+
+    return try {
 
         val birthCalendar =
             Calendar.getInstance().apply {
@@ -1209,7 +1318,9 @@ fun BMICheckerScreen(
             today.get(Calendar.DAY_OF_MONTH)
 
         val birthDay =
-            birthCalendar.get(Calendar.DAY_OF_MONTH)
+            birthCalendar.get(
+                Calendar.DAY_OF_MONTH
+            )
 
         if (
             currentMonth < birthMonth ||
@@ -1221,11 +1332,7 @@ fun BMICheckerScreen(
             age--
         }
 
-        if (age < 0) {
-            0
-        } else {
-            age
-        }
+        age.coerceAtLeast(0)
 
     } catch (
         exception: Exception
@@ -1233,6 +1340,60 @@ fun BMICheckerScreen(
         0
     }
 }
+
+// =============================================================
+// TEXT FIELD COLORS
+// =============================================================
+
+@Composable
+private fun bmiFieldColors() =
+    OutlinedTextFieldDefaults.colors(
+
+        focusedTextColor =
+            MedicalTextPrimary,
+
+        unfocusedTextColor =
+            MedicalTextPrimary,
+
+        focusedBorderColor =
+            MedicalBlue,
+
+        unfocusedBorderColor =
+            Color(0xFF9AAAB8),
+
+        focusedLabelColor =
+            MedicalBlue,
+
+        unfocusedLabelColor =
+            MedicalTextSecondary,
+
+        focusedPlaceholderColor =
+            MedicalTextSecondary,
+
+        unfocusedPlaceholderColor =
+            MedicalTextSecondary,
+
+        focusedLeadingIconColor =
+            MedicalBlue,
+
+        unfocusedLeadingIconColor =
+            MedicalBlue,
+
+        focusedTrailingIconColor =
+            MedicalBlue,
+
+        unfocusedTrailingIconColor =
+            MedicalBlue,
+
+        cursorColor =
+            MedicalBlue,
+
+        focusedContainerColor =
+            Color.Transparent,
+
+        unfocusedContainerColor =
+            Color.Transparent
+    )
 
 // =============================================================
 // GENDER OPTION
@@ -1251,10 +1412,8 @@ private fun GenderOption(
     ) {
 
         RadioButton(
-            selected =
-                selected,
-            onClick =
-                onClick
+            selected = selected,
+            onClick = onClick
         )
 
         Spacer(
@@ -1263,12 +1422,10 @@ private fun GenderOption(
         )
 
         Text(
-            text =
-                text,
+            text = text,
             color =
-                Color(0xFF273B53),
-            fontSize =
-                13.sp,
+                MedicalTextPrimary,
+            fontSize = 13.sp,
             fontWeight =
                 FontWeight.Medium
         )
