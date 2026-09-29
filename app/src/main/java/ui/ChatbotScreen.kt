@@ -3,6 +3,14 @@ package ui
 
 import android.content.Context
 import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.net.Uri
+import android.Manifest
+import android.content.pm.PackageManager
+import android.speech.RecognitionListener
+import android.speech.RecognizerIntent
+import android.speech.SpeechRecognizer
 import android.util.Log
 
 import androidx.compose.animation.AnimatedVisibility
@@ -28,6 +36,7 @@ import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -63,6 +72,8 @@ import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -71,6 +82,9 @@ import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -86,12 +100,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.core.content.ContextCompat
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
@@ -478,6 +494,57 @@ fun ChatbotScreen(
     var showRenameDialog by remember { mutableStateOf(false) }
     var renameText by remember { mutableStateOf("") }
 
+    // =========================================================
+    // ATTACHMENT / PLUS MENU
+    // =========================================================
+
+    var showAttachmentMenu by remember { mutableStateOf(false) }
+    var attachmentLabel by remember { mutableStateOf("") }
+    var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
+    var selectedImageBitmap by remember { mutableStateOf<Bitmap?>(null) }
+
+    LaunchedEffect(selectedImageUri) {
+        val uri = selectedImageUri ?: return@LaunchedEffect
+        selectedImageBitmap = withContext(Dispatchers.IO) {
+            try {
+                context.contentResolver.openInputStream(uri)?.use { input ->
+                    BitmapFactory.decodeStream(input)
+                }
+            } catch (_: Exception) {
+                null
+            }
+        }
+    }
+
+    val galleryLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            selectedImageUri = uri
+            selectedImageBitmap = null
+            attachmentLabel = ""
+        }
+    }
+
+    val reportLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            selectedImageUri = null
+            selectedImageBitmap = null
+            attachmentLabel = "Report attached"
+        }
+    }
+
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicturePreview()
+    ) { bitmap ->
+        if (bitmap != null) {
+            selectedImageUri = null
+            selectedImageBitmap = bitmap
+            attachmentLabel = ""
+        }
+    }
 
     val messages =
         remember {
@@ -568,6 +635,9 @@ fun ChatbotScreen(
 
 
         message = ""
+        attachmentLabel = ""
+        selectedImageUri = null
+        selectedImageBitmap = null
 
 
         // =====================================================
@@ -787,6 +857,107 @@ fun ChatbotScreen(
 
 
     // =========================================================
+    // VOICE INPUT
+    // =========================================================
+
+    var isListening by remember { mutableStateOf(false) }
+
+    val speechRecognizer = remember(context) {
+        if (SpeechRecognizer.isRecognitionAvailable(context)) {
+            SpeechRecognizer.createSpeechRecognizer(context)
+        } else {
+            null
+        }
+    }
+
+    val speechPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            try {
+                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                    putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                    putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
+                    // Let supported Google speech services switch languages automatically.
+                    putExtra("android.speech.extra.ENABLE_LANGUAGE_DETECTION", true)
+                    putExtra("android.speech.extra.LANGUAGE_SWITCH_ALLOWED", true)
+                    putExtra("android.speech.extra.LANGUAGE_SWITCH_INITIAL_ACTIVE_DURATION", 15)
+                }
+                speechRecognizer?.startListening(intent)
+                isListening = speechRecognizer != null
+            } catch (e: Exception) {
+                Log.e("MEDASSIST_VOICE", "Unable to start speech recognition", e)
+                isListening = false
+            }
+        }
+    }
+
+    LaunchedEffect(speechRecognizer) {
+        speechRecognizer?.setRecognitionListener(object : RecognitionListener {
+            override fun onReadyForSpeech(params: android.os.Bundle?) {
+                isListening = true
+            }
+
+            override fun onBeginningOfSpeech() {
+                isListening = true
+            }
+
+            override fun onRmsChanged(rmsdB: Float) = Unit
+
+            override fun onBufferReceived(buffer: ByteArray?) = Unit
+
+            override fun onEndOfSpeech() {
+                isListening = false
+            }
+
+            override fun onError(error: Int) {
+                isListening = false
+                Log.d("MEDASSIST_VOICE", "Speech recognition error: $error")
+            }
+
+            override fun onResults(results: android.os.Bundle?) {
+                isListening = false
+                val spokenText = results
+                    ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                    ?.firstOrNull()
+                    ?.trim()
+                    .orEmpty()
+
+                if (spokenText.isNotEmpty()) {
+                    message = spokenText
+                    sendMessage(spokenText)
+                }
+            }
+
+            override fun onPartialResults(partialResults: android.os.Bundle?) {
+                val partialText = partialResults
+                    ?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)
+                    ?.firstOrNull()
+                    ?.trim()
+                    .orEmpty()
+
+                if (partialText.isNotEmpty()) {
+                    message = partialText
+                }
+            }
+
+            override fun onEvent(eventType: Int, params: android.os.Bundle?) = Unit
+        })
+    }
+
+    androidx.compose.runtime.DisposableEffect(speechRecognizer) {
+        onDispose {
+            try {
+                speechRecognizer?.stopListening()
+                speechRecognizer?.cancel()
+                speechRecognizer?.destroy()
+            } catch (_: Exception) {
+            }
+        }
+    }
+
+    // =========================================================
     // MAIN UI — MEDASSIST TEAL THEME
     // =========================================================
 
@@ -908,7 +1079,7 @@ fun ChatbotScreen(
                                 start = 14.dp,
                                 end = 14.dp,
                                 top = 12.dp,
-                                bottom = 96.dp
+                                bottom = 84.dp
                             ),
                         verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
@@ -959,26 +1130,84 @@ fun ChatbotScreen(
                                 .padding(
                                     start = 6.dp,
                                     end = 6.dp,
-                                    top = 6.dp,
-                                    bottom = 6.dp
+                                    top = 4.dp,
+                                    bottom = 4.dp
                                 ),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
 
-                            // Add button
-                            IconButton(
-                                onClick = { },
-                                modifier = Modifier.size(44.dp),
-                                colors = IconButtonDefaults.iconButtonColors(
-                                    containerColor = softTeal,
-                                    contentColor = primaryTeal
-                                )
-                            ) {
-                                Icon(
-                                    imageVector = Icons.Filled.Add,
-                                    contentDescription = "Add",
-                                    tint = primaryTeal
-                                )
+                            // Plus button with compact menu anchored to it
+                            Box {
+                                IconButton(
+                                    onClick = { showAttachmentMenu = true },
+                                    modifier = Modifier.size(40.dp),
+                                    colors = IconButtonDefaults.iconButtonColors(
+                                        containerColor = softTeal,
+                                        contentColor = primaryTeal
+                                    )
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Add,
+                                        contentDescription = "Add attachment",
+                                        tint = primaryTeal
+                                    )
+                                }
+
+                                DropdownMenu(
+                                    expanded = showAttachmentMenu,
+                                    onDismissRequest = { showAttachmentMenu = false },
+                                    modifier = Modifier.width(230.dp)
+                                ) {
+                                    Text(
+                                        text = "Add to chat",
+                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = darkText
+                                    )
+
+                                    DropdownMenuItem(
+                                        text = { Text("Take Photo", fontSize = 14.sp) },
+                                        leadingIcon = { Text("📷", fontSize = 18.sp) },
+                                        onClick = {
+                                            showAttachmentMenu = false
+                                            cameraLauncher.launch(null)
+                                        },
+                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 1.dp)
+                                    )
+
+                                    DropdownMenuItem(
+                                        text = { Text("Upload Image", fontSize = 14.sp) },
+                                        leadingIcon = { Text("🖼️", fontSize = 18.sp) },
+                                        onClick = {
+                                            showAttachmentMenu = false
+                                            galleryLauncher.launch("image/*")
+                                        },
+                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 1.dp)
+                                    )
+
+                                    DropdownMenuItem(
+                                        text = { Text("Upload Report", fontSize = 14.sp) },
+                                        leadingIcon = { Text("📄", fontSize = 18.sp) },
+                                        onClick = {
+                                            showAttachmentMenu = false
+                                            reportLauncher.launch("application/pdf")
+                                        },
+                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 1.dp)
+                                    )
+
+                                    DropdownMenuItem(
+                                        text = { Text("Prescription", fontSize = 14.sp) },
+                                        leadingIcon = { Text("💊", fontSize = 18.sp) },
+                                        onClick = {
+                                            showAttachmentMenu = false
+                                            attachmentLabel = "Prescription context selected"
+                                            selectedImageUri = null
+                                            selectedImageBitmap = null
+                                        },
+                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 1.dp)
+                                    )
+                                }
                             }
 
                             Spacer(Modifier.width(2.dp))
@@ -989,11 +1218,42 @@ fun ChatbotScreen(
                                 modifier = Modifier.weight(1f),
                                 placeholder = {
                                     Text(
-                                        text = "Ask MedAssist...",
-                                        color = Color(0xFF98A2B3),
-                                        fontSize = 15.sp
+                                        text = if (attachmentLabel.isBlank()) "Ask MedAssist..." else attachmentLabel,
+                                        color = if (attachmentLabel.isBlank()) Color(0xFF98A2B3) else primaryTeal,
+                                        fontSize = 15.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 },
+                                leadingIcon = if (selectedImageBitmap != null) {
+                                    {
+                                        Image(
+                                            bitmap = selectedImageBitmap!!.asImageBitmap(),
+                                            contentDescription = "Attached image",
+                                            modifier = Modifier
+                                                .size(34.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                        )
+                                    }
+                                } else null,
+                                trailingIcon = if (selectedImageBitmap != null) {
+                                    {
+                                        IconButton(
+                                            onClick = {
+                                                selectedImageUri = null
+                                                selectedImageBitmap = null
+                                            },
+                                            modifier = Modifier.size(30.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Close,
+                                                contentDescription = "Remove attachment",
+                                                tint = mutedText,
+                                                modifier = Modifier.size(17.dp)
+                                            )
+                                        }
+                                    }
+                                } else null,
                                 keyboardOptions = KeyboardOptions(
                                     imeAction = ImeAction.Send
                                 ),
@@ -1015,9 +1275,42 @@ fun ChatbotScreen(
                                 )
                             )
 
-                            // Mic button — UI only, speech-to-text comes later.
+                            // Voice input
                             IconButton(
-                                onClick = { },
+                                onClick = {
+                                    if (isTyping) return@IconButton
+
+                                    if (speechRecognizer == null) {
+                                        Log.w("MEDASSIST_VOICE", "Speech recognition is not available on this device")
+                                        return@IconButton
+                                    }
+
+                                    val permissionGranted =
+                                        ContextCompat.checkSelfPermission(
+                                            context,
+                                            Manifest.permission.RECORD_AUDIO
+                                        ) == PackageManager.PERMISSION_GRANTED
+
+                                    if (permissionGranted) {
+                                        try {
+                                            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                                                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                                                putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
+                                                putExtra("android.speech.extra.ENABLE_LANGUAGE_DETECTION", true)
+                                                putExtra("android.speech.extra.LANGUAGE_SWITCH_ALLOWED", true)
+                                                putExtra("android.speech.extra.LANGUAGE_SWITCH_INITIAL_ACTIVE_DURATION", 15)
+                                            }
+                                            speechRecognizer.startListening(intent)
+                                            isListening = true
+                                        } catch (e: Exception) {
+                                            Log.e("MEDASSIST_VOICE", "Unable to start speech recognition", e)
+                                            isListening = false
+                                        }
+                                    } else {
+                                        speechPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                    }
+                                },
                                 modifier = Modifier.size(44.dp),
                                 colors = IconButtonDefaults.iconButtonColors(
                                     containerColor = softTeal,
@@ -1026,8 +1319,8 @@ fun ChatbotScreen(
                             ) {
                                 Icon(
                                     imageVector = MicIcon,
-                                    contentDescription = "Voice input",
-                                    tint = primaryTeal
+                                    contentDescription = if (isListening) "Listening" else "Voice input",
+                                    tint = if (isListening) Color(0xFFD32F2F) else primaryTeal
                                 )
                             }
 
@@ -1449,6 +1742,59 @@ private fun WelcomeSection(
                 fontSize = 13.sp,
                 color = mutedText,
                 textAlign = TextAlign.Center
+            )
+        }
+    }
+}
+
+
+// =============================================================
+// ATTACHMENT OPTION
+// =============================================================
+
+@Composable
+private fun AttachmentOption(
+    icon: String,
+    title: String,
+    subtitle: String,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 10.dp, vertical = 11.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(44.dp)
+                .clip(CircleShape)
+                .background(Color(0xFFE4F3F4)),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = icon,
+                fontSize = 20.sp
+            )
+        }
+
+        Spacer(Modifier.width(12.dp))
+
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = title,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = Color(0xFF17202A)
+            )
+            Text(
+                text = subtitle,
+                fontSize = 12.sp,
+                color = Color(0xFF667085),
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
             )
         }
     }
