@@ -2,8 +2,15 @@ package ui
 
 import android.Manifest
 import android.app.TimePickerDialog
+import android.content.Context
 import android.content.pm.PackageManager
+import android.content.Intent
+import android.net.Uri
+import android.provider.Settings
+import android.content.Intent
 import android.os.Build
+import android.provider.Settings
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
@@ -49,12 +56,16 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import com.example.ai_based_medical_chatbot.MedicineReminder
 import com.example.ai_based_medical_chatbot.MedicineReminderRepository
 import com.example.ai_based_medical_chatbot.MedicineReminderScheduler
+import java.text.SimpleDateFormat
 import java.util.Calendar
+import java.util.Date
+import java.util.Locale
 
 private val ReminderBlue = Color(0xFF176B83)
 private val ReminderLightBlue = Color(0xFFEAF5F8)
@@ -96,20 +107,14 @@ fun MedicineReminderScreen(
     var strength by remember(initialReminder) {
         mutableStateOf(initialReminder?.strength.orEmpty())
     }
-    var selectedTime by remember { mutableStateOf("") }
+    var selectedTime by remember(initialReminder) {
+        mutableStateOf(initialReminder?.time.orEmpty())
+    }
     var selectedSlot by remember(initialReminder) {
-        mutableStateOf(
-            slotFromPrescription(
-                initialReminder?.daySlot.orEmpty()
-            )
-        )
+        mutableStateOf(slotFromPrescription(initialReminder?.daySlot.orEmpty()))
     }
     var selectedMeal by remember(initialReminder) {
-        mutableStateOf(
-            mealFromPrescription(
-                initialReminder?.mealTiming.orEmpty()
-            )
-        )
+        mutableStateOf(mealFromPrescription(initialReminder?.mealTiming.orEmpty()))
     }
     var duration by remember(initialReminder) {
         mutableStateOf(initialReminder?.duration.orEmpty())
@@ -121,12 +126,7 @@ fun MedicineReminderScreen(
         mutableStateOf(initialReminder?.endDate.orEmpty())
     }
     var instructions by remember(initialReminder) {
-        mutableStateOf(
-            listOf(
-                initialReminder?.instructions.orEmpty(),
-                initialReminder?.daySlot.orEmpty()
-            ).filter { it.isNotBlank() }.joinToString(" • ")
-        )
+        mutableStateOf(initialReminder?.instructions.orEmpty())
     }
 
     var reminders by remember {
@@ -151,24 +151,27 @@ fun MedicineReminderScreen(
             ActivityResultContracts.RequestPermission()
         ) { granted ->
             notificationPermissionGranted = granted
-            if (!granted) {
-                errorMessage = "Notifications are off. Allow them to receive medicine reminders."
-            } else {
+            if (granted) {
                 errorMessage = ""
+            } else {
+                errorMessage = "Please allow notifications from Android Settings."
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                    context.startActivity(
+                        Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
+                            putExtra(Settings.EXTRA_APP_PACKAGE, context.packageName)
+                        }
+                    )
+                }
             }
         }
 
     LaunchedEffect(Unit) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
-            ContextCompat.checkSelfPermission(
-                context,
-                Manifest.permission.POST_NOTIFICATIONS
-            ) != PackageManager.PERMISSION_GRANTED
-        ) {
-            notificationPermissionLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
-        } else {
-            notificationPermissionGranted = true
-        }
+        notificationPermissionGranted =
+            Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                ContextCompat.checkSelfPermission(
+                    context,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) == PackageManager.PERMISSION_GRANTED
     }
 
     fun refresh() {
@@ -340,9 +343,28 @@ fun MedicineReminderScreen(
                             Button(
                                 onClick = {
                                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
-                                        notificationPermissionLauncher.launch(
-                                            Manifest.permission.POST_NOTIFICATIONS
-                                        )
+                                        if (ContextCompat.checkSelfPermission(
+                                                context,
+                                                Manifest.permission.POST_NOTIFICATIONS
+                                            ) != PackageManager.PERMISSION_GRANTED
+                                        ) {
+                                            try {
+                                                notificationPermissionLauncher.launch(
+                                                    Manifest.permission.POST_NOTIFICATIONS
+                                                )
+                                            } catch (_: Exception) {
+                                                context.startActivity(
+                                                    Intent(
+                                                        Settings.ACTION_APP_NOTIFICATION_SETTINGS
+                                                    ).apply {
+                                                        putExtra(
+                                                            Settings.EXTRA_APP_PACKAGE,
+                                                            context.packageName
+                                                        )
+                                                    }
+                                                )
+                                            }
+                                        }
                                     } else {
                                         notificationPermissionGranted = true
                                     }
@@ -388,6 +410,7 @@ fun MedicineReminderScreen(
                                 successMessage = ""
                             },
                             modifier = Modifier.fillMaxWidth(),
+                            textStyle = TextStyle(fontWeight = FontWeight.Medium),
                             label = { Text("Medicine name *") },
                             placeholder = { Text("e.g. Paracetamol") },
                             singleLine = true
@@ -397,6 +420,7 @@ fun MedicineReminderScreen(
                             value = strength,
                             onValueChange = { strength = it },
                             modifier = Modifier.fillMaxWidth(),
+                            textStyle = TextStyle(fontWeight = FontWeight.Medium),
                             label = { Text("Strength (optional)") },
                             placeholder = { Text("e.g. 650 mg") },
                             singleLine = true
@@ -496,6 +520,7 @@ fun MedicineReminderScreen(
                             value = duration,
                             onValueChange = { duration = it },
                             modifier = Modifier.fillMaxWidth(),
+                            textStyle = TextStyle(fontWeight = FontWeight.Medium),
                             label = { Text("How many days?") },
                             placeholder = { Text("e.g. 5 days") },
                             singleLine = true
@@ -505,6 +530,7 @@ fun MedicineReminderScreen(
                             value = startDate,
                             onValueChange = { startDate = it },
                             modifier = Modifier.fillMaxWidth(),
+                            textStyle = TextStyle(fontWeight = FontWeight.Medium),
                             label = { Text("Start date") },
                             placeholder = { Text("e.g. 29/09/2026") },
                             singleLine = true
@@ -514,6 +540,7 @@ fun MedicineReminderScreen(
                             value = endDate,
                             onValueChange = { endDate = it },
                             modifier = Modifier.fillMaxWidth(),
+                            textStyle = TextStyle(fontWeight = FontWeight.Medium),
                             label = { Text("End date") },
                             placeholder = { Text("e.g. 03/10/2026") },
                             singleLine = true
@@ -523,6 +550,7 @@ fun MedicineReminderScreen(
                             value = instructions,
                             onValueChange = { instructions = it },
                             modifier = Modifier.fillMaxWidth(),
+                            textStyle = TextStyle(fontWeight = FontWeight.Medium),
                             label = { Text("How should you take it?") },
                             placeholder = { Text("e.g. Take with water") },
                             minLines = 2,
@@ -617,60 +645,52 @@ fun MedicineReminderScreen(
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(20.dp),
-                        colors = CardDefaults.cardColors(
-                            containerColor = Color.White
-                        )
+                        colors = CardDefaults.cardColors(containerColor = Color.White)
                     ) {
                         Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(24.dp),
+                            modifier = Modifier.fillMaxWidth().padding(24.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Text(
-                                text = "🔔",
-                                style = MaterialTheme.typography.headlineMedium
-                            )
+                            Text(text = "🔔", style = MaterialTheme.typography.headlineMedium)
                             Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "No medicine reminders yet",
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            Text(
-                                text = "Add your first reminder above.",
-                                style = MaterialTheme.typography.bodySmall
-                            )
+                            Text(text = "No medicine reminders yet", fontWeight = FontWeight.Bold)
+                            Text(text = "Add your first reminder above.", style = MaterialTheme.typography.bodySmall)
                         }
                     }
                 }
             } else {
-                items(
-                    items = reminders,
-                    key = { it.id }
-                ) { reminder ->
+                val groupedReminders = reminders
+                    .sortedByDescending { it.createdAt }
+                    .groupBy { reminderDayKey(it.createdAt) }
 
-                    ReminderCard(
-                        reminder = reminder,
-                        onToggle = { enabled ->
-                            MedicineReminderScheduler(context)
-                                .updateEnabled(
-                                    reminder.id,
-                                    enabled
-                                )
-                            refresh()
-                        },
-                        onDelete = {
-                            MedicineReminderScheduler(context)
-                                .cancel(reminder.id)
+                groupedReminders.forEach { (dayKey, dayReminders) ->
+                    item {
+                        Text(
+                            text = reminderDayLabel(dayKey),
+                            color = ReminderBlue,
+                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(top = 4.dp)
+                        )
+                    }
 
-                            MedicineReminderRepository.delete(
-                                context,
-                                reminder.id
-                            )
-
-                            refresh()
-                        }
-                    )
+                    items(
+                        items = dayReminders,
+                        key = { it.id }
+                    ) { reminder ->
+                        ReminderCard(
+                            reminder = reminder,
+                            onToggle = { enabled ->
+                                MedicineReminderScheduler(context).updateEnabled(reminder.id, enabled)
+                                refresh()
+                            },
+                            onDelete = {
+                                MedicineReminderScheduler(context).cancel(reminder.id)
+                                MedicineReminderRepository.delete(context, reminder.id)
+                                refresh()
+                            }
+                        )
+                    }
                 }
             }
 
@@ -679,6 +699,33 @@ fun MedicineReminderScreen(
             }
         }
     }
+}
+
+private fun reminderDayKey(timeMillis: Long): String =
+    SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(timeMillis))
+
+private fun reminderDayLabel(dayKey: String): String {
+    val parsed = try {
+        SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(dayKey)
+    } catch (_: Exception) { null }
+
+    if (parsed == null) return dayKey
+
+    val today = Calendar.getInstance()
+    val target = Calendar.getInstance().apply { time = parsed }
+
+    if (today.get(Calendar.YEAR) == target.get(Calendar.YEAR) &&
+        today.get(Calendar.DAY_OF_YEAR) == target.get(Calendar.DAY_OF_YEAR)) {
+        return "Today • ${SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(parsed)}"
+    }
+
+    val yesterday = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -1) }
+    if (yesterday.get(Calendar.YEAR) == target.get(Calendar.YEAR) &&
+        yesterday.get(Calendar.DAY_OF_YEAR) == target.get(Calendar.DAY_OF_YEAR)) {
+        return "Yesterday • ${SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(parsed)}"
+    }
+
+    return SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(parsed)
 }
 
 @androidx.compose.runtime.Composable

@@ -47,6 +47,10 @@ import androidx.compose.ui.unit.sp
 
 import org.json.JSONArray
 import org.json.JSONObject
+import com.example.ai_based_medical_chatbot.MedicineReminderRepository
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 
 @Composable
 fun ProfileScreen(
@@ -121,6 +125,10 @@ fun ProfileScreen(
         mutableStateOf<String?>(null)
     }
 
+    var savedReminders by remember {
+        mutableStateOf(MedicineReminderRepository.getAll(context))
+    }
+
     var showDeleteDialog by remember {
         mutableStateOf(false)
     }
@@ -133,6 +141,7 @@ fun ProfileScreen(
     // Refresh saved prescriptions whenever this Profile screen is entered.
     LaunchedEffect(Unit) {
         refreshPrescriptions()
+        savedReminders = MedicineReminderRepository.getAll(context)
     }
 
     // =========================================================
@@ -904,6 +913,125 @@ fun ProfileScreen(
                 modifier =
                     Modifier.height(25.dp)
             )
+
+            // =================================================
+            // MY MEDICINE REMINDERS
+            // =================================================
+
+            androidx.compose.material3.Text(
+                text = "My Medicine Reminders",
+                color = textPrimary,
+                fontSize = 19.sp,
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(modifier = Modifier.height(11.dp))
+
+            if (savedReminders.isEmpty()) {
+                androidx.compose.material3.Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(20.dp),
+                    colors = androidx.compose.material3.CardDefaults.cardColors(
+                        containerColor = surface
+                    )
+                ) {
+                    Column(Modifier.fillMaxWidth().padding(18.dp)) {
+                        androidx.compose.material3.Text(
+                            text = "🔔 No medicine reminders",
+                            color = textPrimary,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        androidx.compose.material3.Text(
+                            text = "Your active medicine reminders will appear here.",
+                            color = textSecondary,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+            } else {
+                val groupedReminders = savedReminders
+                    .sortedByDescending { it.createdAt }
+                    .groupBy { profileReminderDayKey(it.createdAt) }
+
+                groupedReminders.forEach { (dayKey, dayReminders) ->
+                    androidx.compose.material3.Text(
+                        text = profileReminderDayLabel(dayKey),
+                        color = teal,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        modifier = Modifier.padding(top = 4.dp, bottom = 7.dp)
+                    )
+
+                    dayReminders.forEach { reminder ->
+                        androidx.compose.material3.Card(
+                            modifier = Modifier.fillMaxWidth().padding(bottom = 9.dp),
+                            shape = RoundedCornerShape(18.dp),
+                            colors = androidx.compose.material3.CardDefaults.cardColors(
+                                containerColor = surfaceVariant
+                            )
+                        ) {
+                            Column(Modifier.fillMaxWidth().padding(15.dp)) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    androidx.compose.material3.Text(
+                                        text = "💊",
+                                        fontSize = 25.sp
+                                    )
+                                    Spacer(Modifier.width(10.dp))
+                                    Column(Modifier.weight(1f)) {
+                                        androidx.compose.material3.Text(
+                                            text = reminder.medicineName.ifBlank { "Medicine" },
+                                            color = textPrimary,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        if (reminder.strength.isNotBlank()) {
+                                            androidx.compose.material3.Text(
+                                                text = reminder.strength,
+                                                color = textSecondary,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                        }
+                                    }
+                                    androidx.compose.material3.Text(
+                                        text = if (reminder.enabled) "ON" else "OFF",
+                                        color = if (reminder.enabled) teal else textSecondary,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+
+                                Spacer(Modifier.height(9.dp))
+                                androidx.compose.material3.Text(
+                                    text = "⏰ ${reminder.time.ifBlank { "Time not set" }} • ${reminder.daySlot.ifBlank { "Daily" }}",
+                                    color = textPrimary,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                if (reminder.mealTiming.isNotBlank()) {
+                                    androidx.compose.material3.Text(
+                                        text = "🍽 ${reminder.mealTiming}",
+                                        color = textSecondary,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                                if (reminder.startDate.isNotBlank() || reminder.endDate.isNotBlank()) {
+                                    androidx.compose.material3.Text(
+                                        text = "📅 ${listOfNotNull(reminder.startDate.takeIf { it.isNotBlank() }, reminder.endDate.takeIf { it.isNotBlank() }).joinToString(" → ")}",
+                                        color = textSecondary,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Medium
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(18.dp))
 
             // =================================================
             // MY PRESCRIPTIONS
@@ -2084,6 +2212,31 @@ private fun GenderProfileAvatar(
 // =============================================================
 // HEALTH DATA ROW
 // =============================================================
+
+private fun profileReminderDayKey(timeMillis: Long): String =
+    SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(timeMillis))
+
+private fun profileReminderDayLabel(dayKey: String): String {
+    val parsed = try {
+        SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(dayKey)
+    } catch (_: Exception) { null }
+    if (parsed == null) return dayKey
+
+    val today = java.util.Calendar.getInstance()
+    val target = java.util.Calendar.getInstance().apply { time = parsed }
+    if (today.get(java.util.Calendar.YEAR) == target.get(java.util.Calendar.YEAR) &&
+        today.get(java.util.Calendar.DAY_OF_YEAR) == target.get(java.util.Calendar.DAY_OF_YEAR)) {
+        return "Today • ${SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(parsed)}"
+    }
+
+    val yesterday = java.util.Calendar.getInstance().apply { add(java.util.Calendar.DAY_OF_YEAR, -1) }
+    if (yesterday.get(java.util.Calendar.YEAR) == target.get(java.util.Calendar.YEAR) &&
+        yesterday.get(java.util.Calendar.DAY_OF_YEAR) == target.get(java.util.Calendar.DAY_OF_YEAR)) {
+        return "Yesterday • ${SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(parsed)}"
+    }
+
+    return SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(parsed)
+}
 
 @Composable
 private fun HealthDataRow(
