@@ -5,9 +5,14 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.ContentValues
+import android.os.Build
+import android.provider.MediaStore
+import android.widget.Toast
 import android.net.Uri
 import android.Manifest
-import android.content.pm.PackageManager
 import android.speech.RecognitionListener
 import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
@@ -25,6 +30,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.scaleIn
 import androidx.compose.animation.slideOutHorizontally
 
 import androidx.compose.foundation.BorderStroke
@@ -51,7 +57,10 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardActions
@@ -109,12 +118,15 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.core.content.ContextCompat
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 
 import com.example.ai_based_medical_chatbot.data.api.PredictionRequest
 import com.example.ai_based_medical_chatbot.data.api.RetrofitClient
@@ -247,7 +259,9 @@ data class ChatMessage(
 
     val similarity: Double = 0.0,
 
-    val isError: Boolean = false
+    val isError: Boolean = false,
+
+    val imagePaths: List<String> = emptyList()
 )
 
 
@@ -285,6 +299,13 @@ object ChatHistoryRepository {
 
                 for (j in 0 until arr.length()) {
                     val item = arr.optJSONObject(j) ?: continue
+                    val imagePathsArray = item.optJSONArray("imagePaths") ?: JSONArray()
+                    val imagePaths = mutableListOf<String>()
+                    for (k in 0 until imagePathsArray.length()) {
+                        val path = imagePathsArray.optString(k)
+                        if (path.isNotBlank()) imagePaths.add(path)
+                    }
+
                     list.add(
                         ChatMessage(
                             text = item.optString("text"),
@@ -292,7 +313,8 @@ object ChatHistoryRepository {
                             intent = item.optString("intent"),
                             confidence = item.optDouble("confidence", 0.0),
                             similarity = item.optDouble("similarity", 0.0),
-                            isError = item.optBoolean("isError")
+                            isError = item.optBoolean("isError"),
+                            imagePaths = imagePaths
                         )
                     )
                 }
@@ -411,6 +433,12 @@ object ChatHistoryRepository {
                             .put("confidence", item.confidence)
                             .put("similarity", item.similarity)
                             .put("isError", item.isError)
+                            .put(
+                                "imagePaths",
+                                JSONArray().apply {
+                                    item.imagePaths.forEach { path -> put(path) }
+                                }
+                            )
                     )
                 }
                 obj.put("messages", arr)
@@ -493,6 +521,10 @@ fun ChatbotScreen(
     var showChatActions by remember { mutableStateOf(false) }
     var showRenameDialog by remember { mutableStateOf(false) }
     var renameText by remember { mutableStateOf("") }
+    var editingMessageIndex by remember { mutableStateOf<Int?>(null) }
+    var editingDraft by remember { mutableStateOf("") }
+    var showEditMessageDialog by remember { mutableStateOf(false) }
+    var viewerImagePath by remember { mutableStateOf<String?>(null) }
 
     // =========================================================
     // ATTACHMENT / PLUS MENU
@@ -500,28 +532,38 @@ fun ChatbotScreen(
 
     var showAttachmentMenu by remember { mutableStateOf(false) }
     var attachmentLabel by remember { mutableStateOf("") }
-    var selectedImageUri by remember { mutableStateOf<Uri?>(null) }
-    var selectedImageBitmap by remember { mutableStateOf<Bitmap?>(null) }
+    val selectedImages = remember { mutableStateListOf<Bitmap>() }
+    var pendingImageUris by remember { mutableStateOf<List<Uri>>(emptyList()) }
 
-    LaunchedEffect(selectedImageUri) {
-        val uri = selectedImageUri ?: return@LaunchedEffect
-        selectedImageBitmap = withContext(Dispatchers.IO) {
-            try {
-                context.contentResolver.openInputStream(uri)?.use { input ->
-                    BitmapFactory.decodeStream(input)
+    LaunchedEffect(pendingImageUris) {
+        val uris = pendingImageUris
+        if (uris.isEmpty()) return@LaunchedEffect
+
+        val decoded = withContext(Dispatchers.IO) {
+            uris.mapNotNull { uri ->
+                try {
+                    context.contentResolver.openInputStream(uri)?.use { input ->
+                        BitmapFactory.decodeStream(input)
+                    }
+                } catch (_: Exception) {
+                    null
                 }
-            } catch (_: Exception) {
-                null
             }
         }
+
+        if (decoded.isNotEmpty()) {
+            selectedImages.addAll(decoded)
+            attachmentLabel = ""
+        }
+
+        pendingImageUris = emptyList()
     }
 
     val galleryLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri ->
-        if (uri != null) {
-            selectedImageUri = uri
-            selectedImageBitmap = null
+        contract = ActivityResultContracts.GetMultipleContents()
+    ) { uris ->
+        if (uris.isNotEmpty()) {
+            pendingImageUris = uris
             attachmentLabel = ""
         }
     }
@@ -530,8 +572,6 @@ fun ChatbotScreen(
         contract = ActivityResultContracts.GetContent()
     ) { uri ->
         if (uri != null) {
-            selectedImageUri = null
-            selectedImageBitmap = null
             attachmentLabel = "Report attached"
         }
     }
@@ -540,10 +580,48 @@ fun ChatbotScreen(
         contract = ActivityResultContracts.TakePicturePreview()
     ) { bitmap ->
         if (bitmap != null) {
-            selectedImageUri = null
-            selectedImageBitmap = bitmap
+            selectedImages.add(bitmap)
             attachmentLabel = ""
         }
+    }
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            try {
+                cameraLauncher.launch(null)
+            } catch (e: Exception) {
+                Log.e("MEDASSIST_CAMERA", "Unable to open camera", e)
+            }
+        } else {
+            attachmentLabel = "Camera permission required"
+        }
+    }
+
+    fun persistSelectedImages(): List<String> {
+        if (selectedImages.isEmpty()) return emptyList()
+
+        val paths = mutableListOf<String>()
+
+        selectedImages.forEachIndexed { index, bitmap ->
+            try {
+                val file = java.io.File(
+                    context.filesDir,
+                    "medassist_${currentSessionId}_${System.currentTimeMillis()}_$index.jpg"
+                )
+
+                file.outputStream().use { output ->
+                    bitmap.compress(Bitmap.CompressFormat.JPEG, 88, output)
+                }
+
+                paths.add(file.absolutePath)
+            } catch (e: Exception) {
+                Log.e("MEDASSIST_IMAGE", "Unable to save attached image", e)
+            }
+        }
+
+        return paths
     }
 
     val messages =
@@ -606,7 +684,7 @@ fun ChatbotScreen(
 
 
         if (
-            cleanText.isEmpty() ||
+            (cleanText.isEmpty() && selectedImages.isEmpty()) ||
             isTyping
         ) {
 
@@ -618,26 +696,32 @@ fun ChatbotScreen(
         // USER MESSAGE
         // =====================================================
 
+        val attachedImagePaths = persistSelectedImages()
+        val editIndex = editingMessageIndex
+
+        if (editIndex != null && editIndex in messages.indices) {
+            while (messages.size > editIndex) {
+                messages.removeAt(messages.lastIndex)
+            }
+        }
+
         messages.add(
-
             ChatMessage(
-
-                text =
-                    cleanText,
-
-                isUser =
-                    true
+                text = cleanText,
+                isUser = true,
+                imagePaths = attachedImagePaths
             )
         )
+
+        editingMessageIndex = null
 
         ChatHistoryRepository.saveChat(context, currentSessionId, messages)
         savedChats = ChatHistoryRepository.getChats(context)
 
-
         message = ""
         attachmentLabel = ""
-        selectedImageUri = null
-        selectedImageBitmap = null
+        selectedImages.clear()
+        pendingImageUris = emptyList()
 
 
         // =====================================================
@@ -1092,8 +1176,23 @@ fun ChatbotScreen(
                             )
                         }
 
-                        messages.forEach { chatMessage ->
-                            MessageBubble(message = chatMessage)
+                        messages.forEachIndexed { index, chatMessage ->
+                            MessageBubble(
+                                message = chatMessage,
+                                onEdit = if (chatMessage.isUser && !chatMessage.isError) {
+                                    {
+                                        // Editing happens in a dedicated compact modal.
+                                        // The main composer stays untouched and the bot
+                                        // is not called while the user is editing.
+                                        editingMessageIndex = index
+                                        editingDraft = chatMessage.text
+                                        showEditMessageDialog = true
+                                    }
+                                } else null,
+                                onImageClick = { path ->
+                                    viewerImagePath = path
+                                }
+                            )
                         }
 
                         if (isTyping) {
@@ -1136,214 +1235,479 @@ fun ChatbotScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
 
-                            // Plus button with compact menu anchored to it
-                            Box {
-                                IconButton(
-                                    onClick = { showAttachmentMenu = true },
-                                    modifier = Modifier.size(40.dp),
-                                    colors = IconButtonDefaults.iconButtonColors(
-                                        containerColor = softTeal,
-                                        contentColor = primaryTeal
-                                    )
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Filled.Add,
-                                        contentDescription = "Add attachment",
-                                        tint = primaryTeal
-                                    )
+                            // Plus button + compact ChatGPT-style attachment popup.
+                            // The popup is anchored to the plus button and keeps
+                            // the existing attachment/API behavior intact.
+                            Column(
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+
+                                // -------------------------------------------------
+                                // ATTACHED IMAGE PREVIEW STRIP
+                                // -------------------------------------------------
+                                if (selectedImages.isNotEmpty()) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .horizontalScroll(rememberScrollState())
+                                            .padding(
+                                                start = 8.dp,
+                                                end = 8.dp,
+                                                top = 2.dp,
+                                                bottom = 6.dp
+                                            ),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        selectedImages.forEachIndexed { index, bitmap ->
+                                            var previewVisible by remember { mutableStateOf(false) }
+
+                                            LaunchedEffect(bitmap) {
+                                                previewVisible = true
+                                            }
+
+                                            val previewScale by androidx.compose.animation.core.animateFloatAsState(
+                                                targetValue = if (previewVisible) 1f else 0.82f,
+                                                animationSpec = tween(
+                                                    durationMillis = 220,
+                                                    easing = FastOutSlowInEasing
+                                                ),
+                                                label = "attachment_preview_scale_$index"
+                                            )
+
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(72.dp)
+                                                    .graphicsLayer {
+                                                        scaleX = previewScale
+                                                        scaleY = previewScale
+                                                    }
+                                            ) {
+                                                Image(
+                                                    bitmap = bitmap.asImageBitmap(),
+                                                    contentDescription = "Attached image ${index + 1}",
+                                                    modifier = Modifier
+                                                        .fillMaxSize()
+                                                        .clip(RoundedCornerShape(14.dp))
+                                                        .border(
+                                                            1.dp,
+                                                            Color(0xFFD8E8EB),
+                                                            RoundedCornerShape(14.dp)
+                                                        )
+                                                )
+
+                                                IconButton(
+                                                    onClick = {
+                                                        if (index in selectedImages.indices) {
+                                                            selectedImages.removeAt(index)
+                                                        }
+                                                    },
+                                                    modifier = Modifier
+                                                        .size(24.dp)
+                                                        .align(Alignment.TopEnd)
+                                                        .offset(x = 6.dp, y = (-6).dp)
+                                                        .shadow(
+                                                            elevation = 3.dp,
+                                                            shape = CircleShape
+                                                        )
+                                                        .clip(CircleShape)
+                                                        .background(Color.White)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Filled.Close,
+                                                        contentDescription = "Remove image",
+                                                        tint = Color(0xFF344054),
+                                                        modifier = Modifier.size(15.dp)
+                                                    )
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
 
-                                DropdownMenu(
-                                    expanded = showAttachmentMenu,
-                                    onDismissRequest = { showAttachmentMenu = false },
-                                    modifier = Modifier.width(230.dp)
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(
+                                            start = 6.dp,
+                                            end = 6.dp,
+                                            top = 2.dp,
+                                            bottom = 4.dp
+                                        ),
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Text(
-                                        text = "Add to chat",
-                                        modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp),
-                                        fontSize = 13.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = darkText
+                                    Box {
+                                        IconButton(
+                                            onClick = { showAttachmentMenu = true },
+                                            modifier = Modifier.size(40.dp),
+                                            colors = IconButtonDefaults.iconButtonColors(
+                                                containerColor = softTeal,
+                                                contentColor = primaryTeal
+                                            )
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Filled.Add,
+                                                contentDescription = "Add attachment",
+                                                tint = primaryTeal
+                                            )
+                                        }
+
+                                        if (showAttachmentMenu) {
+                                            Popup(
+                                                alignment = Alignment.BottomStart,
+                                                offset = androidx.compose.ui.unit.IntOffset(0, -10),
+                                                onDismissRequest = { showAttachmentMenu = false },
+                                                properties = PopupProperties(
+                                                    focusable = true,
+                                                    dismissOnClickOutside = true,
+                                                    dismissOnBackPress = true
+                                                )
+                                            ) {
+                                                AttachmentMenuPopup(
+                                                    softTeal = softTeal,
+                                                    primaryTeal = primaryTeal,
+                                                    darkText = darkText,
+                                                    mutedText = mutedText,
+                                                    onTakePhoto = {
+                                                        showAttachmentMenu = false
+
+                                                        val permissionGranted =
+                                                            ContextCompat.checkSelfPermission(
+                                                                context,
+                                                                Manifest.permission.CAMERA
+                                                            ) == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+                                                        if (permissionGranted) {
+                                                            try {
+                                                                cameraLauncher.launch(null)
+                                                            } catch (e: Exception) {
+                                                                Log.e(
+                                                                    "MEDASSIST_CAMERA",
+                                                                    "Unable to launch camera",
+                                                                    e
+                                                                )
+                                                            }
+                                                        } else {
+                                                            cameraPermissionLauncher.launch(
+                                                                Manifest.permission.CAMERA
+                                                            )
+                                                        }
+                                                    },
+                                                    onUploadImage = {
+                                                        showAttachmentMenu = false
+                                                        galleryLauncher.launch("image/*")
+                                                    },
+                                                    onUploadReport = {
+                                                        showAttachmentMenu = false
+                                                        reportLauncher.launch("application/pdf")
+                                                    },
+                                                    onPrescription = {
+                                                        showAttachmentMenu = false
+                                                        attachmentLabel =
+                                                            "Prescription context selected"
+                                                    }
+                                                )
+                                            }
+                                        }
+                                    }
+
+                                    Spacer(Modifier.width(2.dp))
+
+                                    OutlinedTextField(
+                                        value = message,
+                                        onValueChange = { message = it },
+                                        modifier = Modifier.weight(1f),
+                                        placeholder = {
+                                            Text(
+                                                text = if (attachmentLabel.isBlank()) {
+                                                    "Ask MedAssist..."
+                                                } else {
+                                                    attachmentLabel
+                                                },
+                                                color = if (attachmentLabel.isBlank()) {
+                                                    Color(0xFF98A2B3)
+                                                } else {
+                                                    primaryTeal
+                                                },
+                                                fontSize = 15.sp,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis
+                                            )
+                                        },
+                                        keyboardOptions = KeyboardOptions(
+                                            imeAction = ImeAction.Send
+                                        ),
+                                        keyboardActions = KeyboardActions(
+                                            onSend = { sendMessage(message) }
+                                        ),
+                                        maxLines = 4,
+                                        shape = RoundedCornerShape(20.dp),
+                                        colors = OutlinedTextFieldDefaults.colors(
+                                            focusedTextColor = darkText,
+                                            unfocusedTextColor = darkText,
+                                            focusedPlaceholderColor = Color(0xFF98A2B3),
+                                            unfocusedPlaceholderColor = Color(0xFF98A2B3),
+                                            focusedContainerColor = Color.Transparent,
+                                            unfocusedContainerColor = Color.Transparent,
+                                            focusedBorderColor = Color.Transparent,
+                                            unfocusedBorderColor = Color.Transparent,
+                                            cursorColor = primaryTeal
+                                        )
                                     )
 
-                                    DropdownMenuItem(
-                                        text = { Text("Take Photo", fontSize = 14.sp) },
-                                        leadingIcon = { Text("📷", fontSize = 18.sp) },
+                                    // Voice input
+                                    IconButton(
                                         onClick = {
-                                            showAttachmentMenu = false
-                                            cameraLauncher.launch(null)
-                                        },
-                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 1.dp)
-                                    )
+                                            if (isTyping) return@IconButton
 
-                                    DropdownMenuItem(
-                                        text = { Text("Upload Image", fontSize = 14.sp) },
-                                        leadingIcon = { Text("🖼️", fontSize = 18.sp) },
-                                        onClick = {
-                                            showAttachmentMenu = false
-                                            galleryLauncher.launch("image/*")
-                                        },
-                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 1.dp)
-                                    )
+                                            if (speechRecognizer == null) {
+                                                Log.w("MEDASSIST_VOICE", "Speech recognition is not available on this device")
+                                                return@IconButton
+                                            }
 
-                                    DropdownMenuItem(
-                                        text = { Text("Upload Report", fontSize = 14.sp) },
-                                        leadingIcon = { Text("📄", fontSize = 18.sp) },
-                                        onClick = {
-                                            showAttachmentMenu = false
-                                            reportLauncher.launch("application/pdf")
-                                        },
-                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 1.dp)
-                                    )
+                                            val permissionGranted =
+                                                ContextCompat.checkSelfPermission(
+                                                    context,
+                                                    Manifest.permission.RECORD_AUDIO
+                                                ) == android.content.pm.PackageManager.PERMISSION_GRANTED
 
-                                    DropdownMenuItem(
-                                        text = { Text("Prescription", fontSize = 14.sp) },
-                                        leadingIcon = { Text("💊", fontSize = 18.sp) },
-                                        onClick = {
-                                            showAttachmentMenu = false
-                                            attachmentLabel = "Prescription context selected"
-                                            selectedImageUri = null
-                                            selectedImageBitmap = null
+                                            if (permissionGranted) {
+                                                try {
+                                                    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+                                                        putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                                                        putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                                                        putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
+                                                        putExtra("android.speech.extra.ENABLE_LANGUAGE_DETECTION", true)
+                                                        putExtra("android.speech.extra.LANGUAGE_SWITCH_ALLOWED", true)
+                                                        putExtra("android.speech.extra.LANGUAGE_SWITCH_INITIAL_ACTIVE_DURATION", 15)
+                                                    }
+                                                    speechRecognizer.startListening(intent)
+                                                    isListening = true
+                                                } catch (e: Exception) {
+                                                    Log.e("MEDASSIST_VOICE", "Unable to start speech recognition", e)
+                                                    isListening = false
+                                                }
+                                            } else {
+                                                speechPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                                            }
                                         },
-                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 1.dp)
+                                        modifier = Modifier.size(44.dp),
+                                        colors = IconButtonDefaults.iconButtonColors(
+                                            containerColor = softTeal,
+                                            contentColor = primaryTeal
+                                        )
+                                    ) {
+                                        Icon(
+                                            imageVector = MicIcon,
+                                            contentDescription = if (isListening) "Listening" else "Voice input",
+                                            tint = if (isListening) Color(0xFFD32F2F) else primaryTeal
+                                        )
+                                    }
+
+                                    Spacer(Modifier.width(6.dp))
+
+                                    val canSend =
+                                        (
+                                                message.trim().isNotEmpty() ||
+                                                        selectedImages.isNotEmpty()
+                                                ) && !isTyping
+
+                                    IconButton(
+                                        onClick = { sendMessage(message) },
+                                        enabled = canSend,
+                                        modifier = Modifier.size(44.dp),
+                                        colors = IconButtonDefaults.iconButtonColors(
+                                            containerColor = primaryTeal,
+                                            contentColor = Color.White,
+                                            disabledContainerColor = Color(0xFFE8EDF1),
+                                            disabledContentColor = Color(0xFF98A2B3)
+                                        )
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.Send,
+                                            contentDescription = "Send"
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+            }
+        }
+
+        // -----------------------------------------------------
+        // COMPACT MESSAGE EDITOR
+        // -----------------------------------------------------
+        if (showEditMessageDialog) {
+            Dialog(
+                onDismissRequest = {
+                    showEditMessageDialog = false
+                    editingMessageIndex = null
+                    editingDraft = ""
+                },
+                properties = DialogProperties(
+                    dismissOnBackPress = true,
+                    dismissOnClickOutside = true,
+                    usePlatformDefaultWidth = false
+                )
+            ) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.58f))
+                        .padding(horizontal = 28.dp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    // Soft glass/blurred outer surface.
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .widthIn(max = 360.dp)
+                            .shadow(
+                                elevation = 22.dp,
+                                shape = RoundedCornerShape(22.dp)
+                            ),
+                        shape = RoundedCornerShape(22.dp),
+                        color = Color.White.copy(alpha = 0.96f),
+                        border = BorderStroke(
+                            1.dp,
+                            Color.White.copy(alpha = 0.70f)
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "Edit message",
+                                    modifier = Modifier.weight(1f),
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFF17202A)
+                                )
+
+                                IconButton(
+                                    onClick = {
+                                        showEditMessageDialog = false
+                                        editingMessageIndex = null
+                                        editingDraft = ""
+                                    },
+                                    modifier = Modifier.size(32.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Close,
+                                        contentDescription = "Close editor",
+                                        tint = Color(0xFF667085),
+                                        modifier = Modifier.size(18.dp)
                                     )
                                 }
                             }
 
-                            Spacer(Modifier.width(2.dp))
+                            Spacer(Modifier.height(8.dp))
 
                             OutlinedTextField(
-                                value = message,
-                                onValueChange = { message = it },
-                                modifier = Modifier.weight(1f),
+                                value = editingDraft,
+                                onValueChange = { editingDraft = it },
+                                modifier = Modifier.fillMaxWidth(),
+                                minLines = 2,
+                                maxLines = 6,
                                 placeholder = {
                                     Text(
-                                        text = if (attachmentLabel.isBlank()) "Ask MedAssist..." else attachmentLabel,
-                                        color = if (attachmentLabel.isBlank()) Color(0xFF98A2B3) else primaryTeal,
-                                        fontSize = 15.sp,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
+                                        "Edit your message...",
+                                        color = Color(0xFF98A2B3)
                                     )
                                 },
-                                leadingIcon = if (selectedImageBitmap != null) {
-                                    {
-                                        Image(
-                                            bitmap = selectedImageBitmap!!.asImageBitmap(),
-                                            contentDescription = "Attached image",
-                                            modifier = Modifier
-                                                .size(34.dp)
-                                                .clip(RoundedCornerShape(8.dp))
-                                        )
-                                    }
-                                } else null,
-                                trailingIcon = if (selectedImageBitmap != null) {
-                                    {
-                                        IconButton(
-                                            onClick = {
-                                                selectedImageUri = null
-                                                selectedImageBitmap = null
-                                            },
-                                            modifier = Modifier.size(30.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Filled.Close,
-                                                contentDescription = "Remove attachment",
-                                                tint = mutedText,
-                                                modifier = Modifier.size(17.dp)
-                                            )
-                                        }
-                                    }
-                                } else null,
-                                keyboardOptions = KeyboardOptions(
-                                    imeAction = ImeAction.Send
-                                ),
-                                keyboardActions = KeyboardActions(
-                                    onSend = { sendMessage(message) }
-                                ),
-                                maxLines = 4,
-                                shape = RoundedCornerShape(20.dp),
+                                shape = RoundedCornerShape(16.dp),
                                 colors = OutlinedTextFieldDefaults.colors(
-                                    focusedTextColor = darkText,
-                                    unfocusedTextColor = darkText,
-                                    focusedPlaceholderColor = Color(0xFF98A2B3),
-                                    unfocusedPlaceholderColor = Color(0xFF98A2B3),
-                                    focusedContainerColor = Color.Transparent,
-                                    unfocusedContainerColor = Color.Transparent,
-                                    focusedBorderColor = Color.Transparent,
-                                    unfocusedBorderColor = Color.Transparent,
+                                    focusedTextColor = Color(0xFF17202A),
+                                    unfocusedTextColor = Color(0xFF17202A),
+                                    focusedBorderColor = primaryTeal,
+                                    unfocusedBorderColor = Color(0xFFD0D5DD),
+                                    focusedContainerColor = Color(0xFFF9FBFC),
+                                    unfocusedContainerColor = Color(0xFFF9FBFC),
                                     cursorColor = primaryTeal
                                 )
                             )
 
-                            // Voice input
-                            IconButton(
-                                onClick = {
-                                    if (isTyping) return@IconButton
+                            Spacer(Modifier.height(10.dp))
 
-                                    if (speechRecognizer == null) {
-                                        Log.w("MEDASSIST_VOICE", "Speech recognition is not available on this device")
-                                        return@IconButton
+                            Text(
+                                text = "Your chat stays paused until you finish editing.",
+                                fontSize = 10.sp,
+                                color = Color(0xFF98A2B3),
+                                modifier = Modifier.padding(horizontal = 2.dp)
+                            )
+
+                            Spacer(Modifier.height(12.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.End,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                TextButton(
+                                    onClick = {
+                                        showEditMessageDialog = false
+                                        editingMessageIndex = null
+                                        editingDraft = ""
                                     }
+                                ) {
+                                    Text(
+                                        text = "Cancel",
+                                        color = Color(0xFF667085)
+                                    )
+                                }
 
-                                    val permissionGranted =
-                                        ContextCompat.checkSelfPermission(
-                                            context,
-                                            Manifest.permission.RECORD_AUDIO
-                                        ) == PackageManager.PERMISSION_GRANTED
+                                Spacer(Modifier.width(4.dp))
 
-                                    if (permissionGranted) {
-                                        try {
-                                            val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                                                putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                                                putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-                                                putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
-                                                putExtra("android.speech.extra.ENABLE_LANGUAGE_DETECTION", true)
-                                                putExtra("android.speech.extra.LANGUAGE_SWITCH_ALLOWED", true)
-                                                putExtra("android.speech.extra.LANGUAGE_SWITCH_INITIAL_ACTIVE_DURATION", 15)
-                                            }
-                                            speechRecognizer.startListening(intent)
-                                            isListening = true
-                                        } catch (e: Exception) {
-                                            Log.e("MEDASSIST_VOICE", "Unable to start speech recognition", e)
-                                            isListening = false
+                                Button(
+                                    onClick = {
+                                        val index = editingMessageIndex
+                                        val cleanEditedText = editingDraft.trim()
+
+                                        if (
+                                            index != null &&
+                                            index in messages.indices &&
+                                            cleanEditedText.isNotBlank()
+                                        ) {
+                                            // Replace only the edited user message.
+                                            // Do not send it automatically and do not
+                                            // trigger the API while editing.
+                                            val oldMessage = messages[index]
+
+                                            messages[index] = oldMessage.copy(
+                                                text = cleanEditedText
+                                            )
+
+                                            ChatHistoryRepository.saveChat(
+                                                context,
+                                                currentSessionId,
+                                                messages
+                                            )
+                                            savedChats =
+                                                ChatHistoryRepository.getChats(context)
                                         }
-                                    } else {
-                                        speechPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
-                                    }
-                                },
-                                modifier = Modifier.size(44.dp),
-                                colors = IconButtonDefaults.iconButtonColors(
-                                    containerColor = softTeal,
-                                    contentColor = primaryTeal
-                                )
-                            ) {
-                                Icon(
-                                    imageVector = MicIcon,
-                                    contentDescription = if (isListening) "Listening" else "Voice input",
-                                    tint = if (isListening) Color(0xFFD32F2F) else primaryTeal
-                                )
-                            }
 
-                            Spacer(Modifier.width(6.dp))
-
-                            val canSend =
-                                message.trim().isNotEmpty() && !isTyping
-
-                            IconButton(
-                                onClick = { sendMessage(message) },
-                                enabled = canSend,
-                                modifier = Modifier.size(44.dp),
-                                colors = IconButtonDefaults.iconButtonColors(
-                                    containerColor = primaryTeal,
-                                    contentColor = Color.White,
-                                    disabledContainerColor = Color(0xFFE8EDF1),
-                                    disabledContentColor = Color(0xFF98A2B3)
-                                )
-                            ) {
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.Send,
-                                    contentDescription = "Send"
-                                )
+                                        showEditMessageDialog = false
+                                        editingMessageIndex = null
+                                        editingDraft = ""
+                                    },
+                                    enabled = editingDraft.trim().isNotEmpty(),
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = primaryTeal,
+                                        contentColor = Color.White,
+                                        disabledContainerColor = Color(0xFFE8EDF1),
+                                        disabledContentColor = Color(0xFF98A2B3)
+                                    ),
+                                    shape = RoundedCornerShape(13.dp)
+                                ) {
+                                    Text("Save")
+                                }
                             }
                         }
                     }
@@ -1351,6 +1715,115 @@ fun ChatbotScreen(
             }
         }
 
+        // -----------------------------------------------------
+        // IMAGE VIEWER
+        // -----------------------------------------------------
+        if (viewerImagePath != null) {
+            Dialog(
+                onDismissRequest = { viewerImagePath = null }
+            ) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(18.dp),
+                    shape = RoundedCornerShape(24.dp),
+                    color = Color.White,
+                    shadowElevation = 18.dp
+                ) {
+                    Column(modifier = Modifier.padding(12.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Attached image",
+                                modifier = Modifier.weight(1f),
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = darkText
+                            )
+                            IconButton(
+                                onClick = { viewerImagePath = null }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.Close,
+                                    contentDescription = "Close image",
+                                    tint = darkText
+                                )
+                            }
+                        }
+
+                        val viewerBitmap = remember(viewerImagePath) {
+                            viewerImagePath?.let { BitmapFactory.decodeFile(it) }
+                        }
+
+                        if (viewerBitmap != null) {
+                            Image(
+                                bitmap = viewerBitmap.asImageBitmap(),
+                                contentDescription = "Opened attached image",
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(max = 520.dp)
+                                    .clip(RoundedCornerShape(18.dp))
+                                    .clickable { }
+                            )
+
+                            Spacer(Modifier.height(10.dp))
+
+                            Button(
+                                onClick = {
+                                    val savedUri = saveImageToGalleryAndGetUri(
+                                        context,
+                                        viewerBitmap
+                                    )
+
+                                    if (savedUri != null) {
+                                        val clipboard =
+                                            context.getSystemService(
+                                                Context.CLIPBOARD_SERVICE
+                                            ) as ClipboardManager
+
+                                        clipboard.setPrimaryClip(
+                                            ClipData.newUri(
+                                                context.contentResolver,
+                                                "MedAssist image",
+                                                savedUri
+                                            )
+                                        )
+
+                                        Toast.makeText(
+                                            context,
+                                            "Image saved and copied",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    } else {
+                                        Toast.makeText(
+                                            context,
+                                            "Unable to copy image",
+                                            Toast.LENGTH_SHORT
+                                        ).show()
+                                    }
+                                },
+                                modifier = Modifier.fillMaxWidth(),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = primaryTeal,
+                                    contentColor = Color.White
+                                ),
+                                shape = RoundedCornerShape(14.dp)
+                            ) {
+                                Text("Save & Copy Image")
+                            }
+                        } else {
+                            Text(
+                                text = "Image is no longer available.",
+                                color = mutedText,
+                                modifier = Modifier.padding(16.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        }
 
         // -----------------------------------------------------
         // SIDEBAR — FADE OVERLAY
@@ -1744,6 +2217,247 @@ private fun WelcomeSection(
                 textAlign = TextAlign.Center
             )
         }
+    }
+}
+
+
+// =============================================================
+// SAVE IMAGE TO GALLERY + RETURN CONTENT URI
+// =============================================================
+
+private fun saveImageToGalleryAndGetUri(
+    context: Context,
+    bitmap: Bitmap
+): Uri? {
+    return try {
+        val resolver = context.contentResolver
+
+        val values = ContentValues().apply {
+            put(
+                MediaStore.Images.Media.DISPLAY_NAME,
+                "MedAssist_${System.currentTimeMillis()}.jpg"
+            )
+            put(
+                MediaStore.Images.Media.MIME_TYPE,
+                "image/jpeg"
+            )
+
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                put(
+                    MediaStore.Images.Media.RELATIVE_PATH,
+                    "Pictures/MedAssist AI"
+                )
+                put(
+                    MediaStore.Images.Media.IS_PENDING,
+                    1
+                )
+            }
+        }
+
+        val uri = resolver.insert(
+            MediaStore.Images.Media.EXTERNAL_CONTENT_URI,
+            values
+        ) ?: return null
+
+        resolver.openOutputStream(uri)?.use { output ->
+            bitmap.compress(Bitmap.CompressFormat.JPEG, 92, output)
+        }
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val completed = ContentValues().apply {
+                put(MediaStore.Images.Media.IS_PENDING, 0)
+            }
+            resolver.update(uri, completed, null, null)
+        }
+
+        uri
+    } catch (e: Exception) {
+        Log.e("MEDASSIST_IMAGE", "Unable to save image to gallery", e)
+        null
+    }
+}
+
+
+// =============================================================
+// ATTACHMENT POPUP
+// =============================================================
+
+@Composable
+private fun AttachmentMenuPopup(
+    softTeal: Color,
+    primaryTeal: Color,
+    darkText: Color,
+    mutedText: Color,
+    onTakePhoto: () -> Unit,
+    onUploadImage: () -> Unit,
+    onUploadReport: () -> Unit,
+    onPrescription: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .width(224.dp)
+            .shadow(
+                elevation = 16.dp,
+                shape = RoundedCornerShape(18.dp)
+            ),
+        shape = RoundedCornerShape(18.dp),
+        color = Color.White,
+        tonalElevation = 2.dp,
+        border = BorderStroke(1.dp, Color(0xFFDDEBED))
+    ) {
+        Column(
+            modifier = Modifier.padding(7.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp, vertical = 5.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(30.dp)
+                        .clip(CircleShape)
+                        .background(softTeal),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Filled.Add,
+                        contentDescription = null,
+                        tint = primaryTeal,
+                        modifier = Modifier.size(18.dp)
+                    )
+                }
+
+                Spacer(Modifier.width(9.dp))
+
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = "Add to chat",
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = darkText
+                    )
+                    Text(
+                        text = "Attach something",
+                        fontSize = 10.sp,
+                        color = mutedText
+                    )
+                }
+            }
+
+            AttachmentMenuItem(
+                emoji = "📷",
+                title = "Take Photo",
+                onClick = onTakePhoto,
+                softTeal = softTeal,
+                primaryTeal = primaryTeal,
+                darkText = darkText
+            )
+
+            AttachmentMenuItem(
+                emoji = "🖼️",
+                title = "Upload Image",
+                onClick = onUploadImage,
+                softTeal = softTeal,
+                primaryTeal = primaryTeal,
+                darkText = darkText
+            )
+
+            AttachmentMenuItem(
+                emoji = "📄",
+                title = "Upload Report",
+                onClick = onUploadReport,
+                softTeal = softTeal,
+                primaryTeal = primaryTeal,
+                darkText = darkText
+            )
+
+            AttachmentMenuItem(
+                emoji = "💊",
+                title = "Prescription",
+                onClick = onPrescription,
+                softTeal = softTeal,
+                primaryTeal = primaryTeal,
+                darkText = darkText
+            )
+        }
+    }
+}
+
+
+// =============================================================
+// COMPACT ATTACHMENT MENU ITEM
+// =============================================================
+
+
+// =============================================================
+
+@Composable
+private fun AttachmentMenuItem(
+    emoji: String,
+    title: String,
+    onClick: () -> Unit,
+    softTeal: Color,
+    primaryTeal: Color,
+    darkText: Color
+) {
+    var pressed by remember { mutableStateOf(false) }
+
+    val scale by androidx.compose.animation.core.animateFloatAsState(
+        targetValue = if (pressed) 0.97f else 1f,
+        animationSpec = tween(100),
+        label = "attachment_item_scale"
+    )
+
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .clip(RoundedCornerShape(12.dp))
+            .background(Color.Transparent)
+            .clickable {
+                pressed = true
+                onClick()
+                pressed = false
+            }
+            .padding(horizontal = 8.dp, vertical = 5.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(32.dp)
+                .clip(RoundedCornerShape(10.dp))
+                .background(softTeal),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = emoji,
+                fontSize = 16.sp
+            )
+        }
+
+        Spacer(Modifier.width(10.dp))
+
+        Text(
+            text = title,
+            modifier = Modifier.weight(1f),
+            fontSize = 13.sp,
+            fontWeight = FontWeight.Medium,
+            color = darkText,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+
+        Icon(
+            imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+            contentDescription = null,
+            tint = primaryTeal.copy(alpha = 0.55f),
+            modifier = Modifier.size(17.dp)
+        )
     }
 }
 
@@ -2378,10 +3092,16 @@ private fun RobotAvatar(
 
 @Composable
 fun MessageBubble(
-
-    message: ChatMessage
-
+    message: ChatMessage,
+    onEdit: (() -> Unit)? = null,
+    onImageClick: ((String) -> Unit)? = null
 ) {
+    var showMessage by remember { mutableStateOf(false) }
+
+    LaunchedEffect(message.text, message.imagePaths) {
+        showMessage = false
+        showMessage = true
+    }
 
     val bubbleShape =
         if (message.isUser) {
@@ -2400,9 +3120,12 @@ fun MessageBubble(
             )
         }
 
+    val hasImages = message.imagePaths.isNotEmpty()
+
     val bubbleColor =
         when {
             message.isError -> Color(0xFFFFEBEE)
+            message.isUser && hasImages -> Color.White
             message.isUser -> Color(0xFF176B83)
             else -> Color(0xFFF3F8F9)
         }
@@ -2410,103 +3133,195 @@ fun MessageBubble(
     val bubbleBorder =
         when {
             message.isError -> BorderStroke(1.dp, Color(0xFFFFCDD2))
+            message.isUser && hasImages ->
+                BorderStroke(1.dp, Color(0xFFE2E8EA))
             message.isUser -> null
             else -> BorderStroke(1.dp, Color(0xFFE1ECEF))
         }
 
-    Row(
-
-        modifier =
-            Modifier.fillMaxWidth(),
-
-        horizontalArrangement =
-            if (message.isUser) {
-                Arrangement.End
-            } else {
-                Arrangement.Start
-            },
-
-        verticalAlignment =
-            Alignment.Bottom
+    AnimatedVisibility(
+        visible = showMessage,
+        enter =
+            fadeIn(
+                animationSpec = tween(
+                    durationMillis = 260,
+                    easing = FastOutSlowInEasing
+                )
+            ) +
+                    slideInVertically(
+                        initialOffsetY = { it / 8 },
+                        animationSpec = tween(
+                            durationMillis = 320,
+                            easing = FastOutSlowInEasing
+                        )
+                    ) +
+                    scaleIn(
+                        initialScale = 0.96f,
+                        animationSpec = tween(
+                            durationMillis = 320,
+                            easing = FastOutSlowInEasing
+                        )
+                    )
     ) {
-
-        // AI icon
-        if (!message.isUser) {
-
-            RobotAvatar(
-                size = 36.dp,
-                isError = message.isError
-            )
-
-            Spacer(
-                modifier = Modifier.width(8.dp)
-            )
-        }
-
-        Column(
-
-            modifier =
-                Modifier.fillMaxWidth(0.84f),
-
-            horizontalAlignment =
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement =
                 if (message.isUser) {
-                    Alignment.End
+                    Arrangement.End
                 } else {
-                    Alignment.Start
-                }
+                    Arrangement.Start
+                },
+            verticalAlignment = Alignment.Bottom
         ) {
 
-            Surface(
+            if (!message.isUser) {
+                RobotAvatar(
+                    size = 32.dp,
+                    isError = message.isError
+                )
 
-                shape = bubbleShape,
-
-                color = bubbleColor,
-
-                border = bubbleBorder,
-
-                shadowElevation =
-                    if (message.isUser) 2.dp else 0.dp
-            ) {
-
-                Column(
-                    modifier = Modifier.padding(
-                        horizontal = 16.dp,
-                        vertical = 12.dp
-                    )
-                ) {
-
-                    FormattedMessageText(
-                        text = message.text,
-                        isUser = message.isUser
-                    )
-                }
+                Spacer(Modifier.width(7.dp))
             }
 
-            // AI response meta
-            if (
-                !message.isUser &&
-                !message.isError
+            Column(
+                modifier = Modifier.widthIn(max = 300.dp),
+                horizontalAlignment =
+                    if (message.isUser) {
+                        Alignment.End
+                    } else {
+                        Alignment.Start
+                    }
             ) {
 
-                Row(
-                    modifier = Modifier.padding(
-                        start = 6.dp,
-                        top = 4.dp
-                    ),
-                    horizontalArrangement =
-                        Arrangement.spacedBy(8.dp)
+                Surface(
+                    shape = bubbleShape,
+                    color = bubbleColor,
+                    border = bubbleBorder,
+                    shadowElevation =
+                        if (message.isUser) 2.dp else 0.dp
                 ) {
+                    Column(
+                        modifier = Modifier.padding(
+                            horizontal = if (hasImages) 6.dp else 14.dp,
+                            vertical = if (hasImages) 6.dp else 10.dp
+                        )
+                    ) {
 
-                    if (message.intent.isNotBlank()) {
+                        // Compact image strip inside the message bubble.
+                        if (message.imagePaths.isNotEmpty()) {
+                            Row(
+                                modifier = Modifier
+                                    .widthIn(max = 282.dp)
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                message.imagePaths.forEachIndexed { imageIndex, path ->
+                                    val bitmap = remember(path) {
+                                        BitmapFactory.decodeFile(path)
+                                    }
+
+                                    if (bitmap != null) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(112.dp)
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .border(
+                                                    1.dp,
+                                                    Color(0xFFE5E7EB),
+                                                    RoundedCornerShape(12.dp)
+                                                )
+                                                .clickable {
+                                                    onImageClick?.invoke(path)
+                                                }
+                                        ) {
+                                            Image(
+                                                bitmap = bitmap.asImageBitmap(),
+                                                contentDescription =
+                                                    "Uploaded image ${imageIndex + 1}",
+                                                modifier = Modifier.fillMaxSize()
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (message.text.isNotBlank()) {
+                                Spacer(Modifier.height(7.dp))
+                            }
+                        }
+
+                        if (message.text.isNotBlank()) {
+                            FormattedMessageText(
+                                text = message.text,
+                                isUser = message.isUser && !hasImages
+                            )
+                        }
+                    }
+                }
+
+                // Speaker label + edit action.
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(
+                            start = if (message.isUser) 0.dp else 5.dp,
+                            end = if (message.isUser) 2.dp else 0.dp,
+                            top = 3.dp
+                        ),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement =
+                        if (message.isUser) {
+                            Arrangement.End
+                        } else {
+                            Arrangement.Start
+                        }
+                ) {
+                    Text(
+                        text =
+                            if (message.isUser) {
+                                "You"
+                            } else {
+                                "MEDASSIST AI"
+                            },
+                        fontSize = 9.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color =
+                            if (message.isUser) {
+                                Color(0xFF176B83)
+                            } else {
+                                Color(0xFF667085)
+                            }
+                    )
+
+                    if (message.isUser && onEdit != null) {
+                        Spacer(Modifier.width(4.dp))
+
+                        IconButton(
+                            onClick = onEdit,
+                            modifier = Modifier.size(22.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Filled.Edit,
+                                contentDescription = "Edit message",
+                                tint = Color(0xFF667085),
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                    }
+
+                    if (
+                        !message.isUser &&
+                        !message.isError &&
+                        message.intent.isNotBlank()
+                    ) {
+                        Spacer(Modifier.width(7.dp))
 
                         Text(
-                            text =
-                                message.intent
-                                    .replace("_", " ")
-                                    .replaceFirstChar {
-                                        it.uppercase()
-                                    },
-                            fontSize = 10.sp,
+                            text = message.intent
+                                .replace("_", " ")
+                                .replaceFirstChar { it.uppercase() },
+                            fontSize = 8.sp,
                             color = Color(0xFF98A2B3)
                         )
                     }
@@ -2515,7 +3330,6 @@ fun MessageBubble(
         }
     }
 }
-
 
 // =============================================================
 // FORMATTED MESSAGE
