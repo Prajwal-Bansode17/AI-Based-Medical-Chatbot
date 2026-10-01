@@ -1,5 +1,6 @@
 package ui
 
+import com.example.ai_based_medical_chatbot.LocalAppLanguageController
 
 import android.content.Context
 import android.content.Intent
@@ -465,6 +466,12 @@ fun ChatbotScreen(
     onBack: () -> Unit
 
 ) {
+
+    val appLanguageController = LocalAppLanguageController.current
+    val selectedLanguage = appLanguageController.selectedLanguage
+    fun t(key: String): String = appText(key, selectedLanguage)
+
+
 
     val context =
         LocalContext.current

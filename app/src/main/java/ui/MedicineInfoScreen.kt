@@ -46,6 +46,8 @@ import com.example.ai_based_medical_chatbot.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import com.example.ai_based_medical_chatbot.LocalAppLanguageController
+import com.example.ai_based_medical_chatbot.appText
 
 data class Medicine(
     val name: String,
@@ -141,6 +143,12 @@ fun MedicineInfoScreen(
 ) {
 
     val context = LocalContext.current
+
+    val appLanguageController = LocalAppLanguageController.current
+    val selectedLanguage = appLanguageController.selectedLanguage
+
+    fun t(key: String): String = appText(key, selectedLanguage)
+
 
     var searchQuery by remember {
         mutableStateOf("")
@@ -281,7 +289,7 @@ fun MedicineInfoScreen(
 
                         Text(
                             text =
-                                "Search medicines by name, generic or brand",
+                                t("medicine_info_subtitle"),
 
                             color =
                                 gray,
@@ -338,7 +346,7 @@ fun MedicineInfoScreen(
 
                             Text(
                                 text =
-                                    "Search any medicine..."
+                                    t("medicine_search_placeholder")
                             )
                         },
 
@@ -459,7 +467,7 @@ fun MedicineInfoScreen(
 
                             Text(
                                 text =
-                                    "Universal Medicine Search",
+                                    t("medicine_universal_search"),
 
                                 color =
                                     Color.White,
@@ -478,7 +486,7 @@ fun MedicineInfoScreen(
 
                             Text(
                                 text =
-                                    "Search across the MEDASSIST medicine database.",
+                                    t("medicine_search_database"),
 
                                 color =
                                     Color.White.copy(
@@ -509,9 +517,9 @@ fun MedicineInfoScreen(
                     Text(
                         text =
                             if (searchQuery.isBlank()) {
-                                "Available Medicines"
+                                t("medicine_available")
                             } else {
-                                "Search Results"
+                                t("medicine_search_results")
                             },
 
                         color =
@@ -531,17 +539,22 @@ fun MedicineInfoScreen(
 
                     val resultText =
                         if (isSearching) {
-                            "Searching medicines..."
+                            t("medicine_searching")
                         } else if (searchQuery.isBlank()) {
-                            "Showing ${filteredMedicines.size} medicines"
+                            t("medicine_showing").replace(
+                                "{count}",
+                                filteredMedicines.size.toString()
+                            )
                         } else {
-                            "${filteredMedicines.size} result${
-                                if (filteredMedicines.size == 1) {
-                                    ""
-                                } else {
-                                    "s"
-                                }
-                            } found"
+                            t(
+                                if (filteredMedicines.size == 1)
+                                    "medicine_one_result"
+                                else
+                                    "medicine_many_results"
+                            ).replace(
+                                "{count}",
+                                filteredMedicines.size.toString()
+                            )
                         }
 
                     Text(
@@ -586,7 +599,7 @@ fun MedicineInfoScreen(
 
                             Text(
                                 text =
-                                    "Searching...",
+                                    t("medicine_searching_short"),
 
                                 color =
                                     primary,
@@ -605,7 +618,7 @@ fun MedicineInfoScreen(
 
                             Text(
                                 text =
-                                    "Finding matching medicines",
+                                    t("medicine_finding"),
 
                                 color =
                                     gray,
@@ -666,7 +679,7 @@ fun MedicineInfoScreen(
 
                             Text(
                                 text =
-                                    "No medicines found",
+                                    t("medicine_none"),
 
                                 color =
                                     darkBlue,
@@ -685,7 +698,7 @@ fun MedicineInfoScreen(
 
                             Text(
                                 text =
-                                    "Try the generic name, brand name or another spelling.",
+                                    t("medicine_try_another"),
 
                                 color =
                                     gray,
@@ -741,7 +754,7 @@ fun MedicineInfoScreen(
 
                     Text(
                         text =
-                            "⚠ Medicine information is for educational purposes only. Always follow the product label or consult a qualified healthcare professional.",
+                            t("medicine_disclaimer"),
 
                         modifier =
                             Modifier.padding(16.dp),

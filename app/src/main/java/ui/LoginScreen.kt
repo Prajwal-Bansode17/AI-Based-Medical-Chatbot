@@ -66,6 +66,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.delay
 
+import com.example.ai_based_medical_chatbot.LocalAppLanguageController
+import com.example.ai_based_medical_chatbot.appText
+
 @Composable
 fun LoginScreen(
     onLoginClick: (String, String) -> Unit,
@@ -81,6 +84,9 @@ fun LoginScreen(
     var password by remember { mutableStateOf("") }
     var passwordVisible by remember { mutableStateOf(false) }
     var showContent by remember { mutableStateOf(false) }
+
+    val appLanguageController = LocalAppLanguageController.current
+    val selectedLanguage = appLanguageController.selectedLanguage
 
     LaunchedEffect(Unit) {
         delay(100)
@@ -184,7 +190,8 @@ fun LoginScreen(
             ) {
                 AIDoctorHero(
                     biometricMode = biometricMode,
-                    botScale = botScale
+                    botScale = botScale,
+                    selectedLanguage = selectedLanguage
                 )
             }
 
@@ -212,7 +219,8 @@ fun LoginScreen(
                         onBiometricClick = onBiometricClick,
                         onUsePasswordClick = onUsePasswordClick,
                         isLoading = isLoading,
-                        error = loginError
+                        error = loginError,
+                        selectedLanguage = selectedLanguage
                     )
 
                 } else {
@@ -240,7 +248,8 @@ fun LoginScreen(
                         onRegisterClick = onRegisterClick,
                         onForgotPasswordClick = onForgotPasswordClick,
                         isLoading = isLoading,
-                        loginError = loginError
+                        loginError = loginError,
+                        selectedLanguage = selectedLanguage
                     )
                 }
             }
@@ -250,7 +259,8 @@ fun LoginScreen(
             if (!biometricMode) {
                 SecurityFooter(
                     primary = primary,
-                    textSecondary = textSecondary
+                    textSecondary = textSecondary,
+                    selectedLanguage = selectedLanguage
                 )
             }
 
@@ -267,7 +277,8 @@ fun LoginScreen(
 @Composable
 private fun AIDoctorHero(
     biometricMode: Boolean,
-    botScale: Float
+    botScale: Float,
+    selectedLanguage: String
 ) {
     val primary = MaterialTheme.colorScheme.primary
     val secondary = MaterialTheme.colorScheme.secondary
@@ -378,9 +389,9 @@ private fun AIDoctorHero(
 
             Text(
                 text = if (biometricMode) {
-                    "Welcome back."
+                    appText("login_welcome_back_short", selectedLanguage)
                 } else {
-                    "Your intelligent\nhealthcare companion."
+                    appText("login_hero_companion", selectedLanguage)
                 },
                 color = Color.White,
                 fontSize = 14.sp,
@@ -394,11 +405,11 @@ private fun AIDoctorHero(
                 verticalAlignment = Alignment.CenterVertically
             ) {
 
-                SmallHeroBadge("AI POWERED")
+                SmallHeroBadge(appText("login_ai_powered", selectedLanguage))
 
                 Spacer(modifier = Modifier.width(6.dp))
 
-                SmallHeroBadge("24/7 CARE")
+                SmallHeroBadge(appText("login_24_7_care", selectedLanguage))
             }
         }
 
@@ -634,7 +645,8 @@ private fun LoginFormCard(
     onRegisterClick: () -> Unit,
     onForgotPasswordClick: () -> Unit,
     isLoading: Boolean,
-    loginError: String
+    loginError: String,
+    selectedLanguage: String
 ) {
     val primary = MaterialTheme.colorScheme.primary
     val secondary = MaterialTheme.colorScheme.secondary
@@ -666,7 +678,7 @@ private fun LoginFormCard(
         ) {
 
             Text(
-                text = "Welcome Back",
+                text = appText("login_welcome_back", selectedLanguage),
                 color = textPrimary,
                 fontSize = 24.sp,
                 fontWeight = FontWeight.ExtraBold
@@ -675,7 +687,7 @@ private fun LoginFormCard(
             Spacer(modifier = Modifier.height(4.dp))
 
             Text(
-                text = "Sign in to continue to your health dashboard.",
+                text = appText("login_sign_in_subtitle", selectedLanguage),
                 color = textSecondary,
                 fontSize = 12.sp,
                 lineHeight = 18.sp
@@ -688,15 +700,15 @@ private fun LoginFormCard(
                 onValueChange = onEmailChange,
                 modifier = Modifier.fillMaxWidth(),
                 label = {
-                    Text("Email address")
+                    Text(appText("login_email_label", selectedLanguage))
                 },
                 placeholder = {
-                    Text("Enter your email")
+                    Text(appText("login_email_placeholder", selectedLanguage))
                 },
                 leadingIcon = {
                     Icon(
                         imageVector = Icons.Default.Email,
-                        contentDescription = "Email",
+                        contentDescription = appText("login_email_label", selectedLanguage),
                         tint = primary
                     )
                 },
@@ -717,15 +729,15 @@ private fun LoginFormCard(
                 onValueChange = onPasswordChange,
                 modifier = Modifier.fillMaxWidth(),
                 label = {
-                    Text("Password")
+                    Text(appText("login_password_label", selectedLanguage))
                 },
                 placeholder = {
-                    Text("Enter your password")
+                    Text(appText("login_password_placeholder", selectedLanguage))
                 },
                 leadingIcon = {
                     Icon(
                         imageVector = Icons.Default.Lock,
-                        contentDescription = "Password",
+                        contentDescription = appText("login_password_label", selectedLanguage),
                         tint = primary
                     )
                 },
@@ -740,9 +752,9 @@ private fun LoginFormCard(
 
                         Text(
                             text = if (passwordVisible) {
-                                "HIDE"
+                                appText("login_hide", selectedLanguage)
                             } else {
-                                "SHOW"
+                                appText("login_show", selectedLanguage)
                             },
                             color = primary,
                             fontSize = 10.sp,
@@ -776,7 +788,7 @@ private fun LoginFormCard(
                 ) {
 
                     Text(
-                        text = "Forgot Password?",
+                        text = appText("login_forgot_password", selectedLanguage),
                         color = secondary,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold
@@ -845,7 +857,7 @@ private fun LoginFormCard(
                 } else {
 
                     Text(
-                        text = "Sign In  →",
+                        text = appText("login_sign_in", selectedLanguage) + "  →",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -869,7 +881,7 @@ private fun LoginFormCard(
                 )
 
                 Text(
-                    text = "  OR  ",
+                    text = "  ${appText("login_or", selectedLanguage)}  ",
                     color = textSecondary,
                     fontSize = 10.sp
                 )
@@ -902,7 +914,7 @@ private fun LoginFormCard(
             ) {
 
                 Text(
-                    text = "＋  Create New Account",
+                    text = "＋  " + appText("login_create_account", selectedLanguage),
                     fontWeight = FontWeight.Bold,
                     fontSize = 14.sp
                 )
@@ -917,7 +929,7 @@ private fun LoginFormCard(
             ) {
 
                 Text(
-                    text = "Already have an account?",
+                    text = appText("login_already_account", selectedLanguage),
                     color = textSecondary,
                     fontSize = 11.sp
                 )
@@ -927,7 +939,7 @@ private fun LoginFormCard(
                 ) {
 
                     Text(
-                        text = "Register",
+                        text = appText("login_register", selectedLanguage),
                         color = primary,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold
@@ -948,7 +960,8 @@ private fun SecureLoginCard(
     onBiometricClick: () -> Unit,
     onUsePasswordClick: () -> Unit,
     isLoading: Boolean,
-    error: String
+    error: String,
+    selectedLanguage: String
 ) {
     val primary = MaterialTheme.colorScheme.primary
     val secondary = MaterialTheme.colorScheme.secondary
@@ -997,7 +1010,7 @@ private fun SecureLoginCard(
 
                 Icon(
                     imageVector = Icons.Default.Lock,
-                    contentDescription = "Secure Login",
+                    contentDescription = appText("login_secure_login", selectedLanguage),
                     tint = Color.White,
                     modifier = Modifier.size(42.dp)
                 )
@@ -1006,7 +1019,7 @@ private fun SecureLoginCard(
             Spacer(modifier = Modifier.height(17.dp))
 
             Text(
-                text = "Secure Login",
+                text = appText("login_secure_login", selectedLanguage),
                 color = textPrimary,
                 fontSize = 24.sp,
                 fontWeight = FontWeight.ExtraBold
@@ -1015,7 +1028,7 @@ private fun SecureLoginCard(
             Spacer(modifier = Modifier.height(5.dp))
 
             Text(
-                text = "Welcome back to MEDASSIST AI",
+                text = appText("login_secure_welcome", selectedLanguage),
                 color = primary,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold
@@ -1024,7 +1037,7 @@ private fun SecureLoginCard(
             Spacer(modifier = Modifier.height(7.dp))
 
             Text(
-                text = "Use fingerprint, face unlock,\nor your device PIN / pattern.",
+                text = appText("login_secure_methods", selectedLanguage),
                 color = textSecondary,
                 fontSize = 13.sp,
                 textAlign = TextAlign.Center,
@@ -1064,7 +1077,7 @@ private fun SecureLoginCard(
                     Spacer(modifier = Modifier.width(8.dp))
 
                     Text(
-                        text = "Unlock Securely",
+                        text = appText("login_unlock_securely", selectedLanguage),
                         fontSize = 16.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -1094,7 +1107,7 @@ private fun SecureLoginCard(
                 Spacer(modifier = Modifier.width(8.dp))
 
                 Text(
-                    text = "Use Email & Password",
+                    text = appText("login_use_password", selectedLanguage),
                     color = textPrimary,
                     fontWeight = FontWeight.SemiBold
                 )
@@ -1129,7 +1142,7 @@ private fun SecureLoginCard(
             Spacer(modifier = Modifier.height(15.dp))
 
             Text(
-                text = "Your biometric data stays on your device.",
+                text = appText("login_biometric_privacy", selectedLanguage),
                 color = textSecondary,
                 fontSize = 10.sp,
                 textAlign = TextAlign.Center
@@ -1146,7 +1159,8 @@ private fun SecureLoginCard(
 @Composable
 private fun SecurityFooter(
     primary: Color,
-    textSecondary: Color
+    textSecondary: Color,
+    selectedLanguage: String
 ) {
     Row(
         modifier = Modifier
@@ -1166,7 +1180,7 @@ private fun SecurityFooter(
         Spacer(modifier = Modifier.width(5.dp))
 
         Text(
-            text = "Secure authentication powered by Supabase",
+            text = appText("login_footer", selectedLanguage),
             color = textSecondary,
             fontSize = 10.sp,
             textAlign = TextAlign.Center

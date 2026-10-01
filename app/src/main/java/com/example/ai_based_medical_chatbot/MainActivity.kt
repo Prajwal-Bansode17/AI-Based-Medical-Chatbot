@@ -110,7 +110,9 @@ class MainActivity : FragmentActivity() {
 
         setContent {
             AIBasedMedicalChatbotTheme {
-                MedicalChatbotNavigation()
+                ProvideAppLanguage {
+                    MedicalChatbotNavigation()
+                }
             }
         }
     }
@@ -121,6 +123,11 @@ private fun MedicalChatbotNavigation() {
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+
+    // App-wide language state. Individual screens can read this through
+    // LocalAppLanguageController without changing their existing
+    // navigation/API callbacks.
+    val appLanguage = LocalAppLanguageController.current
 
     val screenStack = remember {
         mutableStateListOf("splash")

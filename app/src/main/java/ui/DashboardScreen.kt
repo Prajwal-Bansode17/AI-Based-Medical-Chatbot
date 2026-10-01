@@ -57,6 +57,8 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ai_based_medical_chatbot.LocalAppLanguageController
+import com.example.ai_based_medical_chatbot.appText
 import com.example.ai_based_medical_chatbot.ui.theme.MedicalBackground
 import com.example.ai_based_medical_chatbot.ui.theme.MedicalBlue
 import com.example.ai_based_medical_chatbot.ui.theme.MedicalBlueDark
@@ -80,6 +82,7 @@ fun DashboardScreen(
 ) {
 
     val context = LocalContext.current
+    val selectedLanguage = LocalAppLanguageController.current.selectedLanguage
     val lifecycleOwner = LocalLifecycleOwner.current
 
     var userGender by remember {
@@ -234,7 +237,7 @@ fun DashboardScreen(
                             )
 
                             Text(
-                                text = "Good day 👋",
+                                text = appText(selectedLanguage, "dashboard_good_day"),
                                 color = MedicalTextSecondary,
                                 fontSize = 13.sp
                             )
@@ -257,7 +260,7 @@ fun DashboardScreen(
                             )
 
                             Text(
-                                text = "Your personal health AI",
+                                text = appText(selectedLanguage, "dashboard_personal_ai"),
                                 color = MedicalTextSecondary,
                                 fontSize = 12.sp
                             )
@@ -403,7 +406,7 @@ fun DashboardScreen(
                                         )
 
                                         Text(
-                                            text = "Your intelligent health companion",
+                                            text = appText(selectedLanguage, "dashboard_ai_companion"),
                                             color = PureWhite.copy(
                                                 alpha = 0.82f
                                             ),
@@ -417,7 +420,7 @@ fun DashboardScreen(
                                 )
 
                                 Text(
-                                    text = "How can I help you today?",
+                                    text = appText(selectedLanguage, "dashboard_help_today"),
                                     color = PureWhite,
                                     fontSize = 18.sp,
                                     fontWeight = FontWeight.SemiBold
@@ -446,7 +449,7 @@ fun DashboardScreen(
                                     ) {
 
                                         Text(
-                                            text = "Ask anything about your health...",
+                                            text = appText(selectedLanguage, "dashboard_ask_health"),
                                             modifier = Modifier.weight(1f),
                                             color = PureWhite.copy(
                                                 alpha = 0.72f
@@ -503,7 +506,7 @@ fun DashboardScreen(
                     Column {
 
                         Text(
-                            text = "Quick Actions",
+                            text = appText(selectedLanguage, "quick_actions"),
                             color = MedicalTextPrimary,
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Bold
@@ -514,7 +517,7 @@ fun DashboardScreen(
                         )
 
                         Text(
-                            text = "Choose what you need",
+                            text = appText(selectedLanguage, "choose_need"),
                             color = MedicalTextSecondary,
                             fontSize = 12.sp
                         )
@@ -538,7 +541,7 @@ fun DashboardScreen(
                 ) {
 
                     DashboardActionCard(
-                        title = "Check BMI",
+                        title = appText(selectedLanguage, "check_bmi"),
                         subtitle = "Check your body weight",
                         emoji = "⚖",
                         iconTint = MedicalBlue,
@@ -547,7 +550,7 @@ fun DashboardScreen(
                     )
 
                     DashboardActionCard(
-                        title = "Check Symptoms",
+                        title = appText(selectedLanguage, "check_symptoms"),
                         subtitle = "Check symptoms",
                         emoji = "🩺",
                         iconTint = MedicalTeal,
@@ -575,7 +578,7 @@ fun DashboardScreen(
                 ) {
 
                     DashboardActionCard(
-                        title = "Find Medicine",
+                        title = appText(selectedLanguage, "find_medicine"),
                         subtitle = "Medicine info",
                         emoji = "💊",
                         iconTint = MedicalBlue,
@@ -584,7 +587,7 @@ fun DashboardScreen(
                     )
 
                     DashboardActionCard(
-                        title = "Health Tips",
+                        title = appText(selectedLanguage, "health_tips"),
                         subtitle = "Healthy lifestyle",
                         emoji = "💚",
                         iconTint = MedicalTeal,
@@ -625,60 +628,60 @@ fun DashboardScreen(
                             defaultElevation = 5.dp
                         )
                     ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 17.dp, vertical = 15.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Box(
+                        Row(
                             modifier = Modifier
-                                .size(58.dp)
-                                .background(
-                                    MedicalTeal.copy(alpha = 0.10f),
-                                    RoundedCornerShape(17.dp)
-                                ),
-                            contentAlignment = Alignment.Center
+                                .fillMaxWidth()
+                                .padding(horizontal = 17.dp, vertical = 15.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(text = "⏰", fontSize = 28.sp)
-                        }
+                            Box(
+                                modifier = Modifier
+                                    .size(58.dp)
+                                    .background(
+                                        MedicalTeal.copy(alpha = 0.10f),
+                                        RoundedCornerShape(17.dp)
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(text = "⏰", fontSize = 28.sp)
+                            }
 
-                        Spacer(modifier = Modifier.width(14.dp))
+                            Spacer(modifier = Modifier.width(14.dp))
 
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "Medicine Reminder",
-                                color = MedicalTextPrimary,
-                                fontSize = 15.sp,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Spacer(modifier = Modifier.height(3.dp))
-                            Text(
-                                text = "Never miss your medicine dose",
-                                color = MedicalTextSecondary,
-                                fontSize = 11.sp
-                            )
-                        }
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Medicine Reminder",
+                                    color = MedicalTextPrimary,
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(modifier = Modifier.height(3.dp))
+                                Text(
+                                    text = appText(selectedLanguage, "never_miss"),
+                                    color = MedicalTextSecondary,
+                                    fontSize = 11.sp
+                                )
+                            }
 
-                        Box(
-                            modifier = Modifier
-                                .size(34.dp)
-                                .background(
-                                    MedicalTeal.copy(alpha = 0.10f),
-                                    CircleShape
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "→",
-                                color = MedicalTeal,
-                                fontSize = 20.sp,
-                                fontWeight = FontWeight.Bold
-                            )
+                            Box(
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .background(
+                                        MedicalTeal.copy(alpha = 0.10f),
+                                        CircleShape
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "→",
+                                    color = MedicalTeal,
+                                    fontSize = 20.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
                     }
                 }
-            }
             }
 
             item {
@@ -756,7 +759,7 @@ fun DashboardScreen(
                             )
 
                             Text(
-                                text = "Take a photo of your prescription",
+                                text = appText(selectedLanguage, "take_photo"),
                                 color = MedicalTextSecondary,
                                 fontSize = 11.sp
                             )
@@ -846,7 +849,7 @@ fun DashboardScreen(
                         ) {
 
                             Text(
-                                text = "Health information",
+                                text = appText(selectedLanguage, "health_information"),
                                 color = MedicalBlue,
                                 fontSize = 12.sp,
                                 fontWeight = FontWeight.Bold
@@ -857,7 +860,7 @@ fun DashboardScreen(
                             )
 
                             Text(
-                                text = "MEDASSIST AI provides general health information and is not a replacement for professional medical advice.",
+                                text = appText(selectedLanguage, "health_disclaimer"),
                                 color = MedicalTextSecondary,
                                 fontSize = 10.sp,
                                 lineHeight = 15.sp
@@ -880,7 +883,7 @@ fun DashboardScreen(
             item {
 
                 Text(
-                    text = "MEDASSIST AI  •  Your intelligent health companion",
+                    text = appText(selectedLanguage, "footer_companion"),
                     modifier = Modifier.fillMaxWidth(),
                     color = MedicalTextSecondary,
                     fontSize = 10.sp,
@@ -892,7 +895,7 @@ fun DashboardScreen(
                 )
 
                 Text(
-                    text = "Made for better health decisions",
+                    text = appText(selectedLanguage, "footer_decisions"),
                     modifier = Modifier.fillMaxWidth(),
                     color = MedicalTextSecondary.copy(
                         alpha = 0.7f

@@ -61,6 +61,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ai_based_medical_chatbot.data.SupabaseClient
 import kotlinx.coroutines.launch
+import com.example.ai_based_medical_chatbot.LocalAppLanguageController
+import com.example.ai_based_medical_chatbot.appText
 
 @Composable
 fun RegisterScreen(
@@ -126,6 +128,25 @@ fun RegisterScreen(
     }
 
     val scope = rememberCoroutineScope()
+
+    val appLanguageController = LocalAppLanguageController.current
+    val selectedLanguage = appLanguageController.selectedLanguage
+
+    fun t(key: String): String = appText(key, selectedLanguage)
+
+    fun displayRegisterMessage(message: String): String = when (message) {
+        "Account created successfully!" -> t("register_success")
+        "Registration failed. Please try again." -> t("register_failed")
+        t("register_name_required") -> t("register_name_required")
+        t("register_email_required") -> t("register_email_required")
+        t("register_valid_email") -> t("register_valid_email")
+        t("register_password_required") -> t("register_password_required")
+        t("register_password_min") -> t("register_password_min")
+        t("register_confirm_required") -> t("register_confirm_required")
+        t("register_password_mismatch") -> t("register_password_mismatch")
+        else -> message
+    }
+
 
     // ============================================================
     // MEDASSIST AI COLORS
@@ -264,7 +285,7 @@ fun RegisterScreen(
                 ) {
 
                     Text(
-                        text = "←  Back to Login",
+                        text = t("register_back_login"),
                         modifier = Modifier.fillMaxWidth(),
                         color = primaryBlue,
                         fontSize = 13.sp,
@@ -346,7 +367,7 @@ fun RegisterScreen(
                     ) {
 
                         Text(
-                            text = "Create Account",
+                            text = t("register_create_account"),
                             color = primaryBlueDark,
                             fontSize = 25.sp,
                             fontWeight = FontWeight.ExtraBold
@@ -357,7 +378,7 @@ fun RegisterScreen(
                         )
 
                         Text(
-                            text = "Create your MEDASSIST AI account to access your personal health assistant.",
+                            text = t("register_subtitle"),
                             color = textGray,
                             fontSize = 12.sp,
                             lineHeight = 18.sp
@@ -378,8 +399,8 @@ fun RegisterScreen(
                                 nameError = ""
                                 registerError = ""
                             },
-                            label = "Full Name",
-                            placeholder = "Enter your full name",
+                            label = t("register_full_name"),
+                            placeholder = t("register_full_name_placeholder"),
                             leadingText = "✦",
                             isError = nameError.isNotEmpty()
                         )
@@ -403,8 +424,8 @@ fun RegisterScreen(
                                 emailError = ""
                                 registerError = ""
                             },
-                            label = "Email Address",
-                            placeholder = "Enter your email",
+                            label = t("register_email"),
+                            placeholder = t("register_email_placeholder"),
                             leadingText = "@",
                             isError = emailError.isNotEmpty()
                         )
@@ -433,19 +454,20 @@ fun RegisterScreen(
                                         confirmPassword.isNotEmpty() &&
                                         confirmPassword != it
                                     ) {
-                                        "Passwords do not match"
+                                        t("register_password_mismatch")
                                     } else {
                                         ""
                                     }
                             },
-                            label = "Password",
-                            placeholder = "Create a strong password",
+                            label = t("register_password"),
+                            placeholder = t("register_password_placeholder"),
                             visible = passwordVisible,
                             onVisibilityChange = {
                                 passwordVisible =
                                     !passwordVisible
                             },
-                            isError = passwordError.isNotEmpty()
+                            isError = passwordError.isNotEmpty(),
+                            selectedLanguage = selectedLanguage
                         )
 
                         if (passwordError.isNotEmpty()) {
@@ -470,19 +492,20 @@ fun RegisterScreen(
                                     when {
                                         it.isEmpty() -> ""
                                         it != password ->
-                                            "Passwords do not match"
+                                            t("register_password_mismatch")
                                         else -> ""
                                     }
                             },
-                            label = "Confirm Password",
-                            placeholder = "Re-enter your password",
+                            label = t("register_confirm_password"),
+                            placeholder = t("register_confirm_password_placeholder"),
                             visible = confirmPasswordVisible,
                             onVisibilityChange = {
                                 confirmPasswordVisible =
                                     !confirmPasswordVisible
                             },
                             isError =
-                                confirmPasswordError.isNotEmpty()
+                                confirmPasswordError.isNotEmpty(),
+                            selectedLanguage = selectedLanguage
                         )
 
                         if (confirmPasswordError.isNotEmpty()) {
@@ -521,7 +544,7 @@ fun RegisterScreen(
 
                             Text(
                                 text =
-                                    "Password must contain at least 6 characters",
+                                    t("register_password_requirement"),
                                 color = textGray,
                                 fontSize = 11.sp
                             )
@@ -569,7 +592,7 @@ fun RegisterScreen(
                             ) {
 
                                 Text(
-                                    text = registerError,
+                                    text = displayRegisterMessage(registerError),
                                     color =
                                         if (success) {
                                             Color(0xFF21824D)
@@ -610,7 +633,7 @@ fun RegisterScreen(
                                     fullName.trim().isEmpty()
                                 ) {
                                     nameError =
-                                        "Name is required"
+                                        t("register_name_required")
                                     valid = false
                                 }
 
@@ -622,7 +645,7 @@ fun RegisterScreen(
                                 if (cleanEmail.isEmpty()) {
 
                                     emailError =
-                                        "Email is required"
+                                        t("register_email_required")
                                     valid = false
 
                                 } else if (
@@ -632,7 +655,7 @@ fun RegisterScreen(
                                 ) {
 
                                     emailError =
-                                        "Enter a valid email address"
+                                        t("register_valid_email")
                                     valid = false
                                 }
 
@@ -641,7 +664,7 @@ fun RegisterScreen(
                                 if (password.isEmpty()) {
 
                                     passwordError =
-                                        "Password is required"
+                                        t("register_password_required")
                                     valid = false
 
                                 } else if (
@@ -649,7 +672,7 @@ fun RegisterScreen(
                                 ) {
 
                                     passwordError =
-                                        "Password must be at least 6 characters"
+                                        t("register_password_min")
                                     valid = false
                                 }
 
@@ -658,7 +681,7 @@ fun RegisterScreen(
                                 if (confirmPassword.isEmpty()) {
 
                                     confirmPasswordError =
-                                        "Please confirm your password"
+                                        t("register_confirm_required")
                                     valid = false
 
                                 } else if (
@@ -666,7 +689,7 @@ fun RegisterScreen(
                                 ) {
 
                                     confirmPasswordError =
-                                        "Passwords do not match"
+                                        t("register_password_mismatch")
                                     valid = false
                                 }
 
@@ -758,7 +781,7 @@ fun RegisterScreen(
 
                                 Text(
                                     text =
-                                        "Create Account  →",
+                                        t("register_create_button"),
                                     fontSize = 15.sp,
                                     fontWeight =
                                         FontWeight.Bold
@@ -786,7 +809,7 @@ fun RegisterScreen(
 
                 Text(
                     text =
-                        "Already have an account?",
+                        t("register_already"),
                     color = textGray,
                     fontSize = 12.sp
                 )
@@ -796,7 +819,7 @@ fun RegisterScreen(
                 )
 
                 Text(
-                    text = "Login",
+                    text = t("register_login"),
                     color = primaryBlue,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
@@ -857,7 +880,7 @@ fun RegisterScreen(
 
                 Text(
                     text =
-                        "Secure account creation with MEDASSIST AI",
+                        t("register_security"),
                     color = textGray,
                     fontSize = 10.sp
                 )
@@ -879,6 +902,9 @@ fun RegisterScreen(
 private fun RegisterHero(
     botScale: Float
 ) {
+
+    val selectedLanguage =
+        LocalAppLanguageController.current.selectedLanguage
 
     val primaryBlue = Color(0xFF1976D2)
     val teal = Color(0xFF009688)
@@ -1003,7 +1029,7 @@ private fun RegisterHero(
 
             Text(
                 text =
-                    "Start your journey\nwith MEDASSIST AI.",
+                    appText("register_hero_start", selectedLanguage),
                 color = Color.White,
                 fontSize = 14.sp,
                 lineHeight = 20.sp,
@@ -1020,9 +1046,9 @@ private fun RegisterHero(
                     Arrangement.spacedBy(5.dp)
             ) {
 
-                HeroBadge("AI POWERED")
+                HeroBadge(appText("register_ai_powered", selectedLanguage))
 
-                HeroBadge("SECURE")
+                HeroBadge(appText("register_secure_badge", selectedLanguage))
             }
         }
 
@@ -1384,7 +1410,8 @@ private fun PasswordRegisterField(
     placeholder: String,
     visible: Boolean,
     onVisibilityChange: () -> Unit,
-    isError: Boolean
+    isError: Boolean,
+    selectedLanguage: String
 ) {
 
     val primaryBlue = Color(0xFF1976D2)
@@ -1428,9 +1455,9 @@ private fun PasswordRegisterField(
             Text(
                 text =
                     if (visible) {
-                        "HIDE"
+                        appText("register_hide", selectedLanguage)
                     } else {
-                        "SHOW"
+                        appText("register_show", selectedLanguage)
                     },
                 color = primaryBlue,
                 fontSize = 10.sp,

@@ -26,6 +26,8 @@ import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Person
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -48,6 +50,8 @@ import androidx.compose.ui.unit.sp
 import org.json.JSONArray
 import org.json.JSONObject
 import com.example.ai_based_medical_chatbot.MedicineReminderRepository
+import com.example.ai_based_medical_chatbot.LocalAppLanguageController
+import com.example.ai_based_medical_chatbot.appText
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -99,11 +103,35 @@ fun ProfileScreen(
         mutableStateOf(false)
     }
 
+    // Android Context used by BMI, prescription, reminder,
+    // and language preference storage.
+    val context = androidx.compose.ui.platform.LocalContext.current
+
+    // =========================================================
+    // APP LANGUAGE
+    // =========================================================
+
+    val appLanguage = LocalAppLanguageController.current
+    val selectedLanguage = appLanguage.selectedLanguage
+
+    var languageMenuExpanded by remember {
+        mutableStateOf(false)
+    }
+
+    val supportedLanguages = listOf(
+        "English",
+        "मराठी",
+        "हिंदी"
+    )
+
+    fun saveLanguage(language: String) {
+        appLanguage.setLanguage(language)
+        languageMenuExpanded = false
+    }
+
     // =========================================================
     // BMI DATA
     // =========================================================
-
-    val context = androidx.compose.ui.platform.LocalContext.current
 
     var bmiData by remember {
         mutableStateOf(
@@ -294,7 +322,7 @@ fun ProfileScreen(
                         imageVector =
                             Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription =
-                            "Back",
+                            appText("back", selectedLanguage),
                         tint =
                             primaryDark,
                         modifier =
@@ -308,7 +336,7 @@ fun ProfileScreen(
                 )
 
                 androidx.compose.material3.Text(
-                    text = "My Profile",
+                    text = appText("my_profile", selectedLanguage),
                     color = primaryDark,
                     fontSize = 22.sp,
                     fontWeight = FontWeight.Bold
@@ -448,7 +476,7 @@ fun ProfileScreen(
 
                         androidx.compose.material3.Text(
                             text =
-                                "Secure account",
+                                appText("secure_account", selectedLanguage),
                             color =
                                 primaryBlue,
                             fontSize =
@@ -471,7 +499,7 @@ fun ProfileScreen(
 
             androidx.compose.material3.Text(
                 text =
-                    "Account",
+                    appText("account", selectedLanguage),
                 color =
                     textPrimary,
                 fontSize =
@@ -515,9 +543,9 @@ fun ProfileScreen(
                         icon =
                             Icons.Default.Person,
                         title =
-                            "Profile",
+                            appText("profile", selectedLanguage),
                         subtitle =
-                            "Your MEDASSIST account",
+                            appText("your_account", selectedLanguage),
                         iconColor =
                             primaryBlue
                     )
@@ -532,7 +560,7 @@ fun ProfileScreen(
                         icon =
                             Icons.Default.Email,
                         title =
-                            "Email",
+                            appText("email", selectedLanguage),
                         subtitle =
                             displayEmail,
                         iconColor =
@@ -575,7 +603,7 @@ fun ProfileScreen(
                                 imageVector =
                                     Icons.Default.Lock,
                                 contentDescription =
-                                    "Password",
+                                    appText("password", selectedLanguage),
                                 tint =
                                     primaryBlue,
                                 modifier =
@@ -595,7 +623,7 @@ fun ProfileScreen(
 
                             androidx.compose.material3.Text(
                                 text =
-                                    "Password",
+                                    appText("password", selectedLanguage),
                                 color =
                                     textPrimary,
                                 fontSize =
@@ -612,7 +640,7 @@ fun ProfileScreen(
                             androidx.compose.material3.Text(
                                 text =
                                     if (passwordVisible) {
-                                        "Password protected"
+                                        appText("password_protected", selectedLanguage)
                                     } else {
                                         "••••••••"
                                     },
@@ -661,12 +689,148 @@ fun ProfileScreen(
             )
 
             // =================================================
+            // LANGUAGE SECTION
+            // =================================================
+
+            androidx.compose.material3.Text(
+                text = appText("language", selectedLanguage),
+                color = textPrimary,
+                fontSize = 19.sp,
+                fontWeight = FontWeight.Bold
+            )
+
+            Spacer(
+                modifier = Modifier.height(11.dp)
+            )
+
+            androidx.compose.material3.Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(22.dp),
+                colors = androidx.compose.material3.CardDefaults.cardColors(
+                    containerColor = surface
+                ),
+                elevation = androidx.compose.material3.CardDefaults.cardElevation(
+                    defaultElevation = 3.dp
+                )
+            ) {
+                Box(
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                languageMenuExpanded = true
+                            }
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(44.dp)
+                                .background(
+                                    surfaceVariant,
+                                    RoundedCornerShape(13.dp)
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            androidx.compose.material3.Text(
+                                text = "🌐",
+                                fontSize = 21.sp
+                            )
+                        }
+
+                        Spacer(
+                            modifier = Modifier.width(12.dp)
+                        )
+
+                        Column(
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            androidx.compose.material3.Text(
+                                text = appText("app_language", selectedLanguage),
+                                color = textPrimary,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+
+                            Spacer(
+                                modifier = Modifier.height(3.dp)
+                            )
+
+                            androidx.compose.material3.Text(
+                                text = selectedLanguage,
+                                color = textSecondary,
+                                fontSize = 11.sp,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+
+                        androidx.compose.material3.Text(
+                            text = if (languageMenuExpanded) "⌃" else "⌄",
+                            color = primaryBlue,
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    DropdownMenu(
+                        expanded = languageMenuExpanded,
+                        onDismissRequest = {
+                            languageMenuExpanded = false
+                        }
+                    ) {
+                        supportedLanguages.forEach { language ->
+                            DropdownMenuItem(
+                                text = {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        androidx.compose.material3.Text(
+                                            text = if (language == selectedLanguage) {
+                                                "✓ "
+                                            } else {
+                                                "   "
+                                            },
+                                            color = primaryBlue,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+
+                                        androidx.compose.material3.Text(
+                                            text = language,
+                                            color = textPrimary,
+                                            fontSize = 14.sp,
+                                            fontWeight = if (language == selectedLanguage) {
+                                                FontWeight.Bold
+                                            } else {
+                                                FontWeight.Normal
+                                            }
+                                        )
+                                    }
+                                },
+                                onClick = {
+                                    saveLanguage(language)
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            Spacer(
+                modifier =
+                    Modifier.height(24.dp)
+            )
+
+            // =================================================
             // SAVED HEALTH & BMI SECTION
             // =================================================
 
             androidx.compose.material3.Text(
                 text =
-                    "My Health Information",
+                    appText("my_health", selectedLanguage),
                 color =
                     textPrimary,
                 fontSize =
@@ -755,7 +919,7 @@ fun ProfileScreen(
 
                             androidx.compose.material3.Text(
                                 text =
-                                    "BMI Information",
+                                    appText("bmi_information", selectedLanguage),
                                 color =
                                     textPrimary,
                                 fontSize =
@@ -771,7 +935,7 @@ fun ProfileScreen(
 
                             androidx.compose.material3.Text(
                                 text =
-                                    "Your saved body measurements",
+                                    appText("saved_body", selectedLanguage),
                                 color =
                                     textSecondary,
                                 fontSize =
@@ -809,7 +973,7 @@ fun ProfileScreen(
 
                             androidx.compose.material3.Text(
                                 text =
-                                    "Current BMI",
+                                    appText("current_bmi", selectedLanguage),
                                 color =
                                     textSecondary,
                                 fontSize =
@@ -840,7 +1004,7 @@ fun ProfileScreen(
 
                             androidx.compose.material3.Text(
                                 text =
-                                    "Status",
+                                    appText("status", selectedLanguage),
                                 color =
                                     textSecondary,
                                 fontSize =
@@ -875,35 +1039,35 @@ fun ProfileScreen(
                     // -----------------------------------------
 
                     HealthDataRow(
-                        title = "Date of Birth",
+                        title = appText("dob", selectedLanguage),
                         value = dobValue
                     )
 
                     HealthDataDivider()
 
                     HealthDataRow(
-                        title = "Age",
+                        title = appText("age", selectedLanguage),
                         value = ageValue
                     )
 
                     HealthDataDivider()
 
                     HealthDataRow(
-                        title = "Gender",
+                        title = appText("gender", selectedLanguage),
                         value = genderValue
                     )
 
                     HealthDataDivider()
 
                     HealthDataRow(
-                        title = "Height",
+                        title = appText("height", selectedLanguage),
                         value = heightValue
                     )
 
                     HealthDataDivider()
 
                     HealthDataRow(
-                        title = "Weight",
+                        title = appText("weight", selectedLanguage),
                         value = weightValue
                     )
                 }
@@ -919,7 +1083,7 @@ fun ProfileScreen(
             // =================================================
 
             androidx.compose.material3.Text(
-                text = "My Medicine Reminders",
+                text = appText("my_reminders", selectedLanguage),
                 color = textPrimary,
                 fontSize = 19.sp,
                 fontWeight = FontWeight.Bold
@@ -943,7 +1107,7 @@ fun ProfileScreen(
                             fontWeight = FontWeight.Bold
                         )
                         androidx.compose.material3.Text(
-                            text = "Your active medicine reminders will appear here.",
+                            text = appText("reminders_here", selectedLanguage),
                             color = textSecondary,
                             fontSize = 11.sp
                         )
@@ -980,7 +1144,7 @@ fun ProfileScreen(
                                     Spacer(Modifier.width(10.dp))
                                     Column(Modifier.weight(1f)) {
                                         androidx.compose.material3.Text(
-                                            text = reminder.medicineName.ifBlank { "Medicine" },
+                                            text = reminder.medicineName.ifBlank { appText("medicine", selectedLanguage) },
                                             color = textPrimary,
                                             fontSize = 14.sp,
                                             fontWeight = FontWeight.Bold
@@ -1004,7 +1168,7 @@ fun ProfileScreen(
 
                                 Spacer(Modifier.height(9.dp))
                                 androidx.compose.material3.Text(
-                                    text = "⏰ ${reminder.time.ifBlank { "Time not set" }} • ${reminder.daySlot.ifBlank { "Daily" }}",
+                                    text = "⏰ ${reminder.time.ifBlank { appText("time_not_set", selectedLanguage) }} • ${reminder.daySlot.ifBlank { appText("daily", selectedLanguage) }}",
                                     color = textPrimary,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold
@@ -1038,7 +1202,7 @@ fun ProfileScreen(
             // =================================================
 
             androidx.compose.material3.Text(
-                text = "My Prescriptions",
+                text = appText("my_prescriptions", selectedLanguage),
                 color = textPrimary,
                 fontSize = 19.sp,
                 fontWeight = FontWeight.Bold
@@ -1077,7 +1241,7 @@ fun ProfileScreen(
                         Spacer(modifier = Modifier.height(8.dp))
 
                         androidx.compose.material3.Text(
-                            text = "No saved prescriptions",
+                            text = appText("no_prescriptions", selectedLanguage),
                             color = textPrimary,
                             fontSize = 15.sp,
                             fontWeight = FontWeight.Bold
@@ -1543,7 +1707,7 @@ fun ProfileScreen(
                                                 .padding(12.dp)
                                         ) {
                                             androidx.compose.material3.Text(
-                                                text = "${j + 1}. ${name.ifBlank { "Medicine" }}",
+                                                text = "${j + 1}. ${name.ifBlank { appText("medicine", selectedLanguage) }}",
                                                 color = textPrimary,
                                                 fontSize = 13.sp,
                                                 fontWeight = FontWeight.SemiBold
@@ -1814,7 +1978,7 @@ fun ProfileScreen(
 
                         androidx.compose.material3.Text(
                             text =
-                                "Sign Out",
+                                appText("sign_out", selectedLanguage),
                             color =
                                 logoutText,
                             fontSize =

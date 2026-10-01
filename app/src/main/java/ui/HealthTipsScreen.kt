@@ -31,6 +31,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ai_based_medical_chatbot.LocalAppLanguageController
+import com.example.ai_based_medical_chatbot.appText
 
 data class HealthTip(
     val title: String,
@@ -172,6 +174,17 @@ fun HealthTipsScreen(
     val backgroundBottom = Color(0xFFD8F0F6)
     val gray = Color(0xFF71818C)
 
+    val appLanguageController = LocalAppLanguageController.current
+    val selectedLanguage = appLanguageController.selectedLanguage
+
+    val localizedHealthTips = healthTips.mapIndexed { index, tip ->
+        HealthTip(
+            title = appText("health_tip_${index + 1}_title", selectedLanguage),
+            description = appText("health_tip_${index + 1}_description", selectedLanguage)
+        )
+    }
+
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -238,7 +251,7 @@ fun HealthTipsScreen(
                     Column {
 
                         Text(
-                            text = "Health Tips",
+                            text = appText("health_tips_title", selectedLanguage),
                             color = darkBlue,
                             fontSize = 22.sp,
                             fontWeight = FontWeight.Bold
@@ -249,7 +262,7 @@ fun HealthTipsScreen(
                         )
 
                         Text(
-                            text = "Simple habits for a healthier lifestyle",
+                            text = appText("health_tips_subtitle", selectedLanguage),
                             color = gray,
                             fontSize = 12.sp
                         )
@@ -307,7 +320,7 @@ fun HealthTipsScreen(
                         ) {
 
                             Text(
-                                text = "Build Better Habits",
+                                text = appText("health_tips_hero_title", selectedLanguage),
                                 color = Color.White,
                                 fontSize = 19.sp,
                                 fontWeight = FontWeight.Bold
@@ -318,7 +331,7 @@ fun HealthTipsScreen(
                             )
 
                             Text(
-                                text = "Small healthy choices every day can support your overall wellbeing.",
+                                text = appText("health_tips_hero_description", selectedLanguage),
                                 color = Color.White.copy(alpha = 0.88f),
                                 fontSize = 13.sp,
                                 lineHeight = 19.sp
@@ -341,7 +354,7 @@ fun HealthTipsScreen(
                     ) {
 
                         Text(
-                            text = "Daily Wellness",
+                            text = appText("health_tips_daily_title", selectedLanguage),
                             color = darkBlue,
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Bold
@@ -352,7 +365,7 @@ fun HealthTipsScreen(
                         )
 
                         Text(
-                            text = "Explore simple health habits",
+                            text = appText("health_tips_daily_subtitle", selectedLanguage),
                             color = gray,
                             fontSize = 12.sp
                         )
@@ -371,7 +384,7 @@ fun HealthTipsScreen(
                     ) {
 
                         Text(
-                            text = "${healthTips.size} Tips",
+                            text = "${healthTips.size} ${appText("health_tips_count", selectedLanguage)}",
                             color = primaryBlue,
                             fontSize = 12.sp,
                             fontWeight = FontWeight.Bold
@@ -381,13 +394,19 @@ fun HealthTipsScreen(
             }
 
             // 20 HEALTH TIPS
-            items(healthTips) { tip ->
+            items(localizedHealthTips) { tip ->
 
                 HealthTipCard(
                     tip = tip,
                     primaryBlue = primaryBlue,
                     darkBlue = darkBlue,
-                    gray = gray
+                    gray = gray,
+                    symbol = listOf(
+                        "💧", "🥗", "🏃", "😴", "🧼",
+                        "🧘", "🚭", "🩺", "🍬", "🍎",
+                        "☕", "🧍", "☀", "🏠", "👥",
+                        "🌳", "⚠", "♥", "💊", "🧼"
+                    )[localizedHealthTips.indexOf(tip).coerceAtLeast(0)]
                 )
             }
 
@@ -424,7 +443,7 @@ fun HealthTipsScreen(
                         )
 
                         Text(
-                            text = "Health tips are for general educational purposes and do not replace professional medical advice.",
+                            text = appText("health_tips_disclaimer", selectedLanguage),
                             color = gray,
                             fontSize = 12.sp,
                             lineHeight = 18.sp
@@ -474,53 +493,9 @@ private fun HealthTipCard(
     tip: HealthTip,
     primaryBlue: Color,
     darkBlue: Color,
-    gray: Color
+    gray: Color,
+    symbol: String
 ) {
-
-    val symbol = when (tip.title) {
-
-        "Stay Hydrated" -> "💧"
-
-        "Eat a Balanced Diet" -> "🥗"
-
-        "Stay Physically Active" -> "🏃"
-
-        "Get Enough Sleep" -> "😴"
-
-        "Maintain Personal Hygiene" -> "🧼"
-
-        "Manage Stress" -> "🧘"
-
-        "Avoid Smoking" -> "🚭"
-
-        "Regular Health Checkups" -> "🩺"
-
-        "Limit Excess Sugar" -> "🍬"
-
-        "Eat More Fruits & Vegetables" -> "🍎"
-
-        "Take Regular Breaks" -> "☕"
-
-        "Practice Good Posture" -> "🧍"
-
-        "Protect Your Skin" -> "☀"
-
-        "Keep Your Surroundings Clean" -> "🏠"
-
-        "Stay Connected" -> "👥"
-
-        "Spend Time Outdoors" -> "🌳"
-
-        "Avoid Excess Alcohol" -> "⚠"
-
-        "Listen to Your Body" -> "♥"
-
-        "Keep Medicines Organized" -> "💊"
-
-        "Wash Your Hands Regularly" -> "🧼"
-
-        else -> "✓"
-    }
 
     Card(
         modifier = Modifier.fillMaxWidth(),

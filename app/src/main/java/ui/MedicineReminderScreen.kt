@@ -134,10 +134,10 @@ fun MedicineReminderScreen(
     var notificationPermissionGranted by remember {
         mutableStateOf(
             Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-                ContextCompat.checkSelfPermission(
-                    context,
-                    Manifest.permission.POST_NOTIFICATIONS
-                ) == PackageManager.PERMISSION_GRANTED
+                    ContextCompat.checkSelfPermission(
+                        context,
+                        Manifest.permission.POST_NOTIFICATIONS
+                    ) == PackageManager.PERMISSION_GRANTED
         )
     }
 
@@ -163,10 +163,10 @@ fun MedicineReminderScreen(
     LaunchedEffect(Unit) {
         notificationPermissionGranted =
             Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
-                ContextCompat.checkSelfPermission(
-                    context,
-                    Manifest.permission.POST_NOTIFICATIONS
-                ) == PackageManager.PERMISSION_GRANTED
+                    ContextCompat.checkSelfPermission(
+                        context,
+                        Manifest.permission.POST_NOTIFICATIONS
+                    ) == PackageManager.PERMISSION_GRANTED
     }
 
     fun refresh() {
@@ -887,20 +887,20 @@ private fun ReminderCard(
 
                         Text(
                             text = "🍽 ${reminder.mealTiming}" +
-                                if (reminder.duration.isNotBlank()) {
-                                    "  •  ${reminder.duration}"
-                                } else {
-                                    ""
-                                }
+                                    if (reminder.duration.isNotBlank()) {
+                                        "  •  ${reminder.duration}"
+                                    } else {
+                                        ""
+                                    }
                         )
 
                         if (reminder.startDate.isNotBlank() || reminder.endDate.isNotBlank()) {
                             Text(
                                 text = "📅 " +
-                                    listOfNotNull(
-                                        reminder.startDate.takeIf { it.isNotBlank() },
-                                        reminder.endDate.takeIf { it.isNotBlank() }
-                                    ).joinToString(" → ")
+                                        listOfNotNull(
+                                            reminder.startDate.takeIf { it.isNotBlank() },
+                                            reminder.endDate.takeIf { it.isNotBlank() }
+                                        ).joinToString(" → ")
                             )
                         }
 

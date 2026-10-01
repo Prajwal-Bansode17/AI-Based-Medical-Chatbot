@@ -1,5 +1,6 @@
 package ui
 
+import com.example.ai_based_medical_chatbot.LocalAppLanguageController
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -58,6 +59,12 @@ fun HealthProfileScreen(
     onBack: () -> Unit,
     onContinue: () -> Unit
 ) {
+
+    val appLanguageController = LocalAppLanguageController.current
+    val selectedLanguage = appLanguageController.selectedLanguage
+    fun t(key: String): String = appText(key, selectedLanguage)
+
+
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()

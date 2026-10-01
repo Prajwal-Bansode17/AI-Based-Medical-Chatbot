@@ -58,6 +58,8 @@ import com.example.ai_based_medical_chatbot.ui.theme.MedicalTeal
 import com.example.ai_based_medical_chatbot.ui.theme.MedicalTextPrimary
 import com.example.ai_based_medical_chatbot.ui.theme.MedicalTextSecondary
 import com.example.ai_based_medical_chatbot.ui.theme.PureWhite
+import com.example.ai_based_medical_chatbot.LocalAppLanguageController
+import com.example.ai_based_medical_chatbot.appText
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
@@ -68,6 +70,12 @@ fun BMICheckerScreen(
 ) {
 
     val context = LocalContext.current
+
+    val appLanguageController = LocalAppLanguageController.current
+    val selectedLanguage = appLanguageController.selectedLanguage
+
+    fun t(key: String): String = appText(key, selectedLanguage)
+
 
     var dateOfBirth by remember {
         mutableStateOf("")
@@ -146,24 +154,16 @@ fun BMICheckerScreen(
             "--"
         }
 
-    val bmiStatus =
+    val bmiStatusKey =
         when {
-
-            liveBmi <= 0f ->
-                "Enter your details"
-
-            liveBmi < 18.5f ->
-                "Underweight"
-
-            liveBmi < 25f ->
-                "Normal weight"
-
-            liveBmi < 30f ->
-                "Overweight"
-
-            else ->
-                "Obesity"
+            liveBmi <= 0f -> "bmi_status_enter"
+            liveBmi < 18.5f -> "bmi_status_underweight"
+            liveBmi < 25f -> "bmi_status_normal"
+            liveBmi < 30f -> "bmi_status_overweight"
+            else -> "bmi_status_obesity"
         }
+
+    val bmiStatus = t(bmiStatusKey)
 
     val bmiStatusColor =
         when {
@@ -290,7 +290,7 @@ fun BMICheckerScreen(
                     Icon(
                         imageVector =
                             Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back",
+                        contentDescription = t("bmi_back"),
                         tint = MedicalBlueDark,
                         modifier = Modifier.size(27.dp)
                     )
@@ -305,7 +305,7 @@ fun BMICheckerScreen(
                 ) {
 
                     Text(
-                        text = "BMI Checker",
+                        text = t("bmi_checker"),
                         color = MedicalBlueDark,
                         fontSize = 23.sp,
                         fontWeight = FontWeight.Bold
@@ -316,7 +316,7 @@ fun BMICheckerScreen(
                     )
 
                     Text(
-                        text = "Calculate and understand your BMI",
+                        text = t("bmi_subtitle"),
                         color = MedicalTextSecondary,
                         fontSize = 12.sp
                     )
@@ -377,7 +377,7 @@ fun BMICheckerScreen(
                     Column {
 
                         Text(
-                            text = "Know your BMI",
+                            text = t("bmi_know"),
                             color = PureWhite,
                             fontSize = 20.sp,
                             fontWeight = FontWeight.Bold
@@ -388,8 +388,7 @@ fun BMICheckerScreen(
                         )
 
                         Text(
-                            text =
-                                "Enter accurate details for calculation",
+                            text = t("bmi_enter_details"),
                             color =
                                 PureWhite.copy(alpha = 0.82f),
                             fontSize = 12.sp
@@ -407,7 +406,7 @@ fun BMICheckerScreen(
             // =====================================================
 
             Text(
-                text = "Personal Information",
+                text = t("bmi_personal_info"),
                 color = MedicalTextPrimary,
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold
@@ -441,7 +440,7 @@ fun BMICheckerScreen(
                             dateOfBirth.length == 10 &&
                             parseDateOfBirth(dateOfBirth) == null
                         ) {
-                            "Please enter a valid date in DD/MM/YYYY format."
+                            t("bmi_validation_date_format")
                         } else {
                             ""
                         }
@@ -452,11 +451,11 @@ fun BMICheckerScreen(
                 singleLine = true,
 
                 label = {
-                    Text("Date of Birth")
+                    Text(t("bmi_date_of_birth"))
                 },
 
                 placeholder = {
-                    Text("DD/MM/YYYY")
+                    Text(t("bmi_date_placeholder"))
                 },
 
                 leadingIcon = {
@@ -464,8 +463,7 @@ fun BMICheckerScreen(
                     Icon(
                         imageVector =
                             Icons.Default.Info,
-                        contentDescription =
-                            "Date of Birth"
+                        contentDescription = t("bmi_date_of_birth")
                     )
                 },
 
@@ -480,8 +478,7 @@ fun BMICheckerScreen(
                         Icon(
                             imageVector =
                                 Icons.Default.DateRange,
-                            contentDescription =
-                                "Select date",
+                            contentDescription = t("bmi_select_date"),
                             tint = MedicalBlue,
                             modifier =
                                 Modifier.size(25.dp)
@@ -510,8 +507,7 @@ fun BMICheckerScreen(
             ) {
 
                 Text(
-                    text =
-                        "Invalid date. Please use DD/MM/YYYY.",
+                    text = t("bmi_invalid_date"),
                     color =
                         Color(0xFFD64545),
                     fontSize = 11.sp,
@@ -543,11 +539,11 @@ fun BMICheckerScreen(
                 singleLine = true,
 
                 label = {
-                    Text("Age")
+                    Text(t("bmi_age"))
                 },
 
                 placeholder = {
-                    Text("Automatically calculated")
+                    Text(t("bmi_age_auto"))
                 },
 
                 leadingIcon = {
@@ -555,8 +551,7 @@ fun BMICheckerScreen(
                     Icon(
                         imageVector =
                             Icons.Default.Person,
-                        contentDescription =
-                            "Age"
+                        contentDescription = t("bmi_age")
                     )
                 },
 
@@ -565,7 +560,7 @@ fun BMICheckerScreen(
                     if (ageText.isNotBlank()) {
 
                         Text(
-                            text = "years",
+                            text = t("bmi_years"),
                             color =
                                 MedicalTextSecondary,
                             fontSize = 13.sp
@@ -606,7 +601,7 @@ fun BMICheckerScreen(
                 ) {
 
                     Text(
-                        text = "Gender",
+                        text = t("bmi_gender"),
                         color = MedicalTextPrimary,
                         fontSize = 15.sp,
                         fontWeight = FontWeight.Bold
@@ -625,7 +620,7 @@ fun BMICheckerScreen(
                     ) {
 
                         GenderOption(
-                            text = "Male",
+                            text = t("bmi_male"),
                             selected =
                                 gender == "Male",
                             onClick = {
@@ -636,7 +631,7 @@ fun BMICheckerScreen(
                         )
 
                         GenderOption(
-                            text = "Female",
+                            text = t("bmi_female"),
                             selected =
                                 gender == "Female",
                             onClick = {
@@ -647,7 +642,7 @@ fun BMICheckerScreen(
                         )
 
                         GenderOption(
-                            text = "Other",
+                            text = t("bmi_other"),
                             selected =
                                 gender == "Other",
                             onClick = {
@@ -669,7 +664,7 @@ fun BMICheckerScreen(
             // =====================================================
 
             Text(
-                text = "Body Measurements",
+                text = t("bmi_body_measurements"),
                 color = MedicalTextPrimary,
                 fontSize = 20.sp,
                 fontWeight = FontWeight.Bold
@@ -703,11 +698,11 @@ fun BMICheckerScreen(
                 singleLine = true,
 
                 label = {
-                    Text("Height")
+                    Text(t("bmi_height"))
                 },
 
                 placeholder = {
-                    Text("Example: 170")
+                    Text(t("bmi_height_example"))
                 },
 
                 leadingIcon = {
@@ -723,7 +718,7 @@ fun BMICheckerScreen(
                 trailingIcon = {
 
                     Text(
-                        text = "cm",
+                        text = t("bmi_cm"),
                         color =
                             MedicalTextSecondary,
                         fontSize = 13.sp
@@ -771,11 +766,11 @@ fun BMICheckerScreen(
                 singleLine = true,
 
                 label = {
-                    Text("Weight")
+                    Text(t("bmi_weight"))
                 },
 
                 placeholder = {
-                    Text("Example: 65")
+                    Text(t("bmi_weight_example"))
                 },
 
                 leadingIcon = {
@@ -790,7 +785,7 @@ fun BMICheckerScreen(
                 trailingIcon = {
 
                     Text(
-                        text = "kg",
+                        text = t("bmi_kg"),
                         color =
                             MedicalTextSecondary,
                         fontSize = 13.sp
@@ -870,29 +865,29 @@ fun BMICheckerScreen(
                         when {
 
                             dateOfBirth.length != 10 ->
-                                "Please enter your date of birth."
+                                t("bmi_validation_dob")
 
                             parseDateOfBirth(
                                 dateOfBirth
                             ) == null ->
-                                "Please enter a valid date of birth."
+                                t("bmi_validation_dob_invalid")
 
                             calculatedAge <= 0 ->
-                                "Please enter a valid date of birth."
+                                t("bmi_validation_dob_invalid")
 
                             calculatedAge > 120 ->
-                                "Please enter a valid age."
+                                t("bmi_validation_age")
 
                             gender.isBlank() ->
-                                "Please select your gender."
+                                t("bmi_validation_gender")
 
                             finalHeight == null ||
                                     finalHeight !in 50f..250f ->
-                                "Please enter a valid height between 50 and 250 cm."
+                                t("bmi_validation_height")
 
                             finalWeight == null ||
                                     finalWeight !in 2f..300f ->
-                                "Please enter a valid weight between 2 and 300 kg."
+                                t("bmi_validation_weight")
 
                             else ->
                                 ""
@@ -938,7 +933,7 @@ fun BMICheckerScreen(
             ) {
 
                 Text(
-                    text = "Update BMI",
+                    text = t("bmi_update"),
                     fontSize = 16.sp,
                     fontWeight =
                         FontWeight.Bold
@@ -953,8 +948,7 @@ fun BMICheckerScreen(
                 )
 
                 Text(
-                    text =
-                        "✓ BMI information saved successfully",
+                    text = t("bmi_saved"),
                     modifier =
                         Modifier.fillMaxWidth(),
                     color =
@@ -1006,7 +1000,7 @@ fun BMICheckerScreen(
                 ) {
 
                     Text(
-                        text = "Your BMI",
+                        text = t("bmi_your_bmi"),
                         color =
                             MedicalTextSecondary,
                         fontSize = 14.sp
@@ -1062,8 +1056,7 @@ fun BMICheckerScreen(
                     )
 
                     Text(
-                        text =
-                            "BMI categories for adults",
+                        text = t("bmi_categories"),
                         color =
                             MedicalTextPrimary,
                         fontSize = 12.sp,
@@ -1077,8 +1070,7 @@ fun BMICheckerScreen(
                     )
 
                     Text(
-                        text =
-                            "Underweight < 18.5  •  Normal 18.5–24.9  •  Overweight 25–29.9  •  Obesity ≥ 30",
+                        text = t("bmi_categories_values"),
                         modifier =
                             Modifier.fillMaxWidth(),
                         color =
@@ -1111,8 +1103,7 @@ fun BMICheckerScreen(
                         Icon(
                             imageVector =
                                 Icons.Default.Info,
-                            contentDescription =
-                                "BMI information",
+                            contentDescription = t("bmi_information"),
                             tint =
                                 MedicalBlue,
                             modifier =
@@ -1125,8 +1116,7 @@ fun BMICheckerScreen(
                         )
 
                         Text(
-                            text =
-                                "BMI is a screening measure and does not diagnose health conditions.",
+                            text = t("bmi_disclaimer"),
                             color =
                                 MedicalTextSecondary,
                             fontSize = 10.sp,
@@ -1142,8 +1132,7 @@ fun BMICheckerScreen(
             )
 
             Text(
-                text =
-                    "MEDASSIST AI  •  Secure • Simple • Intelligent",
+                text = t("bmi_footer"),
                 modifier =
                     Modifier.fillMaxWidth(),
                 color =

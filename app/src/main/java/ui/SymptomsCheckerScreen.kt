@@ -55,12 +55,20 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import com.example.ai_based_medical_chatbot.LocalAppLanguageController
+import com.example.ai_based_medical_chatbot.appText
 
 @Composable
 fun SymptomsCheckerScreen(
     onBackClick: () -> Unit = {}
 ) {
     val context = LocalContext.current
+
+    val appLanguageController = LocalAppLanguageController.current
+    val selectedLanguage = appLanguageController.selectedLanguage
+
+    fun t(key: String): String = appText(key, selectedLanguage)
+
 
     val primary = Color(0xFF087EA4)
     val darkBlue = Color(0xFF123A56)
@@ -149,13 +157,13 @@ fun SymptomsCheckerScreen(
 
                     Column {
                         Text(
-                            text = "Symptoms Checker",
+                            text = t("symptoms_checker"),
                             color = darkBlue,
                             fontSize = 25.sp,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "Select the symptoms you are experiencing",
+                            text = t("symptoms_subtitle"),
                             color = gray,
                             fontSize = 12.sp
                         )
@@ -197,14 +205,14 @@ fun SymptomsCheckerScreen(
 
                         Column {
                             Text(
-                                text = "How are you feeling?",
+                                text = t("symptoms_how_feeling"),
                                 color = Color.White,
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
-                                text = "Search and select all symptoms that apply.",
+                                text = t("symptoms_search_help"),
                                 color = Color.White.copy(alpha = 0.84f),
                                 fontSize = 12.sp
                             )
@@ -224,7 +232,7 @@ fun SymptomsCheckerScreen(
                     singleLine = true,
                     placeholder = {
                         Text(
-                            "Search any symptom...",
+                            t("symptoms_search_placeholder"),
                             color = gray
                         )
                     },
@@ -269,9 +277,9 @@ fun SymptomsCheckerScreen(
                 ) {
                     Text(
                         text = if (searchQuery.isBlank())
-                            "All Symptoms"
+                            t("symptoms_all")
                         else
-                            "Matching Symptoms",
+                            t("symptoms_matching"),
                         color = darkBlue,
                         fontSize = 19.sp,
                         fontWeight = FontWeight.Bold,
@@ -279,7 +287,7 @@ fun SymptomsCheckerScreen(
                     )
 
                     Text(
-                        text = "${filteredSymptoms.size} available",
+                        text = "${filteredSymptoms.size} ${t("symptoms_available")}",
                         color = primary,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold
@@ -301,14 +309,14 @@ fun SymptomsCheckerScreen(
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Text(
-                                text = "Loading symptoms...",
+                                text = t("symptoms_loading"),
                                 color = darkBlue,
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
-                                text = "Preparing the medical symptom database",
+                                text = t("symptoms_loading_detail"),
                                 color = gray,
                                 fontSize = 11.sp
                             )
@@ -329,14 +337,14 @@ fun SymptomsCheckerScreen(
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Text(
-                                text = "No symptom found",
+                                text = t("symptoms_none"),
                                 color = darkBlue,
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold
                             )
                             Spacer(modifier = Modifier.height(5.dp))
                             Text(
-                                text = "Try another symptom name.",
+                                text = t("symptoms_try_another"),
                                 color = gray,
                                 fontSize = 12.sp
                             )
@@ -482,7 +490,7 @@ fun SymptomsCheckerScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = "Selected Symptoms",
+                                    text = t("symptoms_selected"),
                                     color = darkBlue,
                                     fontSize = 16.sp,
                                     fontWeight = FontWeight.Bold,
@@ -573,9 +581,9 @@ fun SymptomsCheckerScreen(
                 ) {
                     Text(
                         text = if (selectedSymptoms.size < 2)
-                            "Select at least 2 symptoms"
+                            t("symptoms_select_two")
                         else
-                            "Check Symptoms",
+                            t("symptoms_check"),
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -600,7 +608,7 @@ fun SymptomsCheckerScreen(
                                 modifier = Modifier.padding(19.dp)
                             ) {
                                 Text(
-                                    text = "Symptom Analysis",
+                                    text = t("symptoms_analysis"),
                                     color = primary,
                                     fontSize = 19.sp,
                                     fontWeight = FontWeight.Bold
@@ -619,14 +627,14 @@ fun SymptomsCheckerScreen(
 
                                 if (selectedSymptoms.size < 2) {
                                     Text(
-                                        text = "Please select at least 2 symptoms for a more meaningful model prediction.",
+                                        text = t("symptoms_need_two"),
                                         color = gray,
                                         fontSize = 12.sp,
                                         lineHeight = 18.sp
                                     )
                                 } else if (predictions.isEmpty()) {
                                     Text(
-                                        text = "The model could not produce a reliable matching condition for these symptoms.",
+                                        text = t("symptoms_no_prediction"),
                                         color = gray,
                                         fontSize = 12.sp,
                                         lineHeight = 18.sp
@@ -669,7 +677,7 @@ fun SymptomsCheckerScreen(
                                                 if (prediction.matchedSymptoms.isNotEmpty()) {
                                                     Spacer(modifier = Modifier.height(5.dp))
                                                     Text(
-                                                        text = "Matched: ${
+                                                        text = "${t("symptoms_matched")}: ${
                                                             prediction.matchedSymptoms.joinToString(
                                                                 ", "
                                                             )
@@ -684,7 +692,7 @@ fun SymptomsCheckerScreen(
                                     }
 
                                     Text(
-                                        text = "This is an AI/model-based indication, not a medical diagnosis.",
+                                        text = t("symptoms_ai_disclaimer"),
                                         color = gray,
                                         fontSize = 10.sp,
                                         lineHeight = 15.sp
@@ -705,7 +713,7 @@ fun SymptomsCheckerScreen(
                     )
                 ) {
                     Text(
-                        text = "⚠ This tool is not a medical diagnosis. Please consult a qualified healthcare professional for medical advice.",
+                        text = t("symptoms_medical_disclaimer"),
                         modifier = Modifier.padding(16.dp),
                         color = gray,
                         fontSize = 11.sp,

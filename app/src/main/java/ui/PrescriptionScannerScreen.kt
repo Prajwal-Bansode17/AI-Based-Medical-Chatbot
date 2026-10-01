@@ -72,6 +72,7 @@ import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 
 import com.example.ai_based_medical_chatbot.R
+import com.example.ai_based_medical_chatbot.LocalAppLanguageController
 
 import com.google.mlkit.vision.common.InputImage
 import com.google.mlkit.vision.text.Text
@@ -336,9 +337,9 @@ private fun extractPrescriptionDraft(text: String): PrescriptionDraft {
         val v = normalize(value)
         return v.isBlank() ||
                 v in setOf(
-                    "rx", "r x", "dx", "d x", "diagnosis", "diagnoses",
-                    "doctor", "doctor name", "patient", "patient name"
-                )
+            "rx", "r x", "dx", "d x", "diagnosis", "diagnoses",
+            "doctor", "doctor name", "patient", "patient name"
+        )
     }
 
     fun cleanPatient(value: String): String {
@@ -369,10 +370,10 @@ private fun extractPrescriptionDraft(text: String): PrescriptionDraft {
             val n = normalize(line)
             line.length <= 100 &&
                     (Regex("\\bhospital\\b", RegexOption.IGNORE_CASE).containsMatchIn(line) ||
-                     Regex("\\bclinic\\b", RegexOption.IGNORE_CASE).containsMatchIn(line) ||
-                     n.contains("medical center") ||
-                     n.contains("medical centre") ||
-                     n.contains("healthcare"))
+                            Regex("\\bclinic\\b", RegexOption.IGNORE_CASE).containsMatchIn(line) ||
+                            n.contains("medical center") ||
+                            n.contains("medical centre") ||
+                            n.contains("healthcare"))
         }
 
         // Prefer the actual institution name. Never use website/email/phone lines.
@@ -1035,13 +1036,9 @@ fun PrescriptionScannerScreen(
     // LANGUAGE
     // =============================================================
 
-    var selectedLanguage by remember {
-        mutableStateOf("English")
-    }
-
-    var languageMenuExpanded by remember {
-        mutableStateOf(false)
-    }
+    // App-wide language: follows the language selected in Profile.
+    val appLanguageController = LocalAppLanguageController.current
+    val selectedLanguage = appLanguageController.selectedLanguage
 
 
     // =============================================================
@@ -1223,8 +1220,6 @@ fun PrescriptionScannerScreen(
         "हिन्दी" -> "दवा का नाम"
         else -> "Medicine Name"
     }
-    val strengthLabel = "Strength"
-    val frequencyLabel = "Frequency / Schedule"
     val durationLabel = when (selectedLanguage) {
         "मराठी" -> "कालावधी"
         "हिन्दी" -> "अवधि"
@@ -1259,6 +1254,87 @@ fun PrescriptionScannerScreen(
         "मराठी" -> "⚠ OCR माहिती फक्त reference साठी आहे. औषधाचे नाव, strength आणि dosage डॉक्टर किंवा फार्मासिस्टकडून verify करा."
         "हिन्दी" -> "⚠ OCR जानकारी केवल reference के लिए है। दवा का नाम, strength और dosage डॉक्टर या फार्मासिस्ट से verify करें."
         else -> "⚠ OCR information is for reference only. Verify medicine name, strength and dosage with a doctor or pharmacist."
+    }
+
+
+    val cameraText = when (selectedLanguage) {
+        "मराठी" -> "📷 कॅमेरा"
+        "हिन्दी" -> "📷 कैमरा"
+        else -> "📷 Camera"
+    }
+
+    val galleryText = when (selectedLanguage) {
+        "मराठी" -> "गॅलरी"
+        "हिन्दी" -> "गैलरी"
+        else -> "Gallery"
+    }
+
+    val hospitalClinicLabel = when (selectedLanguage) {
+        "मराठी" -> "हॉस्पिटल / क्लिनिक"
+        "हिन्दी" -> "अस्पताल / क्लिनिक"
+        else -> "Hospital / Clinic"
+    }
+
+    val doctorSummaryLabel = when (selectedLanguage) {
+        "मराठी" -> "डॉक्टर"
+        "हिन्दी" -> "डॉक्टर"
+        else -> "Doctor"
+    }
+
+    val patientSummaryLabel = when (selectedLanguage) {
+        "मराठी" -> "रुग्ण"
+        "हिन्दी" -> "मरीज़"
+        else -> "Patient"
+    }
+
+    val frequencyLabel = when (selectedLanguage) {
+        "मराठी" -> "वारंवारता / वेळापत्रक"
+        "हिन्दी" -> "आवृत्ति / शेड्यूल"
+        else -> "Frequency / Schedule"
+    }
+
+    val strengthLabel = "Strength"
+
+    val timeLabel = when (selectedLanguage) {
+        "मराठी" -> "वेळ"
+        "हिन्दी" -> "समय"
+        else -> "Time"
+    }
+
+    val foodLabel = when (selectedLanguage) {
+        "मराठी" -> "जेवण"
+        "हिन्दी" -> "खाना"
+        else -> "Food"
+    }
+
+    val howToTakeLabel = when (selectedLanguage) {
+        "मराठी" -> "कसे घ्यावे"
+        "हिन्दी" -> "कैसे लें"
+        else -> "How to take"
+    }
+
+    val verifyBeforeSaveText = when (selectedLanguage) {
+        "मराठी" -> "सेव्ह करण्यापूर्वी मिळालेली प्रिस्क्रिप्शन माहिती तपासा."
+        "हिन्दी" -> "सेव करने से पहले निकाली गई प्रिस्क्रिप्शन जानकारी जाँचें."
+        else -> "Verify the extracted prescription information before saving."
+    }
+
+    val sharePrescriptionText = when (selectedLanguage) {
+        "मराठी" -> "↗ प्रिस्क्रिप्शन शेअर करा"
+        "हिन्दी" -> "↗ प्रिस्क्रिप्शन शेयर करें"
+        else -> "↗ Share Prescription"
+    }
+
+    val prescriptionSummaryText = when (selectedLanguage) {
+        "मराठी" -> "📋 प्रिस्क्रिप्शन सारांश"
+        "हिन्दी" -> "📋 प्रिस्क्रिप्शन सारांश"
+        else -> "📋 Prescription Summary"
+    }
+
+    val medicinesText = when (selectedLanguage) {
+        "मराठी" -> "औषधे"
+        "हिन्दी" -> "दवाइयाँ"
+        else -> "Medicines"
     }
 
     // =============================================================
@@ -2198,12 +2274,12 @@ fun PrescriptionScannerScreen(
                                 colors =
                                     ButtonDefaults.buttonColors(
                                         containerColor = Color(0xFFEAF5F8),
-                                            contentColor = Color(0xFF176B83)
+                                        contentColor = Color(0xFF176B83)
                                     )
                             ) {
 
                                 Text(
-                                    text = "Gallery",
+                                    text = galleryText,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Medium,
                                     maxLines = 1
@@ -2310,7 +2386,7 @@ fun PrescriptionScannerScreen(
                             ) {
 
                                 Text(
-                                    text = "Gallery",
+                                    text = galleryText,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Medium,
                                     maxLines = 1
@@ -2430,7 +2506,7 @@ fun PrescriptionScannerScreen(
                                         .padding(horizontal = 18.dp, vertical = 20.dp)
                                 ) {
                                     Text(
-                                        text = "Prescription Summary",
+                                        text = prescriptionSummaryText,
                                         color = darkBlue,
                                         fontSize = 18.sp,
                                         fontWeight = FontWeight.Bold
@@ -2439,26 +2515,26 @@ fun PrescriptionScannerScreen(
                                     Spacer(modifier = Modifier.height(14.dp))
 
                                     if (preview.hospitalName.isNotBlank()) {
-                                        SummaryLine("Hospital / Clinic", preview.hospitalName, darkBlue)
+                                        SummaryLine(hospitalClinicLabel, preview.hospitalName, darkBlue)
                                     }
                                     if (preview.doctorName.isNotBlank()) {
-                                        SummaryLine("Doctor", preview.doctorName, darkBlue)
+                                        SummaryLine(doctorSummaryLabel, preview.doctorName, darkBlue)
                                     }
                                     if (preview.patientName.isNotBlank()) {
-                                        SummaryLine("Patient", preview.patientName, darkBlue)
+                                        SummaryLine(patientSummaryLabel, preview.patientName, darkBlue)
                                     }
                                     if (preview.date.isNotBlank()) {
-                                        SummaryLine("Date", preview.date, darkBlue)
+                                        SummaryLine(dateLabel, preview.date, darkBlue)
                                     }
                                     if (preview.diagnosis.isNotBlank()) {
-                                        SummaryLine("Diagnosis", preview.diagnosis, darkBlue)
+                                        SummaryLine(diagnosisLabel, preview.diagnosis, darkBlue)
                                     }
 
                                     if (previewMedicines.isNotEmpty()) {
                                         Spacer(modifier = Modifier.height(14.dp))
 
                                         Text(
-                                            text = "Medicines",
+                                            text = medicinesText,
                                             color = darkBlue,
                                             fontSize = 15.sp,
                                             fontWeight = FontWeight.Bold
@@ -2490,42 +2566,42 @@ fun PrescriptionScannerScreen(
 
                                                     if (medicine.strength.isNotBlank()) {
                                                         Text(
-                                                            text = "Strength: ${medicine.strength}",
+                                                            text = "$strengthLabel: ${medicine.strength}",
                                                             color = gray,
                                                             fontSize = 11.sp
                                                         )
                                                     }
                                                     if (medicine.frequency.isNotBlank()) {
                                                         Text(
-                                                            text = "Frequency: ${medicine.frequency}",
+                                                            text = "$frequencyLabel: ${medicine.frequency}",
                                                             color = gray,
                                                             fontSize = 11.sp
                                                         )
                                                     }
                                                     if (medicine.timing.isNotBlank()) {
                                                         Text(
-                                                            text = "Time: ${medicine.timing}",
+                                                            text = "$timeLabel: ${medicine.timing}",
                                                             color = gray,
                                                             fontSize = 11.sp
                                                         )
                                                     }
                                                     if (medicine.mealTiming.isNotBlank()) {
                                                         Text(
-                                                            text = "Food: ${medicine.mealTiming}",
+                                                            text = "$foodLabel: ${medicine.mealTiming}",
                                                             color = gray,
                                                             fontSize = 11.sp
                                                         )
                                                     }
                                                     if (medicine.duration.isNotBlank()) {
                                                         Text(
-                                                            text = "Duration: ${medicine.duration}",
+                                                            text = "$durationLabel: ${medicine.duration}",
                                                             color = gray,
                                                             fontSize = 11.sp
                                                         )
                                                     }
                                                     if (medicine.howToTake.isNotBlank()) {
                                                         Text(
-                                                            text = "How to take: ${medicine.howToTake}",
+                                                            text = "$howToTakeLabel: ${medicine.howToTake}",
                                                             color = gray,
                                                             fontSize = 11.sp,
                                                             lineHeight = 16.sp
@@ -2539,7 +2615,7 @@ fun PrescriptionScannerScreen(
                                     Spacer(modifier = Modifier.height(8.dp))
 
                                     Text(
-                                        text = "Verify the extracted prescription information before saving.",
+                                        text = verifyBeforeSaveText,
                                         color = gray,
                                         fontSize = 10.sp,
                                         lineHeight = 15.sp
@@ -2695,7 +2771,7 @@ fun PrescriptionScannerScreen(
 
                                                     if (medicine.timing.isNotBlank()) {
                                                         Text(
-                                                            text = "Time: ${medicine.timing}",
+                                                            text = "$timeLabel: ${medicine.timing}",
                                                             color = Color(0xFF263943),
                                                             fontSize = 12.sp
                                                         )
@@ -2703,7 +2779,7 @@ fun PrescriptionScannerScreen(
 
                                                     if (medicine.mealTiming.isNotBlank()) {
                                                         Text(
-                                                            text = "Food: ${medicine.mealTiming}",
+                                                            text = "$foodLabel: ${medicine.mealTiming}",
                                                             color = Color(0xFF263943),
                                                             fontSize = 12.sp
                                                         )
@@ -2719,7 +2795,7 @@ fun PrescriptionScannerScreen(
 
                                                     if (medicine.howToTake.isNotBlank()) {
                                                         Text(
-                                                            text = "How to take: ${medicine.howToTake}",
+                                                            text = "$howToTakeLabel: ${medicine.howToTake}",
                                                             color = Color(0xFF263943),
                                                             fontSize = 12.sp,
                                                             lineHeight = 16.sp
@@ -2756,7 +2832,7 @@ fun PrescriptionScannerScreen(
                                         )
                                     ) {
                                         Text(
-                                            text = "↗ Share Prescription",
+                                            text = sharePrescriptionText,
                                             fontSize = 13.sp,
                                             fontWeight = FontWeight.Bold
                                         )
@@ -2909,7 +2985,7 @@ private fun PrescriptionImagePreview(
             bitmap =
                 bitmap.asImageBitmap(),
             contentDescription =
-                "Selected prescription",
+                "Prescription image",
             modifier =
                 modifier,
             contentScale =
@@ -2924,7 +3000,7 @@ private fun PrescriptionImagePreview(
                     id = R.drawable.medassist_logo
                 ),
             contentDescription =
-                "Prescription",
+                "MedAssist logo",
             modifier =
                 modifier,
             contentScale =

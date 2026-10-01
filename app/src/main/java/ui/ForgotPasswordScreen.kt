@@ -57,11 +57,17 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ai_based_medical_chatbot.LocalAppLanguageController
 
 @Composable
 fun ForgotPasswordScreen(
     onBackToLogin: () -> Unit
 ) {
+    val appLanguageController = LocalAppLanguageController.current
+    val selectedLanguage = appLanguageController.selectedLanguage
+
+    fun t(key: String): String = appText(key, selectedLanguage)
+
     var email by remember {
         mutableStateOf("")
     }
@@ -186,7 +192,7 @@ fun ForgotPasswordScreen(
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
-                    text = "←  Back to Login",
+                    text = t("forgot_back_login"),
                     modifier = Modifier.fillMaxWidth(),
                     color = primaryBlue,
                     fontSize = 13.sp,
@@ -318,7 +324,7 @@ fun ForgotPasswordScreen(
                                 )
 
                                 Text(
-                                    text = "AI HEALTH ASSISTANT",
+                                    text = t("forgot_health_assistant"),
                                     color = Color(0xFFB9FFF5),
                                     fontSize = 7.sp,
                                     fontWeight =
@@ -333,7 +339,7 @@ fun ForgotPasswordScreen(
                         )
 
                         Text(
-                            text = "Forgot your password?",
+                            text = t("forgot_title"),
                             color = Color.White,
                             fontSize = 14.sp,
                             fontWeight =
@@ -346,7 +352,7 @@ fun ForgotPasswordScreen(
 
                         Text(
                             text =
-                                "Don't worry.\nWe'll help you get back in.",
+                                t("forgot_hero_message"),
                             color = Color.White.copy(
                                 alpha = 0.90f
                             ),
@@ -364,11 +370,11 @@ fun ForgotPasswordScreen(
                         ) {
 
                             HeroBadge(
-                                text = "AI POWERED"
+                                text = t("forgot_ai_powered")
                             )
 
                             HeroBadge(
-                                text = "SECURE"
+                                text = t("forgot_secure_badge")
                             )
                         }
                     }
@@ -436,7 +442,7 @@ fun ForgotPasswordScreen(
                     ) {
 
                         Text(
-                            text = "Reset Password",
+                            text = t("forgot_reset_password"),
                             color = primaryBlueDark,
                             fontSize = 25.sp,
                             fontWeight =
@@ -449,7 +455,7 @@ fun ForgotPasswordScreen(
 
                         Text(
                             text =
-                                "Enter your registered email address and we'll help you reset your password.",
+                                t("forgot_reset_description"),
                             color = textGray,
                             fontSize = 12.sp,
                             lineHeight = 18.sp
@@ -471,12 +477,12 @@ fun ForgotPasswordScreen(
                             modifier = Modifier.fillMaxWidth(),
                             label = {
                                 Text(
-                                    "Email address"
+                                    t("forgot_email_label")
                                 )
                             },
                             placeholder = {
                                 Text(
-                                    "Enter your registered email"
+                                    t("forgot_email_placeholder")
                                 )
                             },
                             leadingIcon = {
@@ -484,7 +490,7 @@ fun ForgotPasswordScreen(
                                     imageVector =
                                         Icons.Default.Email,
                                     contentDescription =
-                                        "Email",
+                                        t("forgot_email_content"),
                                     tint =
                                         primaryBlue
                                 )
@@ -551,7 +557,7 @@ fun ForgotPasswordScreen(
 
                             Text(
                                 text =
-                                    "Send Reset Link  →",
+                                    t("forgot_send_reset"),
                                 fontSize = 15.sp,
                                 fontWeight =
                                     FontWeight.Bold
@@ -564,7 +570,7 @@ fun ForgotPasswordScreen(
 
                         Text(
                             text =
-                                "We'll send password-reset instructions to your registered email.",
+                                t("forgot_reset_note"),
                             color = textGray,
                             fontSize = 10.sp,
                             textAlign =
@@ -614,7 +620,7 @@ fun ForgotPasswordScreen(
                         imageVector =
                             Icons.Default.Lock,
                         contentDescription =
-                            "Secure",
+                            t("forgot_secure"),
                         tint = primaryBlue,
                         modifier =
                             Modifier.size(14.dp)
@@ -627,7 +633,7 @@ fun ForgotPasswordScreen(
 
                 Text(
                     text =
-                        "Your account security is protected.",
+                        t("forgot_security"),
                     color = textGray,
                     fontSize = 10.sp
                 )

@@ -29,6 +29,9 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.runtime.getValue
+import com.example.ai_based_medical_chatbot.LocalAppLanguageController
+import com.example.ai_based_medical_chatbot.appText
 
 @Composable
 fun MedicineDetailScreen(
@@ -39,6 +42,12 @@ fun MedicineDetailScreen(
     val primary = Color(0xFF087EA4)
     val darkBlue = Color(0xFF123A56)
     val gray = Color(0xFF71818C)
+
+    val appLanguageController = LocalAppLanguageController.current
+    val selectedLanguage = appLanguageController.selectedLanguage
+
+    fun t(key: String): String = appText(key, selectedLanguage)
+
 
     val backgroundTop = Color(0xFFEAF8FC)
     val backgroundBottom = Color(0xFFD8F0F6)
@@ -113,7 +122,7 @@ fun MedicineDetailScreen(
                 ) {
 
                     Text(
-                        text = "Medicine Details",
+                        text = t("medicine_detail_title"),
                         color = darkBlue,
                         fontSize = 21.sp,
                         fontWeight = FontWeight.Bold
@@ -124,7 +133,7 @@ fun MedicineDetailScreen(
                     )
 
                     Text(
-                        text = "Complete medicine information",
+                        text = t("medicine_detail_subtitle"),
                         color = gray,
                         fontSize = 12.sp
                     )
@@ -158,7 +167,7 @@ fun MedicineDetailScreen(
                 ) {
 
                     Text(
-                        text = "MEDICINE NAME",
+                        text = t("medicine_detail_name"),
                         color =
                             Color.White.copy(
                                 alpha = 0.75f
@@ -184,10 +193,10 @@ fun MedicineDetailScreen(
             // GENERIC NAME
 
             MedicineTextSection(
-                title = "Generic Name",
+                title = t("medicine_detail_generic"),
                 content =
                     medicine.genericName.ifBlank {
-                        "Generic name information is not available in this record."
+                        t("medicine_detail_generic_unavailable")
                     },
                 primary = primary,
                 darkBlue = darkBlue,
@@ -197,7 +206,7 @@ fun MedicineDetailScreen(
             // USES
 
             MedicineListSection(
-                title = "Uses",
+                title = t("medicine_detail_uses"),
                 items = medicine.uses,
                 primary = primary,
                 darkBlue = darkBlue,
@@ -207,7 +216,7 @@ fun MedicineDetailScreen(
             // SIDE EFFECTS
 
             MedicineListSection(
-                title = "Side Effects",
+                title = t("medicine_detail_side_effects"),
                 items = medicine.commonSideEffects,
                 primary = primary,
                 darkBlue = darkBlue,
@@ -217,10 +226,10 @@ fun MedicineDetailScreen(
             // WARNINGS
 
             MedicineTextSection(
-                title = "Warnings",
+                title = t("medicine_detail_warnings"),
                 content =
                     medicine.warning.ifBlank {
-                        "Warning information is not available in this record."
+                        t("medicine_detail_warning_unavailable")
                     },
                 primary = primary,
                 darkBlue = darkBlue,
@@ -230,7 +239,7 @@ fun MedicineDetailScreen(
             // PRECAUTIONS
 
             MedicineListSection(
-                title = "Precautions",
+                title = t("medicine_detail_precautions"),
                 items = medicine.precautions,
                 primary = primary,
                 darkBlue = darkBlue,
@@ -257,7 +266,7 @@ fun MedicineDetailScreen(
 
                 Text(
                     text =
-                        "⚠ This medicine information is for educational purposes only. Do not start, stop, or change medication without appropriate professional advice.",
+                        t("medicine_detail_disclaimer"),
 
                     modifier =
                         Modifier.padding(16.dp),
