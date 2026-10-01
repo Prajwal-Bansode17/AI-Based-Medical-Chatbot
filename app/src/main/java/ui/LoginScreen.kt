@@ -332,11 +332,12 @@ private fun AIDoctorHero(
                 .align(Alignment.CenterStart)
                 .padding(
                     start = 20.dp,
-                    end = 150.dp
+                    end = 140.dp
                 )
         ) {
 
             Row(
+                modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically
             ) {
 
@@ -365,22 +366,29 @@ private fun AIDoctorHero(
 
                 Spacer(modifier = Modifier.width(9.dp))
 
-                Column {
+                Column(
+                    modifier = Modifier.width(118.dp)
+                ) {
 
+                    // Keep the complete brand name on one line.
                     Text(
-                        text = "MEDASSIST",
+                        text = "MEDASSIST AI",
                         color = Color.White,
-                        fontSize = 21.sp,
+                        fontSize = 16.sp,
                         fontWeight = FontWeight.ExtraBold,
-                        letterSpacing = 0.5.sp
+                        letterSpacing = 0.2.sp,
+                        maxLines = 1,
+                        softWrap = false
                     )
 
                     Text(
                         text = "AI HEALTH ASSISTANT",
                         color = Color(0xFFB9FFF5),
-                        fontSize = 8.sp,
+                        fontSize = 7.sp,
                         fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.sp
+                        letterSpacing = 0.8.sp,
+                        maxLines = 1,
+                        softWrap = false
                     )
                 }
             }
