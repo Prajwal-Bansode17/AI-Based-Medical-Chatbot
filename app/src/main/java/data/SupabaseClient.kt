@@ -502,6 +502,120 @@ object SupabaseClient {
             }
         }
 
+    /**
+     * Re-authenticate the user with the current password and then update
+     * the Supabase Auth password using the fresh access token.
+     */
+    suspend fun changePassword(
+        context: Context,
+        email: String,
+        currentPassword: String,
+        newPassword: String
+    ): Result<Unit> = withContext(Dispatchers.IO) {
+
+        val cleanEmail = email.trim()
+
+        if (cleanEmail.isBlank()) {
+            return@withContext Result.failure(
+                Exception("Email address is required.")
+            )
+        }
+
+        if (currentPassword.isBlank()) {
+            return@withContext Result.failure(
+                Exception("Please enter your current password.")
+            )
+        }
+
+        if (newPassword.length < 6) {
+            return@withContext Result.failure(
+                Exception("New password must contain at least 6 characters.")
+            )
+        }
+
+        if (currentPassword == newPassword) {
+            return@withContext Result.failure(
+                Exception("New password must be different from your current password.")
+            )
+        }
+
+        try {
+            val loginResult = loginUser(
+                email = cleanEmail,
+                password = currentPassword,
+                context = context
+            )
+
+            if (loginResult.isFailure) {
+                return@withContext Result.failure(
+                    loginResult.exceptionOrNull()
+                        ?: Exception("Current password is incorrect.")
+                )
+            }
+
+            val token =
+                getAccessToken(context)
+                    ?: return@withContext Result.failure(
+                        Exception("Your session has expired. Please login again.")
+                    )
+
+            val body =
+                JSONObject().apply {
+                    put("password", newPassword)
+                }
+
+            val request =
+                Request.Builder()
+                    .url("$SUPABASE_URL/auth/v1/user")
+                    .put(
+                        body
+                            .toString()
+                            .toRequestBody(jsonMediaType)
+                    )
+                    .header("apikey", SUPABASE_KEY)
+                    .header("Authorization", "Bearer $token")
+                    .header("Accept", "application/json")
+                    .build()
+
+            httpClient
+                .newCall(request)
+                .execute()
+                .use { response ->
+                    val responseText =
+                        response.body?.string().orEmpty()
+
+                    if (!response.isSuccessful) {
+                        return@withContext Result.failure(
+                            Exception(
+                                extractAuthError(
+                                    responseText,
+                                    true
+                                )
+                            )
+                        )
+                    }
+
+                    Result.success(Unit)
+                }
+
+        } catch (e: java.net.SocketTimeoutException) {
+            Result.failure(
+                Exception("Supabase request timed out. Please try again.")
+            )
+        } catch (e: IOException) {
+            Result.failure(
+                Exception("Unable to connect to Supabase. Please check your internet connection.")
+            )
+        } catch (e: Exception) {
+            Result.failure(
+                Exception(
+                    e.message?.takeIf { it.isNotBlank() }
+                        ?: "Unable to change password. Please try again."
+                )
+            )
+        }
+    }
+
     /*
      * Load the authenticated user's profile.
      */

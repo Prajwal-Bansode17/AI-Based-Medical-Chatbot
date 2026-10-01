@@ -1,6 +1,7 @@
 package ui
 
 import android.content.Intent
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -33,6 +34,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -44,7 +46,14 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.unit.sp
 
 import org.json.JSONArray
@@ -52,9 +61,11 @@ import org.json.JSONObject
 import com.example.ai_based_medical_chatbot.MedicineReminderRepository
 import com.example.ai_based_medical_chatbot.LocalAppLanguageController
 import com.example.ai_based_medical_chatbot.appText
+import com.example.ai_based_medical_chatbot.data.SupabaseClient
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
+import kotlinx.coroutines.launch
 
 @Composable
 fun ProfileScreen(
@@ -103,9 +114,39 @@ fun ProfileScreen(
         mutableStateOf(false)
     }
 
+    var showChangePasswordDialog by remember {
+        mutableStateOf(false)
+    }
+
+    var currentPassword by remember {
+        mutableStateOf("")
+    }
+
+    var newPassword by remember {
+        mutableStateOf("")
+    }
+
+    var confirmNewPassword by remember {
+        mutableStateOf("")
+    }
+
+    var changePasswordLoading by remember {
+        mutableStateOf(false)
+    }
+
+    var changePasswordError by remember {
+        mutableStateOf("")
+    }
+
+    // Keyboard focus moves automatically: Current -> New -> Confirm.
+    val currentPasswordFocusRequester = remember { FocusRequester() }
+    val newPasswordFocusRequester = remember { FocusRequester() }
+    val confirmPasswordFocusRequester = remember { FocusRequester() }
+
     // Android Context used by BMI, prescription, reminder,
     // and language preference storage.
     val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
 
     // =========================================================
     // APP LANGUAGE
@@ -113,6 +154,50 @@ fun ProfileScreen(
 
     val appLanguage = LocalAppLanguageController.current
     val selectedLanguage = appLanguage.selectedLanguage
+
+    val passwordText: (String) -> String = { key ->
+        when (selectedLanguage) {
+            "मराठी" -> when (key) {
+                "change_password" -> "पासवर्ड बदला"
+                "change_password_subtitle" -> "तुमचा खाते पासवर्ड सुरक्षितपणे बदला"
+                "current_password" -> "सध्याचा पासवर्ड"
+                "new_password" -> "नवीन पासवर्ड"
+                "confirm_password" -> "नवीन पासवर्ड पुन्हा टाका"
+                "password_minimum" -> "पासवर्ड किमान 6 अक्षरांचा असावा"
+                "password_mismatch" -> "नवीन पासवर्ड जुळत नाहीत"
+                "cancel" -> "रद्द करा"
+                "update_password" -> "पासवर्ड अपडेट करा"
+                "password_changed" -> "पासवर्ड यशस्वीरित्या बदलला."
+                else -> key
+            }
+            "हिंदी" -> when (key) {
+                "change_password" -> "पासवर्ड बदलें"
+                "change_password_subtitle" -> "अपना अकाउंट पासवर्ड सुरक्षित रूप से बदलें"
+                "current_password" -> "वर्तमान पासवर्ड"
+                "new_password" -> "नया पासवर्ड"
+                "confirm_password" -> "नया पासवर्ड फिर से दर्ज करें"
+                "password_minimum" -> "पासवर्ड कम से कम 6 अक्षरों का होना चाहिए"
+                "password_mismatch" -> "नए पासवर्ड मेल नहीं खाते"
+                "cancel" -> "रद्द करें"
+                "update_password" -> "पासवर्ड अपडेट करें"
+                "password_changed" -> "पासवर्ड सफलतापूर्वक बदल गया।"
+                else -> key
+            }
+            else -> when (key) {
+                "change_password" -> "Change Password"
+                "change_password_subtitle" -> "Securely change your account password"
+                "current_password" -> "Current Password"
+                "new_password" -> "New Password"
+                "confirm_password" -> "Confirm New Password"
+                "password_minimum" -> "Password must contain at least 6 characters"
+                "password_mismatch" -> "New passwords do not match"
+                "cancel" -> "Cancel"
+                "update_password" -> "Update Password"
+                "password_changed" -> "Password changed successfully."
+                else -> key
+            }
+        }
+    }
 
     var languageMenuExpanded by remember {
         mutableStateOf(false)
@@ -679,6 +764,31 @@ fun ProfileScreen(
                                     FontWeight.Bold
                             )
                         }
+                    }
+
+                    androidx.compose.material3.TextButton(
+                        onClick = {
+                            currentPassword = ""
+                            newPassword = ""
+                            confirmNewPassword = ""
+                            changePasswordError = ""
+                            showChangePasswordDialog = true
+                        },
+                        modifier =
+                            Modifier
+                                .fillMaxWidth()
+                                .padding(
+                                    start = 12.dp,
+                                    end = 12.dp,
+                                    bottom = 10.dp
+                                )
+                    ) {
+                        androidx.compose.material3.Text(
+                            text = passwordText("change_password"),
+                            color = primaryBlue,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold
+                        )
                     }
                 }
             }
@@ -1905,6 +2015,366 @@ fun ProfileScreen(
                         }
                     }
                 )
+            }
+
+            // =================================================
+            // CHANGE PASSWORD — COMPACT MEDASSIST THEMED DIALOG
+            // =================================================
+
+            if (showChangePasswordDialog) {
+                androidx.compose.ui.window.Dialog(
+                    onDismissRequest = {
+                        if (!changePasswordLoading) {
+                            showChangePasswordDialog = false
+                            changePasswordError = ""
+                        }
+                    }
+                ) {
+                    androidx.compose.material3.Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp),
+                        shape = RoundedCornerShape(22.dp),
+                        colors = androidx.compose.material3.CardDefaults.cardColors(
+                            containerColor = surface
+                        ),
+                        elevation = androidx.compose.material3.CardDefaults.cardElevation(
+                            defaultElevation = 8.dp
+                        )
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 18.dp, vertical = 16.dp)
+                        ) {
+
+                            // Compact header
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(42.dp)
+                                        .background(
+                                            surfaceVariant,
+                                            RoundedCornerShape(12.dp)
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    androidx.compose.material3.Icon(
+                                        imageVector = Icons.Default.Lock,
+                                        contentDescription = passwordText("change_password"),
+                                        tint = primaryBlue,
+                                        modifier = Modifier.size(21.dp)
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.width(10.dp))
+
+                                Column(modifier = Modifier.weight(1f)) {
+                                    androidx.compose.material3.Text(
+                                        text = passwordText("change_password"),
+                                        color = textPrimary,
+                                        fontSize = 18.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    androidx.compose.material3.Text(
+                                        text = passwordText("change_password_subtitle"),
+                                        color = textSecondary,
+                                        fontSize = 10.sp,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            androidx.compose.material3.Text(
+                                text = displayEmail,
+                                color = primaryBlue,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(
+                                        surfaceVariant,
+                                        RoundedCornerShape(10.dp)
+                                    )
+                                    .padding(horizontal = 11.dp, vertical = 7.dp)
+                            )
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            androidx.compose.material3.OutlinedTextField(
+                                value = currentPassword,
+                                onValueChange = {
+                                    currentPassword = it
+                                    changePasswordError = ""
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(54.dp)
+                                    .focusRequester(currentPasswordFocusRequester),
+                                label = {
+                                    androidx.compose.material3.Text(
+                                        passwordText("current_password"),
+                                        fontSize = 12.sp
+                                    )
+                                },
+                                leadingIcon = {
+                                    androidx.compose.material3.Icon(
+                                        imageVector = Icons.Default.Lock,
+                                        contentDescription = null,
+                                        tint = primaryBlue,
+                                        modifier = Modifier.size(19.dp)
+                                    )
+                                },
+                                singleLine = true,
+                                enabled = !changePasswordLoading,
+                                visualTransformation = PasswordVisualTransformation(),
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Password,
+                                    imeAction = ImeAction.Next
+                                ),
+                                keyboardActions = KeyboardActions(
+                                    onNext = {
+                                        newPasswordFocusRequester.requestFocus()
+                                    }
+                                ),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = primaryBlue,
+                                    unfocusedBorderColor = Color(0xFFB9CBD5),
+                                    focusedLabelColor = primaryBlue,
+                                    unfocusedLabelColor = textSecondary,
+                                    cursorColor = primaryBlue,
+                                    focusedContainerColor = Color.White,
+                                    unfocusedContainerColor = Color.White
+                                )
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            androidx.compose.material3.OutlinedTextField(
+                                value = newPassword,
+                                onValueChange = {
+                                    newPassword = it
+                                    changePasswordError = ""
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(54.dp)
+                                    .focusRequester(newPasswordFocusRequester),
+                                label = {
+                                    androidx.compose.material3.Text(
+                                        passwordText("new_password"),
+                                        fontSize = 12.sp
+                                    )
+                                },
+                                leadingIcon = {
+                                    androidx.compose.material3.Icon(
+                                        imageVector = Icons.Default.Lock,
+                                        contentDescription = null,
+                                        tint = primaryBlue,
+                                        modifier = Modifier.size(19.dp)
+                                    )
+                                },
+                                singleLine = true,
+                                enabled = !changePasswordLoading,
+                                visualTransformation = PasswordVisualTransformation(),
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Password,
+                                    imeAction = ImeAction.Next
+                                ),
+                                keyboardActions = KeyboardActions(
+                                    onNext = {
+                                        confirmPasswordFocusRequester.requestFocus()
+                                    }
+                                ),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = primaryBlue,
+                                    unfocusedBorderColor = Color(0xFFB9CBD5),
+                                    focusedLabelColor = primaryBlue,
+                                    unfocusedLabelColor = textSecondary,
+                                    cursorColor = primaryBlue,
+                                    focusedContainerColor = Color.White,
+                                    unfocusedContainerColor = Color.White
+                                )
+                            )
+
+                            androidx.compose.material3.Text(
+                                text = passwordText("password_minimum"),
+                                color = textSecondary,
+                                fontSize = 9.sp,
+                                modifier = Modifier.padding(start = 4.dp, top = 3.dp)
+                            )
+
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            androidx.compose.material3.OutlinedTextField(
+                                value = confirmNewPassword,
+                                onValueChange = {
+                                    confirmNewPassword = it
+                                    changePasswordError = ""
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(54.dp)
+                                    .focusRequester(confirmPasswordFocusRequester),
+                                label = {
+                                    androidx.compose.material3.Text(
+                                        passwordText("confirm_password"),
+                                        fontSize = 12.sp
+                                    )
+                                },
+                                leadingIcon = {
+                                    androidx.compose.material3.Icon(
+                                        imageVector = Icons.Default.Lock,
+                                        contentDescription = null,
+                                        tint = primaryBlue,
+                                        modifier = Modifier.size(19.dp)
+                                    )
+                                },
+                                singleLine = true,
+                                enabled = !changePasswordLoading,
+                                visualTransformation = PasswordVisualTransformation(),
+                                keyboardOptions = KeyboardOptions(
+                                    keyboardType = KeyboardType.Password,
+                                    imeAction = ImeAction.Done
+                                ),
+                                keyboardActions = KeyboardActions(
+                                    onDone = {
+                                        if (!changePasswordLoading) {
+                                            when {
+                                                currentPassword.isBlank() -> changePasswordError = passwordText("current_password")
+                                                newPassword.length < 6 -> changePasswordError = passwordText("password_minimum")
+                                                newPassword != confirmNewPassword -> changePasswordError = passwordText("password_mismatch")
+                                            }
+                                        }
+                                    }
+                                ),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                                    focusedBorderColor = primaryBlue,
+                                    unfocusedBorderColor = Color(0xFFB9CBD5),
+                                    focusedLabelColor = primaryBlue,
+                                    unfocusedLabelColor = textSecondary,
+                                    cursorColor = primaryBlue,
+                                    focusedContainerColor = Color.White,
+                                    unfocusedContainerColor = Color.White
+                                )
+                            )
+
+                            if (changePasswordError.isNotBlank()) {
+                                Spacer(modifier = Modifier.height(6.dp))
+                                androidx.compose.material3.Text(
+                                    text = changePasswordError,
+                                    color = logoutText,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(10.dp))
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                androidx.compose.material3.TextButton(
+                                    onClick = {
+                                        if (!changePasswordLoading) {
+                                            showChangePasswordDialog = false
+                                            changePasswordError = ""
+                                        }
+                                    },
+                                    enabled = !changePasswordLoading
+                                ) {
+                                    androidx.compose.material3.Text(
+                                        text = passwordText("cancel"),
+                                        color = textSecondary,
+                                        fontSize = 13.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+
+                                Spacer(modifier = Modifier.weight(1f))
+
+                                androidx.compose.material3.Button(
+                                    onClick = {
+                                        when {
+                                            currentPassword.isBlank() -> changePasswordError = passwordText("current_password")
+                                            newPassword.length < 6 -> changePasswordError = passwordText("password_minimum")
+                                            newPassword != confirmNewPassword -> changePasswordError = passwordText("password_mismatch")
+                                            else -> {
+                                                changePasswordLoading = true
+                                                changePasswordError = ""
+
+                                                scope.launch {
+                                                    val result = SupabaseClient.changePassword(
+                                                        context = context,
+                                                        email = displayEmail,
+                                                        currentPassword = currentPassword,
+                                                        newPassword = newPassword
+                                                    )
+
+                                                    changePasswordLoading = false
+
+                                                    result.onSuccess {
+                                                        currentPassword = ""
+                                                        newPassword = ""
+                                                        confirmNewPassword = ""
+                                                        changePasswordError = ""
+                                                        showChangePasswordDialog = false
+
+                                                        Toast.makeText(
+                                                            context,
+                                                            passwordText("password_changed"),
+                                                            Toast.LENGTH_SHORT
+                                                        ).show()
+                                                    }
+
+                                                    result.onFailure { error ->
+                                                        changePasswordError = error.message
+                                                            ?: "Unable to change password. Please try again."
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    },
+                                    enabled = !changePasswordLoading,
+                                    shape = RoundedCornerShape(11.dp),
+                                    colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+                                        containerColor = primaryBlue,
+                                        contentColor = Color.White
+                                    ),
+                                    modifier = Modifier.height(44.dp)
+                                ) {
+                                    if (changePasswordLoading) {
+                                        androidx.compose.material3.CircularProgressIndicator(
+                                            modifier = Modifier.size(17.dp),
+                                            color = Color.White,
+                                            strokeWidth = 2.dp
+                                        )
+                                    } else {
+                                        androidx.compose.material3.Text(
+                                            text = passwordText("update_password"),
+                                            fontSize = 12.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             // =================================================
