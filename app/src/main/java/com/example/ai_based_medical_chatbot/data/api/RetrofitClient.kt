@@ -1,5 +1,6 @@
 package com.example.ai_based_medical_chatbot.data.api
 
+import com.example.ai_based_medical_chatbot.BuildConfig
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Response
@@ -59,24 +60,16 @@ object RetrofitClient {
     // FLASK BACKEND CONFIGURATION
     // =========================================================
     //
-    // CHANGE ONLY THIS IP WHEN YOU RUN FLASK
+    // Set your Flask server address in local.properties:
     //
-    // Hariom:
-    // 192.168.x.x
+    //   MEDASSIST_API_URL=http://<YOUR_IP>:5000/
     //
-    // Omkar:
-    // 192.168.x.x
-    //
-    // Prajwal:
-    // 192.168.x.x
-    //
-    // Port remains 5000.
-    // Phone and laptop must be on the same Wi-Fi.
+    // Replace <YOUR_IP> with the LAN IP of the machine
+    // running Flask.  Phone and laptop must be on the same Wi-Fi.
+    // Do NOT commit local.properties — it is in .gitignore.
     // =========================================================
 
-    private const val FLASK_IP = "192.168.1.7"
-    private const val FLASK_PORT = 5000
-    private const val BASE_URL = "http://192.168.1.7:5000/"
+    private val BASE_URL = BuildConfig.MEDASSIST_API_URL
 
     // =========================================================
     // HTTP CLIENT

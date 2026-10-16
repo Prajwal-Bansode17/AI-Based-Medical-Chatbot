@@ -961,20 +961,31 @@ fun ChatbotScreen(
         }
     }
 
+    fun createSpeechIntent(): Intent {
+        val speechLocaleTag = when (selectedLanguage) {
+            "मराठी" -> "mr-IN"
+            "हिंदी" -> "hi-IN"
+            else -> "en-IN"
+        }
+        return Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, speechLocaleTag)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, speechLocaleTag)
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
+            // Let supported Google speech services switch languages automatically.
+            putExtra("android.speech.extra.ENABLE_LANGUAGE_DETECTION", true)
+            putExtra("android.speech.extra.LANGUAGE_SWITCH_ALLOWED", true)
+            putExtra("android.speech.extra.LANGUAGE_SWITCH_INITIAL_ACTIVE_DURATION", 15)
+        }
+    }
+
     val speechPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (granted) {
             try {
-                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                    putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-                    putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
-                    // Let supported Google speech services switch languages automatically.
-                    putExtra("android.speech.extra.ENABLE_LANGUAGE_DETECTION", true)
-                    putExtra("android.speech.extra.LANGUAGE_SWITCH_ALLOWED", true)
-                    putExtra("android.speech.extra.LANGUAGE_SWITCH_INITIAL_ACTIVE_DURATION", 15)
-                }
+                val intent = createSpeechIntent()
                 speechRecognizer?.startListening(intent)
                 isListening = speechRecognizer != null
             } catch (e: Exception) {
@@ -1480,14 +1491,7 @@ fun ChatbotScreen(
 
                                             if (permissionGranted) {
                                                 try {
-                                                    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                                                        putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                                                        putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-                                                        putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
-                                                        putExtra("android.speech.extra.ENABLE_LANGUAGE_DETECTION", true)
-                                                        putExtra("android.speech.extra.LANGUAGE_SWITCH_ALLOWED", true)
-                                                        putExtra("android.speech.extra.LANGUAGE_SWITCH_INITIAL_ACTIVE_DURATION", 15)
-                                                    }
+                                                    val intent = createSpeechIntent()
                                                     speechRecognizer.startListening(intent)
                                                     isListening = true
                                                 } catch (e: Exception) {
