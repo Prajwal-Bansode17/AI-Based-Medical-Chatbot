@@ -19,6 +19,7 @@ import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.util.Log
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -77,6 +78,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
 
 import androidx.compose.material3.AlertDialog
@@ -281,15 +283,75 @@ data class SavedChat(
 
 object ChatHistoryRepository {
     private const val PREFS = "medassist_chat_history"
-    private const val KEY_CHATS = "saved_chats"
+    private const val LEGACY_KEY_CHATS = "saved_chats"
+    private const val LEGACY_KEY_ACTIVE = "active_session_id"
+
+    private const val KEY_CHATS_PREFIX = "saved_chats_"
+    private const val KEY_ACTIVE_PREFIX = "active_session_id_"
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    fun getChats(context: Context): List<SavedChat> {
+    fun getAccountKey(context: Context, accountOverride: String? = null): String {
+        if (!accountOverride.isNullOrBlank()) {
+            return "account_${accountOverride.trim()}"
+        }
+        val user = com.example.ai_based_medical_chatbot.data.SupabaseClient.getSavedUser(context)
+        return if (user != null && user.id.isNotBlank()) {
+            "account_${user.id.trim()}"
+        } else {
+            "account_guest"
+        }
+    }
+
+    private fun chatsKey(context: Context, accountOverride: String? = null): String =
+        KEY_CHATS_PREFIX + getAccountKey(context, accountOverride)
+
+    private fun activeSessionKey(context: Context, accountOverride: String? = null): String =
+        KEY_ACTIVE_PREFIX + getAccountKey(context, accountOverride)
+
+    private fun migrateLegacyIfNeeded(context: Context, accountOverride: String? = null) {
+        val sp = prefs(context)
+        val legacyChats = sp.getString(LEGACY_KEY_CHATS, null)
+        val targetKey = chatsKey(context, accountOverride)
+        if (!legacyChats.isNullOrBlank() && !sp.contains(targetKey)) {
+            val legacyActive = sp.getString(LEGACY_KEY_ACTIVE, null)
+            val editor = sp.edit()
+            editor.putString(targetKey, legacyChats)
+            if (!legacyActive.isNullOrBlank()) {
+                editor.putString(activeSessionKey(context, accountOverride), legacyActive)
+            }
+            editor.remove(LEGACY_KEY_CHATS)
+            editor.remove(LEGACY_KEY_ACTIVE)
+            editor.apply()
+        }
+    }
+
+    fun getActiveSessionId(context: Context, accountOverride: String? = null): String? {
+        migrateLegacyIfNeeded(context, accountOverride)
+        return prefs(context).getString(activeSessionKey(context, accountOverride), null)
+    }
+
+    fun setActiveSessionId(context: Context, sessionId: String?, accountOverride: String? = null) {
+        val editor = prefs(context).edit()
+        val key = activeSessionKey(context, accountOverride)
+        if (sessionId.isNullOrBlank()) {
+            editor.remove(key)
+        } else {
+            editor.putString(key, sessionId.trim())
+        }
+        editor.apply()
+    }
+
+    fun clearActiveSession(context: Context, accountOverride: String? = null) {
+        prefs(context).edit().remove(activeSessionKey(context, accountOverride)).apply()
+    }
+
+    fun getChats(context: Context, accountOverride: String? = null): List<SavedChat> {
+        migrateLegacyIfNeeded(context, accountOverride)
         return try {
             val array = JSONArray(
-                prefs(context).getString(KEY_CHATS, "[]") ?: "[]"
+                prefs(context).getString(chatsKey(context, accountOverride), "[]") ?: "[]"
             )
             val result = mutableListOf<SavedChat>()
 
@@ -343,11 +405,11 @@ object ChatHistoryRepository {
         }
     }
 
-    fun saveChat(context: Context, sessionId: String, messages: List<ChatMessage>) {
+    fun saveChat(context: Context, sessionId: String, messages: List<ChatMessage>, accountOverride: String? = null) {
         if (messages.isEmpty()) return
 
-        val existing = getChats(context).firstOrNull { it.id == sessionId }
-        val all = getChats(context)
+        val existing = getChats(context, accountOverride).firstOrNull { it.id == sessionId }
+        val all = getChats(context, accountOverride)
             .filter { it.id != sessionId }
             .toMutableList()
 
@@ -375,14 +437,14 @@ object ChatHistoryRepository {
             )
         )
 
-        writeChats(context, all)
+        writeChats(context, all, accountOverride)
     }
 
-    fun renameChat(context: Context, sessionId: String, newTitle: String) {
+    fun renameChat(context: Context, sessionId: String, newTitle: String, accountOverride: String? = null) {
         val cleanTitle = newTitle.trim()
         if (cleanTitle.isBlank()) return
 
-        val updated = getChats(context).map { chat ->
+        val updated = getChats(context, accountOverride).map { chat ->
             if (chat.id == sessionId) {
                 chat.copy(
                     title = cleanTitle.take(60),
@@ -392,22 +454,26 @@ object ChatHistoryRepository {
                 chat
             }
         }
-        writeChats(context, updated)
+        writeChats(context, updated, accountOverride)
     }
 
-    fun setPinned(context: Context, sessionId: String, pinned: Boolean) {
-        val updated = getChats(context).map { chat ->
+    fun setPinned(context: Context, sessionId: String, pinned: Boolean, accountOverride: String? = null) {
+        val updated = getChats(context, accountOverride).map { chat ->
             if (chat.id == sessionId) chat.copy(pinned = pinned) else chat
         }
-        writeChats(context, updated)
+        writeChats(context, updated, accountOverride)
     }
 
-    fun deleteChat(context: Context, sessionId: String) {
-        val updated = getChats(context).filter { it.id != sessionId }
-        writeChats(context, updated)
+    fun deleteChat(context: Context, sessionId: String, accountOverride: String? = null) {
+        val updated = getChats(context, accountOverride).filter { it.id != sessionId }
+        writeChats(context, updated, accountOverride)
+        if (getActiveSessionId(context, accountOverride) == sessionId) {
+            val nextActive = updated.firstOrNull()?.id
+            setActiveSessionId(context, nextActive, accountOverride)
+        }
     }
 
-    private fun writeChats(context: Context, chats: List<SavedChat>) {
+    private fun writeChats(context: Context, chats: List<SavedChat>, accountOverride: String? = null) {
         val array = JSONArray()
 
         chats
@@ -447,7 +513,7 @@ object ChatHistoryRepository {
             }
 
         prefs(context).edit()
-            .putString(KEY_CHATS, array.toString())
+            .putString(chatsKey(context, accountOverride), array.toString())
             .apply()
     }
 }
@@ -484,14 +550,26 @@ fun ChatbotScreen(
     // SESSION
     // =========================================================
 
-    var currentSessionId by remember {
-        mutableStateOf(
-            if (!initialSessionId.isNullOrBlank()) {
-                initialSessionId.trim()
+    val initialResolvedSessionId = remember(initialSessionId) {
+        if (!initialSessionId.isNullOrBlank()) {
+            initialSessionId.trim()
+        } else {
+            val lastActive = ChatHistoryRepository.getActiveSessionId(context)
+            val existingChats = ChatHistoryRepository.getChats(context)
+            if (!lastActive.isNullOrBlank() && existingChats.any { it.id == lastActive }) {
+                lastActive
+            } else if (existingChats.isNotEmpty()) {
+                existingChats.first().id
             } else {
-                "android_" + System.currentTimeMillis()
+                val fresh = "android_" + System.currentTimeMillis()
+                ChatHistoryRepository.setActiveSessionId(context, fresh)
+                fresh
             }
-        )
+        }
+    }
+
+    var currentSessionId by remember {
+        mutableStateOf(initialResolvedSessionId)
     }
 
 
@@ -645,7 +723,44 @@ fun ChatbotScreen(
     val chatScrollState =
         rememberScrollState()
 
-    LaunchedEffect(Unit) {
+    fun startNewChat() {
+        if (messages.isNotEmpty()) {
+            ChatHistoryRepository.saveChat(context, currentSessionId, messages)
+        }
+        val newId = "android_" + System.currentTimeMillis()
+        currentSessionId = newId
+        ChatHistoryRepository.setActiveSessionId(context, newId)
+        messages.clear()
+        message = ""
+        isTyping = false
+        selectedImages.clear()
+        attachmentLabel = ""
+        pendingImageUris = emptyList()
+        editingMessageIndex = null
+        savedChats = ChatHistoryRepository.getChats(context)
+        showChatSidebar = false
+    }
+
+    fun handleBack() {
+        if (showChatSidebar) {
+            showChatSidebar = false
+        } else if (showAttachmentMenu) {
+            showAttachmentMenu = false
+        } else {
+            if (messages.isNotEmpty()) {
+                ChatHistoryRepository.saveChat(context, currentSessionId, messages)
+                ChatHistoryRepository.setActiveSessionId(context, currentSessionId)
+            }
+            onBack()
+        }
+    }
+
+    BackHandler(enabled = true) {
+        handleBack()
+    }
+
+    LaunchedEffect(currentSessionId) {
+        ChatHistoryRepository.setActiveSessionId(context, currentSessionId)
         val existing = ChatHistoryRepository.getChats(context)
             .firstOrNull { it.id == currentSessionId }
 
@@ -889,19 +1004,12 @@ fun ChatbotScreen(
                     // API ERROR
                     // =============================================
 
+                    val code = response.code()
                     messages.add(
-
                         ChatMessage(
-
-                            text =
-                                "Sorry, I’m having trouble connecting to the medical AI service. " +
-                                        "Please check your internet connection and try again.",
-
-                            isUser =
-                                false,
-
-                            isError =
-                                true
+                            text = "Server returned error (HTTP $code). Please verify the backend logs and tap Retry.",
+                            isUser = false,
+                            isError = true
                         )
                     )
 
@@ -919,20 +1027,22 @@ fun ChatbotScreen(
                     e
                 )
 
+                val errText = when (e) {
+                    is java.net.SocketTimeoutException ->
+                        "The connection to MedAssist AI timed out. The medical model may still be generating or the server is busy. Tap Retry to try again."
+                    is java.net.ConnectException ->
+                        "Unable to connect to the MedAssist server at ${RetrofitClient.getBaseUrl(context)}.\n\nPlease verify that Flask is running and that your phone and computer are on the same Wi-Fi network."
+                    is java.net.UnknownHostException ->
+                        "Cannot resolve the MedAssist server address (${RetrofitClient.getBaseUrl(context)}).\n\nPlease check your network connection and server configuration."
+                    else ->
+                        "Unable to connect to MedAssist AI (${e.localizedMessage ?: "Network error"}).\n\nPlease check your server connection and try again."
+                }
 
                 messages.add(
-
                     ChatMessage(
-
-                        text =
-                            "Unable to connect to MedAssist AI right now.\n\n" +
-                                    "Please make sure the server is running and try again.",
-
-                        isUser =
-                            false,
-
-                        isError =
-                            true
+                        text = errText,
+                        isUser = false,
+                        isError = true
                     )
                 )
 
@@ -941,6 +1051,116 @@ fun ChatbotScreen(
 
             } finally {
 
+                isTyping = false
+            }
+        }
+    }
+
+    // =========================================================
+    // RETRY FAILED MESSAGE
+    // =========================================================
+
+    fun retryMessage(failedIndex: Int? = null) {
+        if (isTyping) return
+
+        val errorIdx = failedIndex ?: messages.indexOfLast { !it.isUser && it.isError }
+        if (errorIdx in messages.indices) {
+            messages.removeAt(errorIdx)
+        }
+
+        val lastUserMessage = messages.lastOrNull { it.isUser } ?: return
+
+        isTyping = true
+        scope.launch {
+            try {
+                val prescriptionMemory = PrescriptionMemory.build(context)
+                val chatbotText = if (prescriptionMemory.isBlank()) {
+                    lastUserMessage.text
+                } else {
+                    """
+                    USER'S SAVED PRESCRIPTION MEMORY:
+
+                    $prescriptionMemory
+
+                    IMPORTANT: Use the saved prescription only as
+                    the user's personal medical context. Do not
+                    invent or change medicine name, strength,
+                    dosage, frequency, duration, diagnosis,
+                    doctor name, patient name, or instructions.
+                    If information is missing, say that it is
+                    not available in the saved prescription.
+
+                    USER QUESTION:
+                    ${lastUserMessage.text}
+                    """.trimIndent()
+                }
+
+                val response = withContext(Dispatchers.IO) {
+                    RetrofitClient.apiService.predict(
+                        PredictionRequest(
+                            sessionId = currentSessionId,
+                            text = chatbotText
+                        )
+                    )
+                }
+
+                if (response.isSuccessful && response.body() != null) {
+                    val result = response.body()!!
+                    val answer = result.answer?.trim().orEmpty()
+                    val finalAnswer = if (answer.isNotEmpty()) {
+                        fixMeasurementFormatting(
+                            answer = answer,
+                            measurements = result.measurements
+                        )
+                    } else {
+                        "I’m sorry, I could not generate a response right now."
+                    }
+
+                    messages.add(
+                        ChatMessage(
+                            text = finalAnswer,
+                            isUser = false,
+                            intent = result.intent,
+                            confidence = result.confidence,
+                            similarity = result.answerSimilarity
+                        )
+                    )
+                    ChatHistoryRepository.saveChat(context, currentSessionId, messages)
+                    savedChats = ChatHistoryRepository.getChats(context)
+                } else {
+                    val code = response.code()
+                    messages.add(
+                        ChatMessage(
+                            text = "Server returned error (HTTP $code). Tap Retry to try again.",
+                            isUser = false,
+                            isError = true
+                        )
+                    )
+                    ChatHistoryRepository.saveChat(context, currentSessionId, messages)
+                    savedChats = ChatHistoryRepository.getChats(context)
+                }
+            } catch (e: Exception) {
+                Log.e("MEDASSIST_API", "RETRY ERROR", e)
+                val errText = when (e) {
+                    is java.net.SocketTimeoutException ->
+                        "The connection to MedAssist AI timed out. Tap Retry to try again."
+                    is java.net.ConnectException ->
+                        "Unable to connect to the MedAssist server at ${RetrofitClient.getBaseUrl(context)}. Please check that Flask is running."
+                    is java.net.UnknownHostException ->
+                        "Cannot resolve the server address (${RetrofitClient.getBaseUrl(context)}). Please check your connection."
+                    else ->
+                        "Unable to connect to MedAssist AI (${e.localizedMessage ?: "Network error"}). Tap Retry to try again."
+                }
+                messages.add(
+                    ChatMessage(
+                        text = errText,
+                        isUser = false,
+                        isError = true
+                    )
+                )
+                ChatHistoryRepository.saveChat(context, currentSessionId, messages)
+                savedChats = ChatHistoryRepository.getChats(context)
+            } finally {
                 isTyping = false
             }
         }
@@ -1101,7 +1321,7 @@ fun ChatbotScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(
-                        onClick = onBack,
+                        onClick = { handleBack() },
                         modifier = Modifier.size(44.dp)
                     ) {
                         Icon(
@@ -1136,6 +1356,23 @@ fun ChatbotScreen(
                             fontSize = 12.sp
                         )
                     }
+
+                    IconButton(
+                        onClick = { startNewChat() },
+                        modifier = Modifier.size(44.dp),
+                        colors = IconButtonDefaults.iconButtonColors(
+                            containerColor = Color.White.copy(alpha = 0.14f),
+                            contentColor = Color.White
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Add,
+                            contentDescription = "New chat",
+                            tint = Color.White
+                        )
+                    }
+
+                    Spacer(Modifier.width(6.dp))
 
                     IconButton(
                         onClick = {
@@ -1209,7 +1446,10 @@ fun ChatbotScreen(
                                 } else null,
                                 onImageClick = { path ->
                                     viewerImagePath = path
-                                }
+                                },
+                                onRetry = if (!chatMessage.isUser && chatMessage.isError) {
+                                    { retryMessage(index) }
+                                } else null
                             )
                         }
 
@@ -1877,24 +2117,14 @@ fun ChatbotScreen(
                 currentSessionId = currentSessionId,
                 onClose = { showChatSidebar = false },
                 onNewChat = {
-                    ChatHistoryRepository.saveChat(
-                        context,
-                        currentSessionId,
-                        messages
-                    )
-
-                    currentSessionId =
-                        "android_" + System.currentTimeMillis()
-
-                    messages.clear()
-                    message = ""
-                    isTyping = false
-                    savedChats =
-                        ChatHistoryRepository.getChats(context)
-                    showChatSidebar = false
+                    startNewChat()
                 },
                 onSelectChat = { chat ->
+                    if (messages.isNotEmpty()) {
+                        ChatHistoryRepository.saveChat(context, currentSessionId, messages)
+                    }
                     currentSessionId = chat.id
+                    ChatHistoryRepository.setActiveSessionId(context, chat.id)
                     messages.clear()
                     messages.addAll(chat.messages)
                     message = ""
@@ -2107,6 +2337,10 @@ fun ChatbotScreen(
                                 context,
                                 currentSessionId
                             )
+
+                            val newId = "android_" + System.currentTimeMillis()
+                            currentSessionId = newId
+                            ChatHistoryRepository.setActiveSessionId(context, newId)
 
                             messages.clear()
                             message = ""
@@ -3105,7 +3339,8 @@ private fun RobotAvatar(
 fun MessageBubble(
     message: ChatMessage,
     onEdit: (() -> Unit)? = null,
-    onImageClick: ((String) -> Unit)? = null
+    onImageClick: ((String) -> Unit)? = null,
+    onRetry: (() -> Unit)? = null
 ) {
     var showMessage by remember { mutableStateOf(false) }
 
@@ -3267,6 +3502,32 @@ fun MessageBubble(
                                 text = message.text,
                                 isUser = message.isUser && !hasImages
                             )
+                        }
+
+                        if (message.isError && onRetry != null) {
+                            Spacer(Modifier.height(8.dp))
+                            Row(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(Color(0xFFD32F2F))
+                                    .clickable { onRetry() }
+                                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Refresh,
+                                    contentDescription = "Retry",
+                                    tint = Color.White,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Spacer(Modifier.width(5.dp))
+                                Text(
+                                    text = "Retry",
+                                    color = Color.White,
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
                         }
                     }
                 }

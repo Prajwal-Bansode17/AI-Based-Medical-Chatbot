@@ -18,10 +18,13 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.FragmentActivity
 import com.example.ai_based_medical_chatbot.data.SupabaseClient
+import com.example.ai_based_medical_chatbot.data.api.RetrofitClient
 import com.example.ai_based_medical_chatbot.ui.theme.AIBasedMedicalChatbotTheme
 import kotlinx.coroutines.launch
 import ui.BMICheckerScreen
 import ui.ChatbotScreen
+import ui.ChatHistoryRepository
+import ui.ChatHistoryScreen
 import ui.DashboardScreen
 import ui.ForgotPasswordScreen
 import ui.HealthTipsScreen
@@ -107,6 +110,8 @@ class MainActivity : FragmentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        RetrofitClient.initialize(applicationContext)
 
         setContent {
             AIBasedMedicalChatbotTheme {
@@ -488,6 +493,8 @@ private fun MedicalChatbotNavigation() {
 
                 onLogoutClick = {
 
+                    val currentUserId = SupabaseClient.getSavedUser(context)?.id
+                    ChatHistoryRepository.clearActiveSession(context, currentUserId)
                     SupabaseClient.clearSession(context)
 
                     setBiometricEnabled(
@@ -510,6 +517,14 @@ private fun MedicalChatbotNavigation() {
         "chatbot" -> {
             ChatbotScreen(
                 onBack = {
+                    back()
+                }
+            )
+        }
+
+        "chatHistory" -> {
+            ChatHistoryScreen(
+                onBackClick = {
                     back()
                 }
             )
