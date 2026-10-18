@@ -1,7 +1,8 @@
 package ui
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,22 +18,34 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ai_based_medical_chatbot.LocalAppLanguageController
 import com.example.ai_based_medical_chatbot.appText
+import com.example.ai_based_medical_chatbot.ui.theme.DarkTeal
+import com.example.ai_based_medical_chatbot.ui.theme.DeepTeal
+import com.example.ai_based_medical_chatbot.ui.theme.Ivory
+import com.example.ai_based_medical_chatbot.ui.theme.Mint
+import com.example.ai_based_medical_chatbot.ui.theme.PureWhite
+import com.example.ai_based_medical_chatbot.ui.theme.SoftMint
+import com.example.ai_based_medical_chatbot.ui.theme.TextDark
+import com.example.ai_based_medical_chatbot.ui.theme.TextMuted
 
 data class HealthTip(
     val title: String,
@@ -162,17 +175,12 @@ private val healthTips = listOf(
     )
 )
 
+
+
 @Composable
 fun HealthTipsScreen(
     onBackClick: () -> Unit
 ) {
-
-    val primaryBlue = Color(0xFF087EA4)
-    val darkBlue = Color(0xFF123A56)
-    val teal = Color(0xFF18A6A6)
-    val backgroundTop = Color(0xFFEAF8FC)
-    val backgroundBottom = Color(0xFFD8F0F6)
-    val gray = Color(0xFF71818C)
 
     val appLanguageController = LocalAppLanguageController.current
     val selectedLanguage = appLanguageController.selectedLanguage
@@ -184,24 +192,23 @@ fun HealthTipsScreen(
         )
     }
 
-
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        backgroundTop,
-                        backgroundBottom
+                        Ivory,
+                        SoftMint
                     )
                 )
             )
-            .statusBarsPadding()
     ) {
 
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
+                .statusBarsPadding()
                 .navigationBarsPadding(),
 
             contentPadding = PaddingValues(
@@ -222,25 +229,24 @@ fun HealthTipsScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
 
-                    Box(
+                    IconButton(
+                        onClick = onBackClick,
                         modifier = Modifier
-                            .size(45.dp)
-                            .background(
-                                Color.White,
-                                CircleShape
-                            )
-                            .clickable {
-                                onBackClick()
-                            },
-
-                        contentAlignment = Alignment.Center
+                            .size(44.dp)
+                            .background(PureWhite, RoundedCornerShape(12.dp))
+                            .border(BorderStroke(1.dp, Mint), RoundedCornerShape(12.dp)),
+                        colors = IconButtonDefaults.iconButtonColors(
+                            containerColor = PureWhite,
+                            contentColor = DarkTeal
+                        )
                     ) {
 
-                        Text(
-                            text = "‹",
-                            color = darkBlue,
-                            fontSize = 36.sp,
-                            fontWeight = FontWeight.Light
+                        Icon(
+                            imageVector =
+                                Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = DarkTeal,
+                            modifier = Modifier.size(24.dp)
                         )
                     }
 
@@ -248,22 +254,24 @@ fun HealthTipsScreen(
                         modifier = Modifier.width(12.dp)
                     )
 
-                    Column {
+                    Column(
+                        modifier = Modifier.weight(1f)
+                    ) {
 
                         Text(
                             text = appText("health_tips_title", selectedLanguage),
-                            color = darkBlue,
+                            color = DarkTeal,
                             fontSize = 22.sp,
                             fontWeight = FontWeight.Bold
                         )
 
                         Spacer(
-                            modifier = Modifier.height(3.dp)
+                            modifier = Modifier.height(2.dp)
                         )
 
                         Text(
                             text = appText("health_tips_subtitle", selectedLanguage),
-                            color = gray,
+                            color = TextMuted,
                             fontSize = 12.sp
                         )
                     }
@@ -275,12 +283,13 @@ fun HealthTipsScreen(
 
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(25.dp),
+                    shape = RoundedCornerShape(20.dp),
                     colors = CardDefaults.cardColors(
-                        containerColor = primaryBlue
+                        containerColor = DarkTeal
                     ),
+                    border = BorderStroke(1.dp, Mint.copy(alpha = 0.35f)),
                     elevation = CardDefaults.cardElevation(
-                        defaultElevation = 5.dp
+                        defaultElevation = 2.dp
                     )
                 ) {
 
@@ -288,31 +297,28 @@ fun HealthTipsScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(20.dp),
-
                         verticalAlignment = Alignment.CenterVertically
                     ) {
 
                         Box(
                             modifier = Modifier
-                                .size(55.dp)
+                                .size(56.dp)
                                 .background(
-                                    Color.White.copy(alpha = 0.18f),
-                                    CircleShape
+                                    PureWhite.copy(alpha = 0.15f),
+                                    RoundedCornerShape(16.dp)
                                 ),
-
                             contentAlignment = Alignment.Center
                         ) {
-
-                            Text(
-                                text = "♥",
-                                color = Color.White,
-                                fontSize = 27.sp,
-                                fontWeight = FontWeight.Bold
+                            Icon(
+                                imageVector = HeartPulseVectorIcon,
+                                contentDescription = null,
+                                tint = PureWhite,
+                                modifier = Modifier.size(30.dp)
                             )
                         }
 
                         Spacer(
-                            modifier = Modifier.width(15.dp)
+                            modifier = Modifier.width(14.dp)
                         )
 
                         Column(
@@ -321,20 +327,20 @@ fun HealthTipsScreen(
 
                             Text(
                                 text = appText("health_tips_hero_title", selectedLanguage),
-                                color = Color.White,
-                                fontSize = 19.sp,
+                                color = PureWhite,
+                                fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold
                             )
 
                             Spacer(
-                                modifier = Modifier.height(5.dp)
+                                modifier = Modifier.height(4.dp)
                             )
 
                             Text(
                                 text = appText("health_tips_hero_description", selectedLanguage),
-                                color = Color.White.copy(alpha = 0.88f),
-                                fontSize = 13.sp,
-                                lineHeight = 19.sp
+                                color = PureWhite.copy(alpha = 0.85f),
+                                fontSize = 12.sp,
+                                lineHeight = 18.sp
                             )
                         }
                     }
@@ -355,18 +361,18 @@ fun HealthTipsScreen(
 
                         Text(
                             text = appText("health_tips_daily_title", selectedLanguage),
-                            color = darkBlue,
-                            fontSize = 20.sp,
+                            color = DarkTeal,
+                            fontSize = 18.sp,
                             fontWeight = FontWeight.Bold
                         )
 
                         Spacer(
-                            modifier = Modifier.height(3.dp)
+                            modifier = Modifier.height(2.dp)
                         )
 
                         Text(
                             text = appText("health_tips_daily_subtitle", selectedLanguage),
-                            color = gray,
+                            color = TextMuted,
                             fontSize = 12.sp
                         )
                     }
@@ -374,39 +380,37 @@ fun HealthTipsScreen(
                     Box(
                         modifier = Modifier
                             .background(
-                                Color.White,
-                                RoundedCornerShape(20.dp)
+                                SoftMint,
+                                RoundedCornerShape(12.dp)
+                            )
+                            .border(
+                                BorderStroke(1.dp, Mint),
+                                RoundedCornerShape(12.dp)
                             )
                             .padding(
-                                horizontal = 12.dp,
-                                vertical = 7.dp
+                                horizontal = 10.dp,
+                                vertical = 4.dp
                             )
                     ) {
 
                         Text(
                             text = "${healthTips.size} ${appText("health_tips_count", selectedLanguage)}",
-                            color = primaryBlue,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.Bold
+                            color = DeepTeal,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
                         )
                     }
                 }
             }
 
             // 20 HEALTH TIPS
-            items(localizedHealthTips) { tip ->
+            itemsIndexed(
+                items = localizedHealthTips,
+                key = { index, _ -> index }
+            ) { index, tip ->
 
                 HealthTipCard(
-                    tip = tip,
-                    primaryBlue = primaryBlue,
-                    darkBlue = darkBlue,
-                    gray = gray,
-                    symbol = listOf(
-                        "💧", "🥗", "🏃", "😴", "🧼",
-                        "🧘", "🚭", "🩺", "🍬", "🍎",
-                        "☕", "🧍", "☀", "🏠", "👥",
-                        "🌳", "⚠", "♥", "💊", "🧼"
-                    )[localizedHealthTips.indexOf(tip).coerceAtLeast(0)]
+                    tip = tip
                 )
             }
 
@@ -415,27 +419,23 @@ fun HealthTipsScreen(
 
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-
-                    shape = RoundedCornerShape(18.dp),
-
+                    shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(
-                        containerColor = Color.White
+                        containerColor = SoftMint
                     ),
-
-                    elevation = CardDefaults.cardElevation(
-                        defaultElevation = 2.dp
-                    )
+                    border = BorderStroke(1.dp, Mint)
                 ) {
 
                     Row(
-                        modifier = Modifier.padding(16.dp),
+                        modifier = Modifier.padding(14.dp),
                         verticalAlignment = Alignment.Top
                     ) {
 
-                        Text(
-                            text = "⚠",
-                            color = Color(0xFFE49A25),
-                            fontSize = 22.sp
+                        Icon(
+                            imageVector = Icons.Default.Info,
+                            contentDescription = "Disclaimer",
+                            tint = DeepTeal,
+                            modifier = Modifier.size(20.dp)
                         )
 
                         Spacer(
@@ -444,9 +444,9 @@ fun HealthTipsScreen(
 
                         Text(
                             text = appText("health_tips_disclaimer", selectedLanguage),
-                            color = gray,
-                            fontSize = 12.sp,
-                            lineHeight = 18.sp
+                            color = TextMuted,
+                            fontSize = 11.sp,
+                            lineHeight = 17.sp
                         )
                     }
                 }
@@ -456,7 +456,7 @@ fun HealthTipsScreen(
             item {
 
                 Spacer(
-                    modifier = Modifier.height(4.dp)
+                    modifier = Modifier.height(6.dp)
                 )
 
                 Row(
@@ -465,11 +465,11 @@ fun HealthTipsScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
 
-                    Text(
-                        text = "♥",
-                        color = teal,
-                        fontSize = 17.sp,
-                        fontWeight = FontWeight.Bold
+                    Icon(
+                        imageVector = HeartPulseVectorIcon,
+                        contentDescription = null,
+                        tint = DeepTeal,
+                        modifier = Modifier.size(14.dp)
                     )
 
                     Spacer(
@@ -478,11 +478,16 @@ fun HealthTipsScreen(
 
                     Text(
                         text = "MEDASSIST AI",
-                        color = darkBlue,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold
+                        color = DarkTeal,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        letterSpacing = 1.sp
                     )
                 }
+
+                Spacer(
+                    modifier = Modifier.height(8.dp)
+                )
             }
         }
     }
@@ -490,24 +495,18 @@ fun HealthTipsScreen(
 
 @Composable
 private fun HealthTipCard(
-    tip: HealthTip,
-    primaryBlue: Color,
-    darkBlue: Color,
-    gray: Color,
-    symbol: String
+    tip: HealthTip
 ) {
 
     Card(
         modifier = Modifier.fillMaxWidth(),
-
-        shape = RoundedCornerShape(20.dp),
-
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = Color.White
+            containerColor = PureWhite
         ),
-
+        border = BorderStroke(1.dp, Mint),
         elevation = CardDefaults.cardElevation(
-            defaultElevation = 3.dp
+            defaultElevation = 1.dp
         )
     ) {
 
@@ -515,53 +514,55 @@ private fun HealthTipCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
-
             verticalAlignment = Alignment.Top
         ) {
 
             // SYMBOL
-
             Box(
                 modifier = Modifier
-                    .size(48.dp)
+                    .size(44.dp)
                     .background(
-                        Color(0xFFEAF8FC),
-                        CircleShape
+                        SoftMint,
+                        RoundedCornerShape(12.dp)
+                    )
+                    .border(
+                        BorderStroke(1.dp, Mint.copy(alpha = 0.6f)),
+                        RoundedCornerShape(12.dp)
                     ),
-
                 contentAlignment = Alignment.Center
             ) {
 
-                Text(
-                    text = symbol,
-                    fontSize = 23.sp
+                Icon(
+                    imageVector = HeartPulseVectorIcon,
+                    contentDescription = null,
+                    tint = DeepTeal,
+                    modifier = Modifier.size(22.dp)
                 )
             }
 
             Spacer(
-                modifier = Modifier.width(13.dp)
+                modifier = Modifier.width(14.dp)
             )
 
             // CONTENT
-
             Column(
                 modifier = Modifier.weight(1f)
             ) {
 
                 Text(
                     text = tip.title,
-                    color = darkBlue,
-                    fontSize = 16.sp,
+                    color = DarkTeal,
+                    fontSize = 15.sp,
                     fontWeight = FontWeight.Bold
                 )
 
                 Spacer(
-                    modifier = Modifier.height(6.dp)
+                    modifier = Modifier.height(4.dp)
                 )
 
                 Text(
                     text = tip.description,
-                    color = gray,
+                    color = TextMuted,
                     fontSize = 13.sp,
                     lineHeight = 19.sp
                 )

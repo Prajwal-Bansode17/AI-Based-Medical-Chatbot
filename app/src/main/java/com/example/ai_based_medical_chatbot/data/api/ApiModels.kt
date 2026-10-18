@@ -48,7 +48,10 @@ data class PredictionResponse(
     val language: String = "",
 
     @SerializedName("measurements")
-    val measurements: List<Measurement> = emptyList()
+    val measurements: List<Measurement> = emptyList(),
+
+    @SerializedName("session_id")
+    val sessionId: String? = null
 )
 
 data class Measurement(

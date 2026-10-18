@@ -19,6 +19,30 @@ import android.speech.RecognizerIntent
 import android.speech.SpeechRecognizer
 import android.util.Log
 
+import androidx.activity.compose.BackHandler
+import com.example.ai_based_medical_chatbot.ui.theme.PrimaryTeal
+import com.example.ai_based_medical_chatbot.ui.theme.PrimaryTealDark
+import com.example.ai_based_medical_chatbot.ui.theme.DeepTeal
+import com.example.ai_based_medical_chatbot.ui.theme.DarkTeal
+import com.example.ai_based_medical_chatbot.ui.theme.SageGreen
+import com.example.ai_based_medical_chatbot.ui.theme.Ivory
+import com.example.ai_based_medical_chatbot.ui.theme.Mint
+import com.example.ai_based_medical_chatbot.ui.theme.SoftMint
+import com.example.ai_based_medical_chatbot.ui.theme.CoralAccent
+import com.example.ai_based_medical_chatbot.ui.theme.PureWhite
+import com.example.ai_based_medical_chatbot.ui.theme.LightGreenSurface
+import com.example.ai_based_medical_chatbot.ui.theme.LightGreenSoft
+import com.example.ai_based_medical_chatbot.ui.theme.LightGreenBorder
+import com.example.ai_based_medical_chatbot.ui.theme.AppBackground
+import com.example.ai_based_medical_chatbot.ui.theme.AppSurface
+import com.example.ai_based_medical_chatbot.ui.theme.TextDark
+import com.example.ai_based_medical_chatbot.ui.theme.TextMuted
+import com.example.ai_based_medical_chatbot.ui.theme.TextLight
+import com.example.ai_based_medical_chatbot.ui.theme.StatusError
+import com.example.ai_based_medical_chatbot.ui.theme.StatusErrorBackground
+import com.example.ai_based_medical_chatbot.ui.theme.StatusErrorBorder
+import com.example.ai_based_medical_chatbot.ui.theme.MedAssistSpacing
+
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.RepeatMode
@@ -72,11 +96,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.automirrored.filled.Send
+import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Menu
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
 
 import androidx.compose.material3.AlertDialog
@@ -281,15 +308,75 @@ data class SavedChat(
 
 object ChatHistoryRepository {
     private const val PREFS = "medassist_chat_history"
-    private const val KEY_CHATS = "saved_chats"
+    private const val LEGACY_KEY_CHATS = "saved_chats"
+    private const val LEGACY_KEY_ACTIVE = "active_session_id"
+
+    private const val KEY_CHATS_PREFIX = "saved_chats_"
+    private const val KEY_ACTIVE_PREFIX = "active_session_id_"
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
-    fun getChats(context: Context): List<SavedChat> {
+    fun getAccountKey(context: Context, accountOverride: String? = null): String {
+        if (!accountOverride.isNullOrBlank()) {
+            return "account_${accountOverride.trim()}"
+        }
+        val user = com.example.ai_based_medical_chatbot.data.SupabaseClient.getSavedUser(context)
+        return if (user != null && user.id.isNotBlank()) {
+            "account_${user.id.trim()}"
+        } else {
+            "account_guest"
+        }
+    }
+
+    private fun chatsKey(context: Context, accountOverride: String? = null): String =
+        KEY_CHATS_PREFIX + getAccountKey(context, accountOverride)
+
+    private fun activeSessionKey(context: Context, accountOverride: String? = null): String =
+        KEY_ACTIVE_PREFIX + getAccountKey(context, accountOverride)
+
+    private fun migrateLegacyIfNeeded(context: Context, accountOverride: String? = null) {
+        val sp = prefs(context)
+        val legacyChats = sp.getString(LEGACY_KEY_CHATS, null)
+        val targetKey = chatsKey(context, accountOverride)
+        if (!legacyChats.isNullOrBlank() && !sp.contains(targetKey)) {
+            val legacyActive = sp.getString(LEGACY_KEY_ACTIVE, null)
+            val editor = sp.edit()
+            editor.putString(targetKey, legacyChats)
+            if (!legacyActive.isNullOrBlank()) {
+                editor.putString(activeSessionKey(context, accountOverride), legacyActive)
+            }
+            editor.remove(LEGACY_KEY_CHATS)
+            editor.remove(LEGACY_KEY_ACTIVE)
+            editor.apply()
+        }
+    }
+
+    fun getActiveSessionId(context: Context, accountOverride: String? = null): String? {
+        migrateLegacyIfNeeded(context, accountOverride)
+        return prefs(context).getString(activeSessionKey(context, accountOverride), null)
+    }
+
+    fun setActiveSessionId(context: Context, sessionId: String?, accountOverride: String? = null) {
+        val editor = prefs(context).edit()
+        val key = activeSessionKey(context, accountOverride)
+        if (sessionId.isNullOrBlank()) {
+            editor.remove(key)
+        } else {
+            editor.putString(key, sessionId.trim())
+        }
+        editor.apply()
+    }
+
+    fun clearActiveSession(context: Context, accountOverride: String? = null) {
+        prefs(context).edit().remove(activeSessionKey(context, accountOverride)).apply()
+    }
+
+    fun getChats(context: Context, accountOverride: String? = null): List<SavedChat> {
+        migrateLegacyIfNeeded(context, accountOverride)
         return try {
             val array = JSONArray(
-                prefs(context).getString(KEY_CHATS, "[]") ?: "[]"
+                prefs(context).getString(chatsKey(context, accountOverride), "[]") ?: "[]"
             )
             val result = mutableListOf<SavedChat>()
 
@@ -343,11 +430,11 @@ object ChatHistoryRepository {
         }
     }
 
-    fun saveChat(context: Context, sessionId: String, messages: List<ChatMessage>) {
+    fun saveChat(context: Context, sessionId: String, messages: List<ChatMessage>, accountOverride: String? = null) {
         if (messages.isEmpty()) return
 
-        val existing = getChats(context).firstOrNull { it.id == sessionId }
-        val all = getChats(context)
+        val existing = getChats(context, accountOverride).firstOrNull { it.id == sessionId }
+        val all = getChats(context, accountOverride)
             .filter { it.id != sessionId }
             .toMutableList()
 
@@ -375,14 +462,14 @@ object ChatHistoryRepository {
             )
         )
 
-        writeChats(context, all)
+        writeChats(context, all, accountOverride)
     }
 
-    fun renameChat(context: Context, sessionId: String, newTitle: String) {
+    fun renameChat(context: Context, sessionId: String, newTitle: String, accountOverride: String? = null) {
         val cleanTitle = newTitle.trim()
         if (cleanTitle.isBlank()) return
 
-        val updated = getChats(context).map { chat ->
+        val updated = getChats(context, accountOverride).map { chat ->
             if (chat.id == sessionId) {
                 chat.copy(
                     title = cleanTitle.take(60),
@@ -392,22 +479,26 @@ object ChatHistoryRepository {
                 chat
             }
         }
-        writeChats(context, updated)
+        writeChats(context, updated, accountOverride)
     }
 
-    fun setPinned(context: Context, sessionId: String, pinned: Boolean) {
-        val updated = getChats(context).map { chat ->
+    fun setPinned(context: Context, sessionId: String, pinned: Boolean, accountOverride: String? = null) {
+        val updated = getChats(context, accountOverride).map { chat ->
             if (chat.id == sessionId) chat.copy(pinned = pinned) else chat
         }
-        writeChats(context, updated)
+        writeChats(context, updated, accountOverride)
     }
 
-    fun deleteChat(context: Context, sessionId: String) {
-        val updated = getChats(context).filter { it.id != sessionId }
-        writeChats(context, updated)
+    fun deleteChat(context: Context, sessionId: String, accountOverride: String? = null) {
+        val updated = getChats(context, accountOverride).filter { it.id != sessionId }
+        writeChats(context, updated, accountOverride)
+        if (getActiveSessionId(context, accountOverride) == sessionId) {
+            val nextActive = updated.firstOrNull()?.id
+            setActiveSessionId(context, nextActive, accountOverride)
+        }
     }
 
-    private fun writeChats(context: Context, chats: List<SavedChat>) {
+    private fun writeChats(context: Context, chats: List<SavedChat>, accountOverride: String? = null) {
         val array = JSONArray()
 
         chats
@@ -447,7 +538,7 @@ object ChatHistoryRepository {
             }
 
         prefs(context).edit()
-            .putString(KEY_CHATS, array.toString())
+            .putString(chatsKey(context, accountOverride), array.toString())
             .apply()
     }
 }
@@ -462,6 +553,10 @@ fun ChatbotScreen(
     initialSessionId: String? = null,
 
     initialLanguage: String? = null,
+
+    initialUserQuery: String? = null,
+
+    onViewTranscript: ((String?) -> Unit)? = null,
 
     onBack: () -> Unit
 
@@ -484,14 +579,18 @@ fun ChatbotScreen(
     // SESSION
     // =========================================================
 
+    val initialResolvedSessionId = remember(initialSessionId) {
+        if (!initialSessionId.isNullOrBlank()) {
+            initialSessionId.trim()
+        } else {
+            val fresh = "android_" + System.currentTimeMillis()
+            ChatHistoryRepository.setActiveSessionId(context, fresh)
+            fresh
+        }
+    }
+
     var currentSessionId by remember {
-        mutableStateOf(
-            if (!initialSessionId.isNullOrBlank()) {
-                initialSessionId.trim()
-            } else {
-                "android_" + System.currentTimeMillis()
-            }
-        )
+        mutableStateOf(initialResolvedSessionId)
     }
 
 
@@ -645,7 +744,44 @@ fun ChatbotScreen(
     val chatScrollState =
         rememberScrollState()
 
-    LaunchedEffect(Unit) {
+    fun startNewChat() {
+        if (messages.isNotEmpty()) {
+            ChatHistoryRepository.saveChat(context, currentSessionId, messages)
+        }
+        val newId = "android_" + System.currentTimeMillis()
+        currentSessionId = newId
+        ChatHistoryRepository.setActiveSessionId(context, newId)
+        messages.clear()
+        message = ""
+        isTyping = false
+        selectedImages.clear()
+        attachmentLabel = ""
+        pendingImageUris = emptyList()
+        editingMessageIndex = null
+        savedChats = ChatHistoryRepository.getChats(context)
+        showChatSidebar = false
+    }
+
+    fun handleBack() {
+        if (showChatSidebar) {
+            showChatSidebar = false
+        } else if (showAttachmentMenu) {
+            showAttachmentMenu = false
+        } else {
+            if (messages.isNotEmpty()) {
+                ChatHistoryRepository.saveChat(context, currentSessionId, messages)
+                ChatHistoryRepository.setActiveSessionId(context, currentSessionId)
+            }
+            onBack()
+        }
+    }
+
+    BackHandler(enabled = true) {
+        handleBack()
+    }
+
+    LaunchedEffect(currentSessionId) {
+        ChatHistoryRepository.setActiveSessionId(context, currentSessionId)
         val existing = ChatHistoryRepository.getChats(context)
             .firstOrNull { it.id == currentSessionId }
 
@@ -657,6 +793,8 @@ fun ChatbotScreen(
     }
 
 
+
+
     // =========================================================
     // START SCREEN WELCOME
     // Shows only while there are no chat messages.
@@ -666,16 +804,35 @@ fun ChatbotScreen(
 
     // =========================================================
     // AUTO SCROLL
+    // Tracks when the user is already near bottom to auto-scroll
+    // smoothly when messages arrive or content grows, while
+    // avoiding pulling the user away if they scrolled up to read.
     // =========================================================
 
+    val isNearBottom = remember(chatScrollState.value, chatScrollState.maxValue) {
+        chatScrollState.maxValue - chatScrollState.value < 160
+    }
+
+    var userScrolledUp by remember { mutableStateOf(false) }
+
+    LaunchedEffect(chatScrollState.value, chatScrollState.maxValue) {
+        userScrolledUp = (chatScrollState.maxValue - chatScrollState.value) > 220
+    }
+
+    // Scroll to latest message or typing indicator as content arrives or height expands
     LaunchedEffect(
         messages.size,
-        isTyping
+        isTyping,
+        chatScrollState.maxValue
     ) {
-        if (messages.isNotEmpty()) {
-            chatScrollState.animateScrollTo(chatScrollState.maxValue)
+        if (messages.isNotEmpty() || isTyping) {
+            // Automatically scroll to bottom if user is following the conversation
+            if (!userScrolledUp && chatScrollState.value < chatScrollState.maxValue) {
+                chatScrollState.animateScrollTo(chatScrollState.maxValue)
+            }
         }
     }
+
 
 
     // =========================================================
@@ -721,6 +878,7 @@ fun ChatbotScreen(
         )
 
         editingMessageIndex = null
+        userScrolledUp = false
 
         ChatHistoryRepository.saveChat(context, currentSessionId, messages)
         savedChats = ChatHistoryRepository.getChats(context)
@@ -880,7 +1038,25 @@ fun ChatbotScreen(
                         )
                     )
 
-                    ChatHistoryRepository.saveChat(context, currentSessionId, messages)
+                    val requestSessionId = currentSessionId
+
+                    // Adopt server-returned session ID if valid and non-blank.
+                    // If the server assigned a new canonical ID (e.g. from an empty or auto-generated session),
+                    // migrate the existing chat history under the adopted ID.
+                    val returnedSessionId = result.sessionId?.trim()
+                    val targetSessionId = if (!returnedSessionId.isNullOrBlank() && currentSessionId == requestSessionId) {
+                        if (returnedSessionId != currentSessionId) {
+                            val previousSessionId = currentSessionId
+                            currentSessionId = returnedSessionId
+                            ChatHistoryRepository.setActiveSessionId(context, returnedSessionId)
+                            ChatHistoryRepository.deleteChat(context, previousSessionId)
+                        }
+                        returnedSessionId
+                    } else {
+                        currentSessionId
+                    }
+
+                    ChatHistoryRepository.saveChat(context, targetSessionId, messages)
                     savedChats = ChatHistoryRepository.getChats(context)
 
                 } else {
@@ -889,19 +1065,12 @@ fun ChatbotScreen(
                     // API ERROR
                     // =============================================
 
+                    val code = response.code()
                     messages.add(
-
                         ChatMessage(
-
-                            text =
-                                "Sorry, I’m having trouble connecting to the medical AI service. " +
-                                        "Please check your internet connection and try again.",
-
-                            isUser =
-                                false,
-
-                            isError =
-                                true
+                            text = "Server returned error (HTTP $code). Please verify the backend logs and tap Retry.",
+                            isUser = false,
+                            isError = true
                         )
                     )
 
@@ -919,20 +1088,22 @@ fun ChatbotScreen(
                     e
                 )
 
+                val errText = when (e) {
+                    is java.net.SocketTimeoutException ->
+                        "The connection to MedAssist AI timed out. The medical model may still be generating or the server is busy. Tap Retry to try again."
+                    is java.net.ConnectException ->
+                        "Unable to connect to the MedAssist server at ${RetrofitClient.getBaseUrl(context)}.\n\nPlease verify that Flask is running and that your phone and computer are on the same Wi-Fi network."
+                    is java.net.UnknownHostException ->
+                        "Cannot resolve the MedAssist server address (${RetrofitClient.getBaseUrl(context)}).\n\nPlease check your network connection and server configuration."
+                    else ->
+                        "Unable to connect to MedAssist AI (${e.localizedMessage ?: "Network error"}).\n\nPlease check your server connection and try again."
+                }
 
                 messages.add(
-
                     ChatMessage(
-
-                        text =
-                            "Unable to connect to MedAssist AI right now.\n\n" +
-                                    "Please make sure the server is running and try again.",
-
-                        isUser =
-                            false,
-
-                        isError =
-                            true
+                        text = errText,
+                        isUser = false,
+                        isError = true
                     )
                 )
 
@@ -941,6 +1112,142 @@ fun ChatbotScreen(
 
             } finally {
 
+                isTyping = false
+            }
+        }
+    }
+
+    // Process initial query passed from Dashboard symptom card
+    var initialQueryConsumed by remember { mutableStateOf(false) }
+    LaunchedEffect(initialUserQuery) {
+        if (!initialUserQuery.isNullOrBlank() && !initialQueryConsumed) {
+            initialQueryConsumed = true
+            sendMessage(initialUserQuery.trim())
+        }
+    }
+
+    // =========================================================
+    // RETRY FAILED MESSAGE
+    // =========================================================
+
+    fun retryMessage(failedIndex: Int? = null) {
+        if (isTyping) return
+
+        val errorIdx = failedIndex ?: messages.indexOfLast { !it.isUser && it.isError }
+        if (errorIdx in messages.indices) {
+            messages.removeAt(errorIdx)
+        }
+
+        val lastUserMessage = messages.lastOrNull { it.isUser } ?: return
+
+        isTyping = true
+        scope.launch {
+            try {
+                val prescriptionMemory = PrescriptionMemory.build(context)
+                val chatbotText = if (prescriptionMemory.isBlank()) {
+                    lastUserMessage.text
+                } else {
+                    """
+                    USER'S SAVED PRESCRIPTION MEMORY:
+
+                    $prescriptionMemory
+
+                    IMPORTANT: Use the saved prescription only as
+                    the user's personal medical context. Do not
+                    invent or change medicine name, strength,
+                    dosage, frequency, duration, diagnosis,
+                    doctor name, patient name, or instructions.
+                    If information is missing, say that it is
+                    not available in the saved prescription.
+
+                    USER QUESTION:
+                    ${lastUserMessage.text}
+                    """.trimIndent()
+                }
+
+                val response = withContext(Dispatchers.IO) {
+                    RetrofitClient.apiService.predict(
+                        PredictionRequest(
+                            sessionId = currentSessionId,
+                            text = chatbotText
+                        )
+                    )
+                }
+
+                if (response.isSuccessful && response.body() != null) {
+                    val result = response.body()!!
+                    val answer = result.answer?.trim().orEmpty()
+                    val finalAnswer = if (answer.isNotEmpty()) {
+                        fixMeasurementFormatting(
+                            answer = answer,
+                            measurements = result.measurements
+                        )
+                    } else {
+                        "I’m sorry, I could not generate a response right now."
+                    }
+
+                    messages.add(
+                        ChatMessage(
+                            text = finalAnswer,
+                            isUser = false,
+                            intent = result.intent,
+                            confidence = result.confidence,
+                            similarity = result.answerSimilarity
+                        )
+                    )
+
+                    val requestSessionId = currentSessionId
+
+                    // Adopt server-returned session ID if valid and non-blank.
+                    val returnedSessionId = result.sessionId?.trim()
+                    val targetSessionId = if (!returnedSessionId.isNullOrBlank() && currentSessionId == requestSessionId) {
+                        if (returnedSessionId != currentSessionId) {
+                            val previousSessionId = currentSessionId
+                            currentSessionId = returnedSessionId
+                            ChatHistoryRepository.setActiveSessionId(context, returnedSessionId)
+                            ChatHistoryRepository.deleteChat(context, previousSessionId)
+                        }
+                        returnedSessionId
+                    } else {
+                        currentSessionId
+                    }
+
+                    ChatHistoryRepository.saveChat(context, targetSessionId, messages)
+                    savedChats = ChatHistoryRepository.getChats(context)
+                } else {
+                    val code = response.code()
+                    messages.add(
+                        ChatMessage(
+                            text = "Server returned error (HTTP $code). Tap Retry to try again.",
+                            isUser = false,
+                            isError = true
+                        )
+                    )
+                    ChatHistoryRepository.saveChat(context, currentSessionId, messages)
+                    savedChats = ChatHistoryRepository.getChats(context)
+                }
+            } catch (e: Exception) {
+                Log.e("MEDASSIST_API", "RETRY ERROR", e)
+                val errText = when (e) {
+                    is java.net.SocketTimeoutException ->
+                        "The connection to MedAssist AI timed out. Tap Retry to try again."
+                    is java.net.ConnectException ->
+                        "Unable to connect to the MedAssist server at ${RetrofitClient.getBaseUrl(context)}. Please check that Flask is running."
+                    is java.net.UnknownHostException ->
+                        "Cannot resolve the server address (${RetrofitClient.getBaseUrl(context)}). Please check your connection."
+                    else ->
+                        "Unable to connect to MedAssist AI (${e.localizedMessage ?: "Network error"}). Tap Retry to try again."
+                }
+                messages.add(
+                    ChatMessage(
+                        text = errText,
+                        isUser = false,
+                        isError = true
+                    )
+                )
+                ChatHistoryRepository.saveChat(context, currentSessionId, messages)
+                savedChats = ChatHistoryRepository.getChats(context)
+            } finally {
                 isTyping = false
             }
         }
@@ -961,20 +1268,31 @@ fun ChatbotScreen(
         }
     }
 
+    fun createSpeechIntent(): Intent {
+        val speechLocaleTag = when (selectedLanguage) {
+            "मराठी" -> "mr-IN"
+            "हिंदी" -> "hi-IN"
+            else -> "en-IN"
+        }
+        return Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE, speechLocaleTag)
+            putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, speechLocaleTag)
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
+            // Let supported Google speech services switch languages automatically.
+            putExtra("android.speech.extra.ENABLE_LANGUAGE_DETECTION", true)
+            putExtra("android.speech.extra.LANGUAGE_SWITCH_ALLOWED", true)
+            putExtra("android.speech.extra.LANGUAGE_SWITCH_INITIAL_ACTIVE_DURATION", 15)
+        }
+    }
+
     val speechPermissionLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestPermission()
     ) { granted ->
         if (granted) {
             try {
-                val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                    putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                    putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-                    putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
-                    // Let supported Google speech services switch languages automatically.
-                    putExtra("android.speech.extra.ENABLE_LANGUAGE_DETECTION", true)
-                    putExtra("android.speech.extra.LANGUAGE_SWITCH_ALLOWED", true)
-                    putExtra("android.speech.extra.LANGUAGE_SWITCH_INITIAL_ACTIVE_DURATION", 15)
-                }
+                val intent = createSpeechIntent()
                 speechRecognizer?.startListening(intent)
                 isListening = speechRecognizer != null
             } catch (e: Exception) {
@@ -1049,15 +1367,17 @@ fun ChatbotScreen(
     }
 
     // =========================================================
-    // MAIN UI — MEDASSIST TEAL THEME
+    // MAIN UI — APPROVED HEALTHCARE PALETTE DESIGN SYSTEM
     // =========================================================
 
-    val screenBackground = Color(0xFFEFF8F7)
-    val panelBackground = Color.White
-    val primaryTeal = Color(0xFF176B83)
-    val softTeal = Color(0xFFE4F3F4)
-    val darkText = Color(0xFF17202A)
-    val mutedText = Color(0xFF667085)
+    val screenBackground = Ivory
+    val panelBackground = PureWhite
+    val primaryTeal = DeepTeal
+    val darkTeal = DarkTeal
+    val softTeal = SoftMint
+    val mintBorder = Mint
+    val darkText = TextDark
+    val mutedText = TextMuted
 
     Box(
         modifier = Modifier
@@ -1075,35 +1395,35 @@ fun ChatbotScreen(
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .shadow(3.dp),
+                    .shadow(elevation = 3.dp),
                 color = primaryTeal,
                 shape = RoundedCornerShape(
-                    bottomStart = 28.dp,
-                    bottomEnd = 28.dp
+                    bottomStart = 24.dp,
+                    bottomEnd = 24.dp
                 )
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .statusBarsPadding()
-                        .padding(horizontal = 8.dp, vertical = 10.dp),
+                        .padding(horizontal = 8.dp, vertical = 8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(
-                        onClick = onBack,
-                        modifier = Modifier.size(44.dp)
+                        onClick = { handleBack() },
+                        modifier = Modifier.size(42.dp)
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
-                            tint = Color.White
+                            tint = PureWhite
                         )
                     }
 
                     Spacer(Modifier.width(2.dp))
 
                     RobotAvatar(
-                        size = 42.dp,
+                        size = 40.dp,
                         isError = false
                     )
 
@@ -1114,33 +1434,65 @@ fun ChatbotScreen(
                     ) {
                         Text(
                             text = "MedAssist AI",
-                            color = Color.White,
-                            fontSize = 18.sp,
+                            color = PureWhite,
+                            fontSize = 17.sp,
                             fontWeight = FontWeight.Bold
                         )
 
-                        Text(
-                            text = if (isTyping) "Thinking..." else "AI health assistant",
-                            color = Color.White.copy(alpha = 0.78f),
-                            fontSize = 12.sp
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(7.dp)
+                                    .clip(CircleShape)
+                                    .background(if (isTyping) CoralAccent else SageGreen)
+                            )
+                            Spacer(Modifier.width(5.dp))
+                            Text(
+                                text = if (isTyping) "Thinking..." else "AI health assistant",
+                                color = PureWhite.copy(alpha = 0.88f),
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
+
+                    IconButton(
+                        onClick = { startNewChat() },
+                        modifier = Modifier.size(40.dp),
+                        colors = IconButtonDefaults.iconButtonColors(
+                            containerColor = PureWhite.copy(alpha = 0.16f),
+                            contentColor = PureWhite
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Filled.Add,
+                            contentDescription = "New chat",
+                            tint = PureWhite,
+                            modifier = Modifier.size(20.dp)
                         )
                     }
+
+
+
+                    Spacer(Modifier.width(6.dp))
 
                     IconButton(
                         onClick = {
                             savedChats = ChatHistoryRepository.getChats(context)
                             showChatSidebar = true
                         },
-                        modifier = Modifier.size(44.dp),
+                        modifier = Modifier.size(40.dp),
                         colors = IconButtonDefaults.iconButtonColors(
-                            containerColor = Color.White.copy(alpha = 0.14f),
-                            contentColor = Color.White
+                            containerColor = PureWhite.copy(alpha = 0.16f),
+                            contentColor = PureWhite
                         )
                     ) {
                         Icon(
                             imageVector = Icons.Filled.Menu,
                             contentDescription = "Open chat history",
-                            tint = Color.White
+                            tint = PureWhite,
+                            modifier = Modifier.size(20.dp)
                         )
                     }
                 }
@@ -1153,13 +1505,16 @@ fun ChatbotScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                shape = RoundedCornerShape(30.dp),
+                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                shape = RoundedCornerShape(22.dp),
                 color = panelBackground,
-                shadowElevation = 5.dp
+                shadowElevation = 2.dp,
+                border = BorderStroke(1.dp, mintBorder)
             ) {
                 Box(
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .imePadding()
                 ) {
 
                     Column(
@@ -1167,19 +1522,25 @@ fun ChatbotScreen(
                             .fillMaxSize()
                             .verticalScroll(chatScrollState)
                             .padding(
-                                start = 14.dp,
-                                end = 14.dp,
-                                top = 12.dp,
-                                bottom = 84.dp
+                                start = 12.dp,
+                                end = 12.dp,
+                                top = 8.dp,
+                                bottom = 96.dp
                             ),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Spacer(Modifier.height(4.dp))
+                        Spacer(Modifier.height(2.dp))
 
                         if (messages.isEmpty() && !isTyping) {
                             WelcomeSection(
                                 primaryTeal = primaryTeal,
-                                mutedText = mutedText
+                                mutedText = mutedText,
+                                onColdClick = {
+                                    sendMessage("I have cold and flu symptoms with fever and cough")
+                                },
+                                onMedicineClick = {
+                                    message = "Tell me about medicine "
+                                }
                             )
                         }
 
@@ -1198,7 +1559,10 @@ fun ChatbotScreen(
                                 } else null,
                                 onImageClick = { path ->
                                     viewerImagePath = path
-                                }
+                                },
+                                onRetry = if (!chatMessage.isUser && chatMessage.isError) {
+                                    { retryMessage(index) }
+                                } else null
                             )
                         }
 
@@ -1206,8 +1570,42 @@ fun ChatbotScreen(
                             TypingIndicator()
                         }
 
-                        Spacer(Modifier.height(4.dp))
+                        Spacer(Modifier.height(2.dp))
                     }
+
+                    // Floating Jump to Latest Button (when user scrolled up)
+                    androidx.compose.animation.AnimatedVisibility(
+                        visible = userScrolledUp && messages.isNotEmpty(),
+                        enter = fadeIn(animationSpec = tween(180)) + scaleIn(initialScale = 0.8f),
+                        exit = fadeOut(animationSpec = tween(150)),
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(end = 16.dp, bottom = 82.dp)
+                    ) {
+                        Surface(
+                            onClick = {
+                                userScrolledUp = false
+                                scope.launch {
+                                    chatScrollState.animateScrollTo(chatScrollState.maxValue)
+                                }
+                            },
+                            shape = CircleShape,
+                            color = primaryTeal,
+                            contentColor = PureWhite,
+                            shadowElevation = 5.dp,
+                            modifier = Modifier.size(38.dp)
+                        ) {
+                            Box(contentAlignment = Alignment.Center) {
+                                Icon(
+                                    imageVector = Icons.Filled.KeyboardArrowDown,
+                                    contentDescription = "Scroll to bottom",
+                                    tint = PureWhite,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                        }
+                    }
+
 
                     // -----------------------------------------
                     // FLOATING COMPOSER
@@ -1216,20 +1614,20 @@ fun ChatbotScreen(
                         modifier = Modifier
                             .align(Alignment.BottomCenter)
                             .fillMaxWidth()
-                            .imePadding()
                             .navigationBarsPadding()
                             .padding(
-                                horizontal = 12.dp,
-                                vertical = 12.dp
+                                horizontal = 10.dp,
+                                vertical = 8.dp
                             ),
-                        shape = RoundedCornerShape(28.dp),
-                        color = Color.White,
-                        shadowElevation = 8.dp,
+                        shape = RoundedCornerShape(26.dp),
+                        color = PureWhite,
+                        shadowElevation = 6.dp,
                         border = BorderStroke(
                             1.dp,
-                            Color(0xFFDCE8EB)
+                            mintBorder
                         )
                     ) {
+
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -1260,7 +1658,7 @@ fun ChatbotScreen(
                                             .padding(
                                                 start = 8.dp,
                                                 end = 8.dp,
-                                                top = 2.dp,
+                                                top = 4.dp,
                                                 bottom = 6.dp
                                             ),
                                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -1298,7 +1696,7 @@ fun ChatbotScreen(
                                                         .clip(RoundedCornerShape(14.dp))
                                                         .border(
                                                             1.dp,
-                                                            Color(0xFFD8E8EB),
+                                                            mintBorder,
                                                             RoundedCornerShape(14.dp)
                                                         )
                                                 )
@@ -1318,12 +1716,12 @@ fun ChatbotScreen(
                                                             shape = CircleShape
                                                         )
                                                         .clip(CircleShape)
-                                                        .background(Color.White)
+                                                        .background(PureWhite)
                                                 ) {
                                                     Icon(
                                                         imageVector = Icons.Filled.Close,
                                                         contentDescription = "Remove image",
-                                                        tint = Color(0xFF344054),
+                                                        tint = darkText,
                                                         modifier = Modifier.size(15.dp)
                                                     )
                                                 }
@@ -1336,17 +1734,17 @@ fun ChatbotScreen(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(
-                                            start = 6.dp,
-                                            end = 6.dp,
+                                            start = 4.dp,
+                                            end = 4.dp,
                                             top = 2.dp,
-                                            bottom = 4.dp
+                                            bottom = 2.dp
                                         ),
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Box {
                                         IconButton(
                                             onClick = { showAttachmentMenu = true },
-                                            modifier = Modifier.size(40.dp),
+                                            modifier = Modifier.size(42.dp),
                                             colors = IconButtonDefaults.iconButtonColors(
                                                 containerColor = softTeal,
                                                 contentColor = primaryTeal
@@ -1355,7 +1753,8 @@ fun ChatbotScreen(
                                             Icon(
                                                 imageVector = Icons.Filled.Add,
                                                 contentDescription = "Add attachment",
-                                                tint = primaryTeal
+                                                tint = primaryTeal,
+                                                modifier = Modifier.size(22.dp)
                                             )
                                         }
 
@@ -1420,7 +1819,7 @@ fun ChatbotScreen(
 
                                     Spacer(Modifier.width(2.dp))
 
-                                    OutlinedTextField(
+                                     OutlinedTextField(
                                         value = message,
                                         onValueChange = { message = it },
                                         modifier = Modifier.weight(1f),
@@ -1432,11 +1831,11 @@ fun ChatbotScreen(
                                                     attachmentLabel
                                                 },
                                                 color = if (attachmentLabel.isBlank()) {
-                                                    Color(0xFF98A2B3)
+                                                    TextLight
                                                 } else {
                                                     primaryTeal
                                                 },
-                                                fontSize = 15.sp,
+                                                fontSize = 14.sp,
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis
                                             )
@@ -1452,8 +1851,8 @@ fun ChatbotScreen(
                                         colors = OutlinedTextFieldDefaults.colors(
                                             focusedTextColor = darkText,
                                             unfocusedTextColor = darkText,
-                                            focusedPlaceholderColor = Color(0xFF98A2B3),
-                                            unfocusedPlaceholderColor = Color(0xFF98A2B3),
+                                            focusedPlaceholderColor = TextLight,
+                                            unfocusedPlaceholderColor = TextLight,
                                             focusedContainerColor = Color.Transparent,
                                             unfocusedContainerColor = Color.Transparent,
                                             focusedBorderColor = Color.Transparent,
@@ -1480,14 +1879,7 @@ fun ChatbotScreen(
 
                                             if (permissionGranted) {
                                                 try {
-                                                    val intent = Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH).apply {
-                                                        putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-                                                        putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-                                                        putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
-                                                        putExtra("android.speech.extra.ENABLE_LANGUAGE_DETECTION", true)
-                                                        putExtra("android.speech.extra.LANGUAGE_SWITCH_ALLOWED", true)
-                                                        putExtra("android.speech.extra.LANGUAGE_SWITCH_INITIAL_ACTIVE_DURATION", 15)
-                                                    }
+                                                    val intent = createSpeechIntent()
                                                     speechRecognizer.startListening(intent)
                                                     isListening = true
                                                 } catch (e: Exception) {
@@ -1498,20 +1890,21 @@ fun ChatbotScreen(
                                                 speechPermissionLauncher.launch(Manifest.permission.RECORD_AUDIO)
                                             }
                                         },
-                                        modifier = Modifier.size(44.dp),
+                                        modifier = Modifier.size(42.dp),
                                         colors = IconButtonDefaults.iconButtonColors(
-                                            containerColor = softTeal,
-                                            contentColor = primaryTeal
+                                            containerColor = if (isListening) CoralAccent.copy(alpha = 0.25f) else softTeal,
+                                            contentColor = if (isListening) CoralAccent else primaryTeal
                                         )
                                     ) {
                                         Icon(
                                             imageVector = MicIcon,
                                             contentDescription = if (isListening) "Listening" else "Voice input",
-                                            tint = if (isListening) Color(0xFFD32F2F) else primaryTeal
+                                            tint = if (isListening) CoralAccent else primaryTeal,
+                                            modifier = Modifier.size(20.dp)
                                         )
                                     }
 
-                                    Spacer(Modifier.width(6.dp))
+                                    Spacer(Modifier.width(4.dp))
 
                                     val canSend =
                                         (
@@ -1522,19 +1915,22 @@ fun ChatbotScreen(
                                     IconButton(
                                         onClick = { sendMessage(message) },
                                         enabled = canSend,
-                                        modifier = Modifier.size(44.dp),
+                                        modifier = Modifier.size(42.dp),
                                         colors = IconButtonDefaults.iconButtonColors(
                                             containerColor = primaryTeal,
-                                            contentColor = Color.White,
-                                            disabledContainerColor = Color(0xFFE8EDF1),
-                                            disabledContentColor = Color(0xFF98A2B3)
+                                            contentColor = PureWhite,
+                                            disabledContainerColor = SoftMint.copy(alpha = 0.6f),
+                                            disabledContentColor = TextLight
                                         )
                                     ) {
                                         Icon(
                                             imageVector = Icons.AutoMirrored.Filled.Send,
-                                            contentDescription = "Send"
+                                            contentDescription = "Send",
+                                            tint = if (canSend) PureWhite else TextLight,
+                                            modifier = Modifier.size(19.dp)
                                         )
                                     }
+
                                 }
                             }
                         }
@@ -1563,6 +1959,7 @@ fun ChatbotScreen(
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
+                        .imePadding()
                         .background(Color.Black.copy(alpha = 0.58f))
                         .padding(horizontal = 28.dp),
                     contentAlignment = Alignment.Center
@@ -1577,14 +1974,14 @@ fun ChatbotScreen(
                                 shape = RoundedCornerShape(22.dp)
                             ),
                         shape = RoundedCornerShape(22.dp),
-                        color = Color.White.copy(alpha = 0.96f),
+                        color = PureWhite,
                         border = BorderStroke(
                             1.dp,
-                            Color.White.copy(alpha = 0.70f)
+                            mintBorder
                         )
                     ) {
                         Column(
-                            modifier = Modifier.padding(14.dp)
+                            modifier = Modifier.padding(16.dp)
                         ) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -1593,9 +1990,9 @@ fun ChatbotScreen(
                                 Text(
                                     text = "Edit message",
                                     modifier = Modifier.weight(1f),
-                                    fontSize = 15.sp,
+                                    fontSize = 16.sp,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = Color(0xFF17202A)
+                                    color = darkText
                                 )
 
                                 IconButton(
@@ -1609,13 +2006,13 @@ fun ChatbotScreen(
                                     Icon(
                                         imageVector = Icons.Filled.Close,
                                         contentDescription = "Close editor",
-                                        tint = Color(0xFF667085),
+                                        tint = mutedText,
                                         modifier = Modifier.size(18.dp)
                                     )
                                 }
                             }
 
-                            Spacer(Modifier.height(8.dp))
+                            Spacer(Modifier.height(10.dp))
 
                             OutlinedTextField(
                                 value = editingDraft,
@@ -1626,17 +2023,17 @@ fun ChatbotScreen(
                                 placeholder = {
                                     Text(
                                         "Edit your message...",
-                                        color = Color(0xFF98A2B3)
+                                        color = TextLight
                                     )
                                 },
                                 shape = RoundedCornerShape(16.dp),
                                 colors = OutlinedTextFieldDefaults.colors(
-                                    focusedTextColor = Color(0xFF17202A),
-                                    unfocusedTextColor = Color(0xFF17202A),
+                                    focusedTextColor = darkText,
+                                    unfocusedTextColor = darkText,
                                     focusedBorderColor = primaryTeal,
-                                    unfocusedBorderColor = Color(0xFFD0D5DD),
-                                    focusedContainerColor = Color(0xFFF9FBFC),
-                                    unfocusedContainerColor = Color(0xFFF9FBFC),
+                                    unfocusedBorderColor = mintBorder,
+                                    focusedContainerColor = SoftMint.copy(alpha = 0.4f),
+                                    unfocusedContainerColor = SoftMint.copy(alpha = 0.25f),
                                     cursorColor = primaryTeal
                                 )
                             )
@@ -1645,12 +2042,12 @@ fun ChatbotScreen(
 
                             Text(
                                 text = "Your chat stays paused until you finish editing.",
-                                fontSize = 10.sp,
-                                color = Color(0xFF98A2B3),
+                                fontSize = 11.sp,
+                                color = mutedText,
                                 modifier = Modifier.padding(horizontal = 2.dp)
                             )
 
-                            Spacer(Modifier.height(12.dp))
+                            Spacer(Modifier.height(14.dp))
 
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -1666,11 +2063,11 @@ fun ChatbotScreen(
                                 ) {
                                     Text(
                                         text = "Cancel",
-                                        color = Color(0xFF667085)
+                                        color = mutedText
                                     )
                                 }
 
-                                Spacer(Modifier.width(4.dp))
+                                Spacer(Modifier.width(6.dp))
 
                                 Button(
                                     onClick = {
@@ -1707,11 +2104,11 @@ fun ChatbotScreen(
                                     enabled = editingDraft.trim().isNotEmpty(),
                                     colors = ButtonDefaults.buttonColors(
                                         containerColor = primaryTeal,
-                                        contentColor = Color.White,
-                                        disabledContainerColor = Color(0xFFE8EDF1),
-                                        disabledContentColor = Color(0xFF98A2B3)
+                                        contentColor = PureWhite,
+                                        disabledContainerColor = SoftMint.copy(alpha = 0.6f),
+                                        disabledContentColor = TextLight
                                     ),
-                                    shape = RoundedCornerShape(13.dp)
+                                    shape = RoundedCornerShape(14.dp)
                                 ) {
                                     Text("Save")
                                 }
@@ -1734,10 +2131,11 @@ fun ChatbotScreen(
                         .fillMaxWidth()
                         .padding(18.dp),
                     shape = RoundedCornerShape(24.dp),
-                    color = Color.White,
-                    shadowElevation = 18.dp
+                    color = PureWhite,
+                    shadowElevation = 18.dp,
+                    border = BorderStroke(1.dp, mintBorder)
                 ) {
-                    Column(modifier = Modifier.padding(12.dp)) {
+                    Column(modifier = Modifier.padding(14.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically
@@ -1745,7 +2143,7 @@ fun ChatbotScreen(
                             Text(
                                 text = "Attached image",
                                 modifier = Modifier.weight(1f),
-                                fontSize = 15.sp,
+                                fontSize = 16.sp,
                                 fontWeight = FontWeight.SemiBold,
                                 color = darkText
                             )
@@ -1772,10 +2170,11 @@ fun ChatbotScreen(
                                     .fillMaxWidth()
                                     .heightIn(max = 520.dp)
                                     .clip(RoundedCornerShape(18.dp))
+                                    .border(1.dp, mintBorder, RoundedCornerShape(18.dp))
                                     .clickable { }
                             )
 
-                            Spacer(Modifier.height(10.dp))
+                            Spacer(Modifier.height(12.dp))
 
                             Button(
                                 onClick = {
@@ -1811,12 +2210,14 @@ fun ChatbotScreen(
                                         ).show()
                                     }
                                 },
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .heightIn(min = 48.dp),
+                                shape = RoundedCornerShape(14.dp),
                                 colors = ButtonDefaults.buttonColors(
                                     containerColor = primaryTeal,
-                                    contentColor = Color.White
-                                ),
-                                shape = RoundedCornerShape(14.dp)
+                                    contentColor = PureWhite
+                                )
                             ) {
                                 Text("Save & Copy Image")
                             }
@@ -1873,24 +2274,23 @@ fun ChatbotScreen(
                 currentSessionId = currentSessionId,
                 onClose = { showChatSidebar = false },
                 onNewChat = {
-                    ChatHistoryRepository.saveChat(
-                        context,
-                        currentSessionId,
-                        messages
-                    )
-
-                    currentSessionId =
-                        "android_" + System.currentTimeMillis()
-
-                    messages.clear()
-                    message = ""
-                    isTyping = false
-                    savedChats =
-                        ChatHistoryRepository.getChats(context)
-                    showChatSidebar = false
+                    startNewChat()
                 },
+                onViewTranscript = if (onViewTranscript != null) {
+                    { targetId ->
+                        if (messages.isNotEmpty()) {
+                            ChatHistoryRepository.saveChat(context, currentSessionId, messages)
+                        }
+                        showChatSidebar = false
+                        onViewTranscript(targetId)
+                    }
+                } else null,
                 onSelectChat = { chat ->
+                    if (messages.isNotEmpty()) {
+                        ChatHistoryRepository.saveChat(context, currentSessionId, messages)
+                    }
                     currentSessionId = chat.id
+                    ChatHistoryRepository.setActiveSessionId(context, chat.id)
                     messages.clear()
                     messages.addAll(chat.messages)
                     message = ""
@@ -1926,14 +2326,15 @@ fun ChatbotScreen(
                         .width(292.dp)
                         .shadow(18.dp, RoundedCornerShape(20.dp)),
                     shape = RoundedCornerShape(20.dp),
-                    color = Color.White
+                    color = PureWhite,
+                    border = BorderStroke(1.dp, mintBorder)
                 ) {
                     Column(
                         modifier = Modifier.padding(
                             start = 8.dp,
-                            top = 8.dp,
+                            top = 10.dp,
                             end = 8.dp,
-                            bottom = 8.dp
+                            bottom = 10.dp
                         )
                     ) {
                         Text(
@@ -1946,7 +2347,7 @@ fun ChatbotScreen(
                             ),
                             fontSize = 14.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = Color(0xFF17202A),
+                            color = darkText,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -1990,6 +2391,18 @@ fun ChatbotScreen(
                                 selectedChatForActions = null
                             }
                         )
+
+                        if (onViewTranscript != null) {
+                            ChatActionRow(
+                                icon = Icons.Filled.Info,
+                                text = "View Transcript",
+                                onClick = {
+                                    showChatActions = false
+                                    selectedChatForActions = null
+                                    onViewTranscript(selectedChat.id)
+                                }
+                            )
+                        }
 
                         ChatActionRow(
                             icon = Icons.Filled.Delete,
@@ -2104,6 +2517,10 @@ fun ChatbotScreen(
                                 currentSessionId
                             )
 
+                            val newId = "android_" + System.currentTimeMillis()
+                            currentSessionId = newId
+                            ChatHistoryRepository.setActiveSessionId(context, newId)
+
                             messages.clear()
                             message = ""
                             isTyping = false
@@ -2170,7 +2587,9 @@ private val MicIcon: ImageVector by lazy {
 @Composable
 private fun WelcomeSection(
     primaryTeal: Color,
-    mutedText: Color
+    mutedText: Color,
+    onColdClick: () -> Unit = {},
+    onMedicineClick: () -> Unit = {}
 ) {
     var visible by remember { mutableStateOf(false) }
 
@@ -2189,41 +2608,113 @@ private fun WelcomeSection(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 52.dp, bottom = 14.dp),
+                .padding(top = 20.dp, bottom = 12.dp, start = 8.dp, end = 8.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             RobotAvatar(
-                size = 112.dp,
+                size = 76.dp,
                 isError = false
             )
 
-            Spacer(Modifier.height(24.dp))
+            Spacer(Modifier.height(14.dp))
 
             Text(
-                text = "How can I help",
-                fontSize = 26.sp,
+                text = "How can I help you today?",
+                fontSize = 19.sp,
                 fontWeight = FontWeight.Bold,
                 color = primaryTeal,
                 textAlign = TextAlign.Center
             )
 
-            Text(
-                text = "you today?",
-                fontSize = 26.sp,
-                fontWeight = FontWeight.Bold,
-                color = primaryTeal,
-                textAlign = TextAlign.Center
-            )
-
-            Spacer(Modifier.height(20.dp))
+            Spacer(Modifier.height(6.dp))
 
             Text(
-                text = "Ask about symptoms, medicines or your health.",
+                text = "Ask about symptoms, medicines, or medical report interpretation.",
                 fontSize = 13.sp,
                 color = mutedText,
-                textAlign = TextAlign.Center
+                textAlign = TextAlign.Center,
+                lineHeight = 18.sp
             )
+
+            Spacer(Modifier.height(18.dp))
+
+            // Quick suggestion chips
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Surface(
+                    onClick = onColdClick,
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(14.dp)),
+                    color = SoftMint,
+                    border = BorderStroke(1.dp, Mint)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(10.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = StethoscopeVectorIcon,
+                                contentDescription = null,
+                                tint = primaryTeal,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = "Common Cold & Flu",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = primaryTeal
+                            )
+                        }
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            text = "Check fever, cough or chills",
+                            fontSize = 10.sp,
+                            color = mutedText
+                        )
+                    }
+                }
+
+                Surface(
+                    onClick = onMedicineClick,
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(14.dp)),
+                    color = SoftMint,
+                    border = BorderStroke(1.dp, Mint)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(10.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = PillVectorIcon,
+                                contentDescription = null,
+                                tint = primaryTeal,
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(Modifier.width(6.dp))
+                            Text(
+                                text = "Medicine Info",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = primaryTeal
+                            )
+                        }
+                        Spacer(Modifier.height(2.dp))
+                        Text(
+                            text = "Dosage, side effects & uses",
+                            fontSize = 10.sp,
+                            color = mutedText
+                        )
+                    }
+                }
+            }
         }
+
     }
 }
 
@@ -2308,9 +2799,9 @@ private fun AttachmentMenuPopup(
                 shape = RoundedCornerShape(18.dp)
             ),
         shape = RoundedCornerShape(18.dp),
-        color = Color.White,
+        color = PureWhite,
         tonalElevation = 2.dp,
-        border = BorderStroke(1.dp, Color(0xFFDDEBED))
+        border = BorderStroke(1.dp, Mint)
     ) {
         Column(
             modifier = Modifier.padding(7.dp)
@@ -2354,7 +2845,7 @@ private fun AttachmentMenuPopup(
             }
 
             AttachmentMenuItem(
-                emoji = "📷",
+                icon = DocumentScannerVectorIcon,
                 title = "Take Photo",
                 onClick = onTakePhoto,
                 softTeal = softTeal,
@@ -2363,7 +2854,7 @@ private fun AttachmentMenuPopup(
             )
 
             AttachmentMenuItem(
-                emoji = "🖼️",
+                icon = DocumentScannerVectorIcon,
                 title = "Upload Image",
                 onClick = onUploadImage,
                 softTeal = softTeal,
@@ -2372,7 +2863,7 @@ private fun AttachmentMenuPopup(
             )
 
             AttachmentMenuItem(
-                emoji = "📄",
+                icon = DocumentScannerVectorIcon,
                 title = "Upload Report",
                 onClick = onUploadReport,
                 softTeal = softTeal,
@@ -2381,7 +2872,7 @@ private fun AttachmentMenuPopup(
             )
 
             AttachmentMenuItem(
-                emoji = "💊",
+                icon = PillVectorIcon,
                 title = "Prescription",
                 onClick = onPrescription,
                 softTeal = softTeal,
@@ -2397,12 +2888,9 @@ private fun AttachmentMenuPopup(
 // COMPACT ATTACHMENT MENU ITEM
 // =============================================================
 
-
-// =============================================================
-
 @Composable
 private fun AttachmentMenuItem(
-    emoji: String,
+    icon: ImageVector,
     title: String,
     onClick: () -> Unit,
     softTeal: Color,
@@ -2441,9 +2929,11 @@ private fun AttachmentMenuItem(
                 .background(softTeal),
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = emoji,
-                fontSize = 16.sp
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = primaryTeal,
+                modifier = Modifier.size(18.dp)
             )
         }
 
@@ -2475,7 +2965,7 @@ private fun AttachmentMenuItem(
 
 @Composable
 private fun AttachmentOption(
-    icon: String,
+    icon: ImageVector,
     title: String,
     subtitle: String,
     onClick: () -> Unit
@@ -2492,12 +2982,14 @@ private fun AttachmentOption(
             modifier = Modifier
                 .size(44.dp)
                 .clip(CircleShape)
-                .background(Color(0xFFE4F3F4)),
+                .background(LightGreenSurface),
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = icon,
-                fontSize = 20.sp
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = DeepTeal,
+                modifier = Modifier.size(22.dp)
             )
         }
 
@@ -2508,12 +3000,12 @@ private fun AttachmentOption(
                 text = title,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.SemiBold,
-                color = Color(0xFF17202A)
+                color = TextDark
             )
             Text(
                 text = subtitle,
                 fontSize = 12.sp,
-                color = Color(0xFF667085),
+                color = TextMuted,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -2532,22 +3024,23 @@ private fun ChatSidebar(
     currentSessionId: String,
     onClose: () -> Unit,
     onNewChat: () -> Unit,
+    onViewTranscript: ((String?) -> Unit)? = null,
     onSelectChat: (SavedChat) -> Unit,
     onClearCurrent: () -> Unit,
     onChatLongPress: (SavedChat) -> Unit
 ) {
-    val primaryTeal = Color(0xFF176B83)
+    val primaryTeal = DeepTeal
     val panelShape = RoundedCornerShape(
-        topEnd = 28.dp,
-        bottomEnd = 28.dp
+        topEnd = 24.dp,
+        bottomEnd = 24.dp
     )
 
     Column(
         modifier = Modifier
             .fillMaxHeight()
             .width(310.dp)
-            .shadow(12.dp, panelShape)
-            .background(Color.White, panelShape)
+            .shadow(16.dp, panelShape)
+            .background(PureWhite, panelShape)
             .clickable(
                 interactionSource = remember {
                     MutableInteractionSource()
@@ -2557,7 +3050,7 @@ private fun ChatSidebar(
             )
             .statusBarsPadding()
             .navigationBarsPadding()
-            .padding(18.dp)
+            .padding(16.dp)
     ) {
 
         // Header
@@ -2565,36 +3058,37 @@ private fun ChatSidebar(
             modifier = Modifier.fillMaxWidth(),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            RobotAvatar(size = 42.dp, isError = false)
+            RobotAvatar(size = 40.dp, isError = false)
 
             Spacer(Modifier.width(10.dp))
 
             Column(Modifier.weight(1f)) {
                 Text(
                     "MedAssist AI",
-                    fontSize = 18.sp,
+                    fontSize = 17.sp,
                     fontWeight = FontWeight.Bold,
-                    color = Color(0xFF17202A)
+                    color = TextDark
                 )
                 Text(
                     "Your conversations",
-                    fontSize = 12.sp,
-                    color = Color(0xFF667085)
+                    fontSize = 11.sp,
+                    color = TextMuted
                 )
             }
+
 
             IconButton(
                 onClick = onClose,
                 modifier = Modifier.size(44.dp),
                 colors = IconButtonDefaults.iconButtonColors(
-                    containerColor = Color(0xFFF2F5F7),
-                    contentColor = Color(0xFF667085)
+                    containerColor = SoftMint,
+                    contentColor = TextMuted
                 )
             ) {
                 Icon(
                     imageVector = Icons.Filled.Close,
                     contentDescription = "Close",
-                    tint = Color(0xFF667085)
+                    tint = TextMuted
                 )
             }
         }
@@ -2610,7 +3104,7 @@ private fun ChatSidebar(
             shape = RoundedCornerShape(16.dp),
             colors = ButtonDefaults.buttonColors(
                 containerColor = primaryTeal,
-                contentColor = Color.White
+                contentColor = PureWhite
             )
         ) {
             Icon(
@@ -2625,13 +3119,45 @@ private fun ChatSidebar(
             )
         }
 
+        if (onViewTranscript != null) {
+            Spacer(Modifier.height(8.dp))
+
+            Button(
+                onClick = {
+                    onViewTranscript(currentSessionId)
+                },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 48.dp),
+                shape = RoundedCornerShape(16.dp),
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = SoftMint,
+                    contentColor = DarkTeal
+                ),
+                border = androidx.compose.foundation.BorderStroke(1.dp, Mint)
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.Info,
+                    contentDescription = null,
+                    tint = DarkTeal,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    text = "Consultation Transcript",
+                    fontWeight = FontWeight.SemiBold,
+                    color = DarkTeal
+                )
+            }
+        }
+
         Spacer(Modifier.height(18.dp))
 
         Text(
             "Older Chats",
             fontSize = 13.sp,
             fontWeight = FontWeight.SemiBold,
-            color = Color(0xFF667085)
+            color = TextMuted
         )
 
         Spacer(Modifier.height(8.dp))
@@ -2649,7 +3175,7 @@ private fun ChatSidebar(
                 Text(
                     "No older chats yet",
                     fontSize = 14.sp,
-                    color = Color(0xFF667085)
+                    color = TextMuted
                 )
             }
         } else {
@@ -2705,13 +3231,13 @@ private fun ChatSidebar(
             Icon(
                 imageVector = Icons.Filled.Delete,
                 contentDescription = null,
-                tint = Color(0xFFD32F2F),
+                tint = StatusError,
                 modifier = Modifier.size(20.dp)
             )
             Spacer(Modifier.width(8.dp))
             Text(
                 "Clear Current Chat",
-                color = Color(0xFFD32F2F),
+                color = StatusError,
                 fontWeight = FontWeight.SemiBold
             )
         }
@@ -2788,7 +3314,7 @@ private fun ChatGroupLabel(text: String) {
         modifier = Modifier.padding(top = 8.dp, bottom = 2.dp, start = 2.dp),
         fontSize = 12.sp,
         fontWeight = FontWeight.SemiBold,
-        color = Color(0xFF667085)
+        color = TextMuted
     )
 }
 
@@ -2815,29 +3341,29 @@ private fun ChatHistoryItem(
     onClick: () -> Unit,
     onLongPress: () -> Unit
 ) {
-    val rowShape = RoundedCornerShape(15.dp)
+    val rowShape = RoundedCornerShape(14.dp)
 
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .heightIn(min = 62.dp)
+            .heightIn(min = 58.dp)
             .clip(rowShape)
             .background(
-                if (isCurrent) Color(0xFFE4F3F4) else Color(0xFFF7F9FA)
+                if (isCurrent) SoftMint else PureWhite
             )
             .border(
                 width = 1.dp,
-                color = if (isCurrent) Color(0xFFB9DDE2) else Color(0xFFE6EAED),
+                color = if (isCurrent) Mint else Mint.copy(alpha = 0.5f),
                 shape = rowShape
             )
             .combinedClickable(
                 onClick = onClick,
                 onLongClick = onLongPress
             )
-            .padding(horizontal = 12.dp, vertical = 9.dp),
+            .padding(horizontal = 10.dp, vertical = 8.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
-        RobotAvatar(size = 34.dp, isError = false)
+        RobotAvatar(size = 32.dp, isError = false)
         Spacer(Modifier.width(10.dp))
 
         Column(Modifier.weight(1f)) {
@@ -2846,16 +3372,16 @@ private fun ChatHistoryItem(
                     Icon(
                         imageVector = PinIcon,
                         contentDescription = "Pinned",
-                        tint = Color(0xFF176B83),
-                        modifier = Modifier.size(14.dp)
+                        tint = DeepTeal,
+                        modifier = Modifier.size(13.dp)
                     )
                     Spacer(Modifier.width(4.dp))
                 }
                 Text(
                     text = chat.title,
                     fontSize = 13.sp,
-                    lineHeight = 18.sp,
-                    color = Color(0xFF17202A),
+                    lineHeight = 17.sp,
+                    color = TextDark,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis
                 )
@@ -2864,7 +3390,7 @@ private fun ChatHistoryItem(
             Text(
                 text = chatRelativeTime(chat.updatedAt),
                 fontSize = 11.sp,
-                color = Color(0xFF98A2B3),
+                color = TextLight,
                 maxLines = 1
             )
         }
@@ -2872,11 +3398,12 @@ private fun ChatHistoryItem(
         Icon(
             imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
             contentDescription = "Open chat",
-            tint = Color(0xFF98A2B3),
-            modifier = Modifier.size(20.dp)
+            tint = TextLight,
+            modifier = Modifier.size(18.dp)
         )
     }
 }
+
 
 @Composable
 private fun ChatActionRow(
@@ -2893,14 +3420,14 @@ private fun ChatActionRow(
         Icon(
             imageVector = icon,
             contentDescription = null,
-            tint = if (destructive) Color(0xFFD32F2F) else Color(0xFF176B83),
+            tint = if (destructive) StatusError else DeepTeal,
             modifier = Modifier.size(20.dp)
         )
         Spacer(Modifier.width(12.dp))
         Text(
             text = text,
             modifier = Modifier.weight(1f),
-            color = if (destructive) Color(0xFFD32F2F) else Color(0xFF17202A),
+            color = if (destructive) StatusError else TextDark,
             textAlign = TextAlign.Start
         )
     }
@@ -3026,6 +3553,7 @@ private fun fixMeasurementFormatting(
 
 
 // =============================================================
+// =============================================================
 // MEDASSIST ROBOT AVATAR
 // =============================================================
 
@@ -3035,10 +3563,10 @@ private fun RobotAvatar(
     isError: Boolean
 ) {
     val backgroundColor =
-        if (isError) Color(0xFFFFE8EC) else Color(0xFFE8F5F8)
+        if (isError) StatusErrorBackground else SoftMint
 
     val robotColor =
-        if (isError) Color(0xFFD32F2F) else Color(0xFF176B83)
+        if (isError) StatusError else DeepTeal
 
     Box(
         modifier = Modifier
@@ -3047,7 +3575,7 @@ private fun RobotAvatar(
             .background(backgroundColor)
             .border(
                 width = 1.dp,
-                color = if (isError) Color(0xFFFFC7D0) else Color(0xFFD5EBF0),
+                color = if (isError) StatusErrorBorder else Mint,
                 shape = CircleShape
             ),
         contentAlignment = Alignment.Center
@@ -3080,13 +3608,13 @@ private fun RobotAvatar(
                     Modifier
                         .size(size * 0.095f)
                         .clip(CircleShape)
-                        .background(Color.White)
+                        .background(PureWhite)
                 )
                 Box(
                     Modifier
                         .size(size * 0.095f)
                         .clip(CircleShape)
-                        .background(Color.White)
+                        .background(PureWhite)
                 )
             }
         }
@@ -3101,7 +3629,8 @@ private fun RobotAvatar(
 fun MessageBubble(
     message: ChatMessage,
     onEdit: (() -> Unit)? = null,
-    onImageClick: ((String) -> Unit)? = null
+    onImageClick: ((String) -> Unit)? = null,
+    onRetry: (() -> Unit)? = null
 ) {
     var showMessage by remember { mutableStateOf(false) }
 
@@ -3113,17 +3642,17 @@ fun MessageBubble(
     val bubbleShape =
         if (message.isUser) {
             RoundedCornerShape(
-                topStart = 20.dp,
-                topEnd = 20.dp,
-                bottomStart = 20.dp,
-                bottomEnd = 6.dp
+                topStart = 18.dp,
+                topEnd = 18.dp,
+                bottomStart = 18.dp,
+                bottomEnd = 4.dp
             )
         } else {
             RoundedCornerShape(
-                topStart = 6.dp,
-                topEnd = 20.dp,
-                bottomStart = 20.dp,
-                bottomEnd = 20.dp
+                topStart = 4.dp,
+                topEnd = 18.dp,
+                bottomStart = 18.dp,
+                bottomEnd = 18.dp
             )
         }
 
@@ -3131,19 +3660,19 @@ fun MessageBubble(
 
     val bubbleColor =
         when {
-            message.isError -> Color(0xFFFFEBEE)
-            message.isUser && hasImages -> Color.White
-            message.isUser -> Color(0xFF176B83)
-            else -> Color(0xFFF3F8F9)
+            message.isError -> StatusErrorBackground
+            message.isUser && hasImages -> PureWhite
+            message.isUser -> DeepTeal
+            else -> SoftMint
         }
 
     val bubbleBorder =
         when {
-            message.isError -> BorderStroke(1.dp, Color(0xFFFFCDD2))
+            message.isError -> BorderStroke(1.dp, StatusErrorBorder)
             message.isUser && hasImages ->
-                BorderStroke(1.dp, Color(0xFFE2E8EA))
+                BorderStroke(1.dp, Mint)
             message.isUser -> null
-            else -> BorderStroke(1.dp, Color(0xFFE1ECEF))
+            else -> BorderStroke(1.dp, Mint)
         }
 
     AnimatedVisibility(
@@ -3151,21 +3680,21 @@ fun MessageBubble(
         enter =
             fadeIn(
                 animationSpec = tween(
-                    durationMillis = 260,
+                    durationMillis = 240,
                     easing = FastOutSlowInEasing
                 )
             ) +
                     slideInVertically(
                         initialOffsetY = { it / 8 },
                         animationSpec = tween(
-                            durationMillis = 320,
+                            durationMillis = 280,
                             easing = FastOutSlowInEasing
                         )
                     ) +
                     scaleIn(
                         initialScale = 0.96f,
                         animationSpec = tween(
-                            durationMillis = 320,
+                            durationMillis = 280,
                             easing = FastOutSlowInEasing
                         )
                     )
@@ -3187,11 +3716,11 @@ fun MessageBubble(
                     isError = message.isError
                 )
 
-                Spacer(Modifier.width(7.dp))
+                Spacer(Modifier.width(6.dp))
             }
 
             Column(
-                modifier = Modifier.widthIn(max = 300.dp),
+                modifier = Modifier.widthIn(max = 296.dp),
                 horizontalAlignment =
                     if (message.isUser) {
                         Alignment.End
@@ -3205,7 +3734,7 @@ fun MessageBubble(
                     color = bubbleColor,
                     border = bubbleBorder,
                     shadowElevation =
-                        if (message.isUser) 2.dp else 0.dp
+                        if (message.isUser) 1.5.dp else 0.5.dp
                 ) {
                     Column(
                         modifier = Modifier.padding(
@@ -3218,7 +3747,7 @@ fun MessageBubble(
                         if (message.imagePaths.isNotEmpty()) {
                             Row(
                                 modifier = Modifier
-                                    .widthIn(max = 282.dp)
+                                    .widthIn(max = 280.dp)
                                     .horizontalScroll(rememberScrollState()),
                                 horizontalArrangement = Arrangement.spacedBy(6.dp),
                                 verticalAlignment = Alignment.CenterVertically
@@ -3231,11 +3760,11 @@ fun MessageBubble(
                                     if (bitmap != null) {
                                         Box(
                                             modifier = Modifier
-                                                .size(112.dp)
+                                                .size(110.dp)
                                                 .clip(RoundedCornerShape(12.dp))
                                                 .border(
                                                     1.dp,
-                                                    Color(0xFFE5E7EB),
+                                                    Mint,
                                                     RoundedCornerShape(12.dp)
                                                 )
                                                 .clickable {
@@ -3254,7 +3783,7 @@ fun MessageBubble(
                             }
 
                             if (message.text.isNotBlank()) {
-                                Spacer(Modifier.height(7.dp))
+                                Spacer(Modifier.height(6.dp))
                             }
                         }
 
@@ -3264,6 +3793,32 @@ fun MessageBubble(
                                 isUser = message.isUser && !hasImages
                             )
                         }
+
+                        if (message.isError && onRetry != null) {
+                            Spacer(Modifier.height(6.dp))
+                            Row(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(StatusError)
+                                    .clickable { onRetry() }
+                                    .padding(horizontal = 10.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Refresh,
+                                    contentDescription = "Retry",
+                                    tint = PureWhite,
+                                    modifier = Modifier.size(13.dp)
+                                )
+                                Spacer(Modifier.width(4.dp))
+                                Text(
+                                    text = "Retry",
+                                    color = PureWhite,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
                     }
                 }
 
@@ -3272,7 +3827,7 @@ fun MessageBubble(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(
-                            start = if (message.isUser) 0.dp else 5.dp,
+                            start = if (message.isUser) 0.dp else 4.dp,
                             end = if (message.isUser) 2.dp else 0.dp,
                             top = 3.dp
                         ),
@@ -3295,11 +3850,12 @@ fun MessageBubble(
                         fontWeight = FontWeight.SemiBold,
                         color =
                             if (message.isUser) {
-                                Color(0xFF176B83)
+                                DeepTeal
                             } else {
-                                Color(0xFF667085)
+                                TextMuted
                             }
                     )
+
 
                     if (message.isUser && onEdit != null) {
                         Spacer(Modifier.width(4.dp))
@@ -3311,7 +3867,7 @@ fun MessageBubble(
                             Icon(
                                 imageVector = Icons.Filled.Edit,
                                 contentDescription = "Edit message",
-                                tint = Color(0xFF667085),
+                                tint = TextMuted,
                                 modifier = Modifier.size(14.dp)
                             )
                         }
@@ -3329,7 +3885,7 @@ fun MessageBubble(
                                 .replace("_", " ")
                                 .replaceFirstChar { it.uppercase() },
                             fontSize = 8.sp,
-                            color = Color(0xFF98A2B3)
+                            color = SageGreen
                         )
                     }
                 }
@@ -3352,129 +3908,54 @@ private fun FormattedMessageText(
 ) {
 
     val textColor =
+        if (isUser) PureWhite else TextDark
 
-        if (
-            isUser
-        )
-
-            Color.White
-
-        else
-
-            Color(
-                0xFF344054
-            )
-
+    val bulletColor =
+        if (isUser) PureWhite else DeepTeal
 
     val lines =
         text
-            .replace(
-                "\r\n",
-                "\n"
-            )
-            .split(
-                "\n"
-            )
-
+            .replace("\r\n", "\n")
+            .split("\n")
 
     Column(
-
-        verticalArrangement =
-            Arrangement.spacedBy(
-                6.dp
-            )
+        verticalArrangement = Arrangement.spacedBy(6.dp)
     ) {
-
         lines.forEach { rawLine ->
-
-            val line =
-                rawLine.trimEnd()
-
+            val line = rawLine.trimEnd()
 
             // =================================================
             // EMPTY LINE
             // =================================================
-
-            if (
-                line.isBlank()
-            ) {
-
-                Spacer(
-                    modifier =
-                        Modifier.height(
-                            2.dp
-                        )
-                )
-
+            if (line.isBlank()) {
+                Spacer(modifier = Modifier.height(2.dp))
                 return@forEach
             }
-
 
             // =================================================
             // BULLET
             // =================================================
-
             val isBullet =
+                line.startsWith("•") ||
+                        line.startsWith("- ") ||
+                        line.startsWith("* ")
 
-                line.startsWith(
-                    "•"
-                ) ||
-
-                        line.startsWith(
-                            "- "
-                        ) ||
-
-                        line.startsWith(
-                            "* "
-                        )
-
-
-            if (
-                isBullet
-            ) {
-
+            if (isBullet) {
                 val bulletText =
-
                     when {
-
-                        line.startsWith(
-                            "•"
-                        ) ->
-
-                            line.removePrefix(
-                                "•"
-                            ).trim()
-
-                        else ->
-
-                            line.substring(
-                                2
-                            ).trim()
+                        line.startsWith("•") -> line.removePrefix("•").trim()
+                        else -> line.substring(2).trim()
                     }
 
-
                 Row(
-
-                    modifier =
-                        Modifier.fillMaxWidth(),
-
-                    verticalAlignment =
-                        Alignment.Top
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.Top
                 ) {
-
                     Text(
-
-                        text =
-                            "•",
-
-                        fontSize =
-                            15.sp,
-
-                        fontWeight =
-                            FontWeight.Bold,
-
-                        color =
-                            textColor
+                        text = "•",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = bulletColor
                     )
 
 
@@ -3637,49 +4118,38 @@ private fun cleanMarkdown(
 fun TypingIndicator() {
 
     Row(
-
-        modifier =
-            Modifier.fillMaxWidth(),
-
-        verticalAlignment =
-            Alignment.Bottom
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.Bottom
     ) {
 
         RobotAvatar(
-            size = 36.dp,
+            size = 30.dp,
             isError = false
         )
 
         Spacer(
-            modifier = Modifier.width(8.dp)
+            modifier = Modifier.width(6.dp)
         )
 
         Surface(
-
             shape = RoundedCornerShape(
-                topStart = 6.dp,
-                topEnd = 20.dp,
-                bottomStart = 20.dp,
-                bottomEnd = 20.dp
+                topStart = 4.dp,
+                topEnd = 18.dp,
+                bottomStart = 18.dp,
+                bottomEnd = 18.dp
             ),
-
-            color = Color(0xFFF3F8F9),
-
-            border = BorderStroke(1.dp, Color(0xFFE1ECEF))
+            color = Color.White,
+            border = BorderStroke(1.dp, LightGreenBorder.copy(alpha = 0.7f)),
+            shadowElevation = 1.dp
         ) {
 
             Row(
-
                 modifier = Modifier.padding(
-                    horizontal = 18.dp,
-                    vertical = 15.dp
+                    horizontal = 14.dp,
+                    vertical = 11.dp
                 ),
-
-                horizontalArrangement =
-                    Arrangement.spacedBy(6.dp),
-
-                verticalAlignment =
-                    Alignment.CenterVertically
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+                verticalAlignment = Alignment.CenterVertically
             ) {
 
                 TypingDot(delayMillis = 0)
@@ -3721,15 +4191,15 @@ private fun TypingDot(
 
     Box(
         modifier = Modifier
-            .size(8.dp)
+            .size(7.dp)
             .graphicsLayer {
                 val scale = 0.75f + 0.35f * progress
                 scaleX = scale
                 scaleY = scale
-                translationY = -3.dp.toPx() * progress
+                translationY = -2.5f.dp.toPx() * progress
                 alpha = 0.35f + 0.65f * progress
             }
             .clip(CircleShape)
-            .background(Color(0xFF176B83))
+            .background(PrimaryTeal)
     )
 }

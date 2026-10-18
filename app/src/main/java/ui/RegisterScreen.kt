@@ -23,6 +23,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -31,12 +32,17 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -51,9 +57,14 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
@@ -63,6 +74,19 @@ import com.example.ai_based_medical_chatbot.data.SupabaseClient
 import kotlinx.coroutines.launch
 import com.example.ai_based_medical_chatbot.LocalAppLanguageController
 import com.example.ai_based_medical_chatbot.appText
+import com.example.ai_based_medical_chatbot.ui.theme.DarkTeal
+import com.example.ai_based_medical_chatbot.ui.theme.DeepTeal
+import com.example.ai_based_medical_chatbot.ui.theme.Ivory
+import com.example.ai_based_medical_chatbot.ui.theme.Mint
+import com.example.ai_based_medical_chatbot.ui.theme.PureWhite
+import com.example.ai_based_medical_chatbot.ui.theme.SageGreen
+import com.example.ai_based_medical_chatbot.ui.theme.SoftMint
+import com.example.ai_based_medical_chatbot.ui.theme.StatusError
+import com.example.ai_based_medical_chatbot.ui.theme.StatusErrorBackground
+import com.example.ai_based_medical_chatbot.ui.theme.StatusErrorBorder
+import com.example.ai_based_medical_chatbot.ui.theme.StatusSuccess
+import com.example.ai_based_medical_chatbot.ui.theme.TextDark
+import com.example.ai_based_medical_chatbot.ui.theme.TextMuted
 
 @Composable
 fun RegisterScreen(
@@ -147,22 +171,92 @@ fun RegisterScreen(
         else -> message
     }
 
+    val nameFocusRequester = remember { FocusRequester() }
+    val emailFocusRequester = remember { FocusRequester() }
+    val passwordFocusRequester = remember { FocusRequester() }
+    val confirmPasswordFocusRequester = remember { FocusRequester() }
 
-    // ============================================================
-    // MEDASSIST AI COLORS
-    // ============================================================
+    val submitRegistration: () -> Unit = {
+        if (!isLoading) {
+            nameError = ""
+            emailError = ""
+            passwordError = ""
+            confirmPasswordError = ""
+            registerError = ""
 
-    val backgroundTop = Color(0xFFF7FCFF)
-    val backgroundBottom = Color(0xFFE8F7FA)
+            var valid = true
 
-    val primaryBlue = Color(0xFF1976D2)
-    val primaryBlueDark = Color(0xFF123A56)
+            // NAME
+            if (fullName.trim().isEmpty()) {
+                nameError = t("register_name_required")
+                valid = false
+            }
 
-    val teal = Color(0xFF009688)
-    val softTeal = Color(0xFF4DB6AC)
+            // EMAIL
+            val cleanEmail = email.trim()
+            if (cleanEmail.isEmpty()) {
+                emailError = t("register_email_required")
+                valid = false
+            } else if (!Patterns.EMAIL_ADDRESS.matcher(cleanEmail).matches()) {
+                emailError = t("register_valid_email")
+                valid = false
+            }
 
-    val textGray = Color(0xFF71818C)
-    val borderColor = Color(0xFFDDECEF)
+            // PASSWORD
+            if (password.isEmpty()) {
+                passwordError = t("register_password_required")
+                valid = false
+            } else if (password.length < 6) {
+                passwordError = t("register_password_min")
+                valid = false
+            }
+
+            // CONFIRM PASSWORD
+            if (confirmPassword.isEmpty()) {
+                confirmPasswordError = t("register_confirm_required")
+                valid = false
+            } else if (password != confirmPassword) {
+                confirmPasswordError = t("register_password_mismatch")
+                valid = false
+            }
+
+            if (valid) {
+                val registrationEmail = cleanEmail
+                val registrationPassword = password
+                val registrationName = fullName.trim()
+
+                scope.launch {
+                    isLoading = true
+                    registerError = ""
+
+                    try {
+                        val result = SupabaseClient.registerUser(
+                            email = registrationEmail,
+                            password = registrationPassword,
+                            fullName = registrationName
+                        )
+
+                        result.onSuccess {
+                            isLoading = false
+                            registerError = "Account created successfully!"
+                            onRegisterClick()
+                        }
+
+                        result.onFailure { error ->
+                            isLoading = false
+                            registerError = error.message
+                                ?: "Registration failed. Please try again."
+                        }
+                    } catch (e: Exception) {
+                        isLoading = false
+                        registerError = e.message
+                            ?: "Registration failed. Please try again."
+                    }
+                }
+            }
+        }
+    }
+
 
     // ============================================================
     // ANIMATION
@@ -216,8 +310,9 @@ fun RegisterScreen(
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        backgroundTop,
-                        backgroundBottom
+                        Ivory,
+                        SoftMint.copy(alpha = 0.5f),
+                        Ivory
                     )
                 )
             )
@@ -226,7 +321,7 @@ fun RegisterScreen(
     ) {
 
         // ========================================================
-        // BACKGROUND GLOW
+        // BACKGROUND ACCENT
         // ========================================================
 
         Box(
@@ -236,7 +331,7 @@ fun RegisterScreen(
                 .scale(glowScale)
                 .clip(CircleShape)
                 .background(
-                    primaryBlue.copy(alpha = 0.055f)
+                    Mint.copy(alpha = 0.35f)
                 )
         )
 
@@ -247,7 +342,7 @@ fun RegisterScreen(
                 .scale(glowScale)
                 .clip(CircleShape)
                 .background(
-                    teal.copy(alpha = 0.05f)
+                    SoftMint.copy(alpha = 0.60f)
                 )
         )
 
@@ -258,6 +353,7 @@ fun RegisterScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
+                .imePadding()
                 .verticalScroll(
                     rememberScrollState()
                 )
@@ -287,7 +383,7 @@ fun RegisterScreen(
                     Text(
                         text = t("register_back_login"),
                         modifier = Modifier.fillMaxWidth(),
-                        color = primaryBlue,
+                        color = DeepTeal,
                         fontSize = 13.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -346,31 +442,31 @@ fun RegisterScreen(
 
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(27.dp),
+                    shape = RoundedCornerShape(20.dp),
                     colors = CardDefaults.cardColors(
-                        containerColor = Color.White
+                        containerColor = PureWhite
                     ),
                     elevation = CardDefaults.cardElevation(
-                        defaultElevation = 5.dp
+                        defaultElevation = 2.dp
                     ),
                     border = BorderStroke(
                         width = 1.dp,
-                        color = borderColor
+                        color = Mint
                     )
                 ) {
 
                     Column(
                         modifier = Modifier.padding(
                             horizontal = 20.dp,
-                            vertical = 21.dp
+                            vertical = 22.dp
                         )
                     ) {
 
                         Text(
                             text = t("register_create_account"),
-                            color = primaryBlueDark,
-                            fontSize = 25.sp,
-                            fontWeight = FontWeight.ExtraBold
+                            color = DarkTeal,
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Bold
                         )
 
                         Spacer(
@@ -379,7 +475,7 @@ fun RegisterScreen(
 
                         Text(
                             text = t("register_subtitle"),
-                            color = textGray,
+                            color = TextMuted,
                             fontSize = 12.sp,
                             lineHeight = 18.sp
                         )
@@ -402,7 +498,16 @@ fun RegisterScreen(
                             label = t("register_full_name"),
                             placeholder = t("register_full_name_placeholder"),
                             leadingText = "✦",
-                            isError = nameError.isNotEmpty()
+                            isError = nameError.isNotEmpty(),
+                            modifier = Modifier.focusRequester(nameFocusRequester),
+                            keyboardOptions = KeyboardOptions(
+                                capitalization = KeyboardCapitalization.Words,
+                                keyboardType = KeyboardType.Text,
+                                imeAction = ImeAction.Next
+                            ),
+                            keyboardActions = KeyboardActions(
+                                onNext = { emailFocusRequester.requestFocus() }
+                            )
                         )
 
                         if (nameError.isNotEmpty()) {
@@ -427,7 +532,16 @@ fun RegisterScreen(
                             label = t("register_email"),
                             placeholder = t("register_email_placeholder"),
                             leadingText = "@",
-                            isError = emailError.isNotEmpty()
+                            isError = emailError.isNotEmpty(),
+                            modifier = Modifier.focusRequester(emailFocusRequester),
+                            keyboardOptions = KeyboardOptions(
+                                capitalization = KeyboardCapitalization.None,
+                                keyboardType = KeyboardType.Email,
+                                imeAction = ImeAction.Next
+                            ),
+                            keyboardActions = KeyboardActions(
+                                onNext = { passwordFocusRequester.requestFocus() }
+                            )
                         )
 
                         if (emailError.isNotEmpty()) {
@@ -467,7 +581,15 @@ fun RegisterScreen(
                                     !passwordVisible
                             },
                             isError = passwordError.isNotEmpty(),
-                            selectedLanguage = selectedLanguage
+                            selectedLanguage = selectedLanguage,
+                            modifier = Modifier.focusRequester(passwordFocusRequester),
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Password,
+                                imeAction = ImeAction.Next
+                            ),
+                            keyboardActions = KeyboardActions(
+                                onNext = { confirmPasswordFocusRequester.requestFocus() }
+                            )
                         )
 
                         if (passwordError.isNotEmpty()) {
@@ -505,7 +627,15 @@ fun RegisterScreen(
                             },
                             isError =
                                 confirmPasswordError.isNotEmpty(),
-                            selectedLanguage = selectedLanguage
+                            selectedLanguage = selectedLanguage,
+                            modifier = Modifier.focusRequester(confirmPasswordFocusRequester),
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Password,
+                                imeAction = ImeAction.Done
+                            ),
+                            keyboardActions = KeyboardActions(
+                                onDone = { submitRegistration() }
+                            )
                         )
 
                         if (confirmPasswordError.isNotEmpty()) {
@@ -531,9 +661,9 @@ fun RegisterScreen(
                                     .clip(CircleShape)
                                     .background(
                                         if (password.length >= 6) {
-                                            teal
+                                            DeepTeal
                                         } else {
-                                            Color(0xFFB8C7CD)
+                                            Mint
                                         }
                                     )
                             )
@@ -545,7 +675,7 @@ fun RegisterScreen(
                             Text(
                                 text =
                                     t("register_password_requirement"),
-                                color = textGray,
+                                color = TextMuted,
                                 fontSize = 11.sp
                             )
                         }
@@ -568,25 +698,25 @@ fun RegisterScreen(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .clip(
-                                        RoundedCornerShape(13.dp)
+                                        RoundedCornerShape(12.dp)
                                     )
                                     .background(
                                         if (success) {
-                                            Color(0xFFEAF8F1)
+                                            SoftMint
                                         } else {
-                                            Color(0xFFFFF1F1)
+                                            StatusErrorBackground
                                         }
                                     )
                                     .border(
                                         width = 1.dp,
                                         color =
                                             if (success) {
-                                                Color(0xFFB9E5CF)
+                                                Mint
                                             } else {
-                                                Color(0xFFF1C4C4)
+                                                StatusErrorBorder
                                             },
                                         shape =
-                                            RoundedCornerShape(13.dp)
+                                            RoundedCornerShape(12.dp)
                                     )
                                     .padding(11.dp)
                             ) {
@@ -595,9 +725,9 @@ fun RegisterScreen(
                                     text = displayRegisterMessage(registerError),
                                     color =
                                         if (success) {
-                                            Color(0xFF21824D)
+                                            StatusSuccess
                                         } else {
-                                            Color(0xFFC62828)
+                                            StatusError
                                         },
                                     fontSize = 12.sp,
                                     lineHeight = 17.sp,
@@ -617,152 +747,16 @@ fun RegisterScreen(
                         // =================================================
 
                         Button(
-                            onClick = {
-
-                                nameError = ""
-                                emailError = ""
-                                passwordError = ""
-                                confirmPasswordError = ""
-                                registerError = ""
-
-                                var valid = true
-
-                                // NAME
-
-                                if (
-                                    fullName.trim().isEmpty()
-                                ) {
-                                    nameError =
-                                        t("register_name_required")
-                                    valid = false
-                                }
-
-                                // EMAIL
-
-                                val cleanEmail =
-                                    email.trim()
-
-                                if (cleanEmail.isEmpty()) {
-
-                                    emailError =
-                                        t("register_email_required")
-                                    valid = false
-
-                                } else if (
-                                    !Patterns.EMAIL_ADDRESS
-                                        .matcher(cleanEmail)
-                                        .matches()
-                                ) {
-
-                                    emailError =
-                                        t("register_valid_email")
-                                    valid = false
-                                }
-
-                                // PASSWORD
-
-                                if (password.isEmpty()) {
-
-                                    passwordError =
-                                        t("register_password_required")
-                                    valid = false
-
-                                } else if (
-                                    password.length < 6
-                                ) {
-
-                                    passwordError =
-                                        t("register_password_min")
-                                    valid = false
-                                }
-
-                                // CONFIRM PASSWORD
-
-                                if (confirmPassword.isEmpty()) {
-
-                                    confirmPasswordError =
-                                        t("register_confirm_required")
-                                    valid = false
-
-                                } else if (
-                                    password != confirmPassword
-                                ) {
-
-                                    confirmPasswordError =
-                                        t("register_password_mismatch")
-                                    valid = false
-                                }
-
-                                if (!valid) {
-                                    return@Button
-                                }
-
-                                val registrationEmail =
-                                    cleanEmail
-
-                                val registrationPassword =
-                                    password
-
-                                val registrationName =
-                                    fullName.trim()
-
-                                scope.launch {
-
-                                    isLoading = true
-                                    registerError = ""
-
-                                    try {
-
-                                        val result =
-                                            SupabaseClient.registerUser(
-                                                email =
-                                                    registrationEmail,
-                                                password =
-                                                    registrationPassword,
-                                                fullName =
-                                                    registrationName
-                                            )
-
-                                        result.onSuccess {
-
-                                            isLoading = false
-
-                                            registerError =
-                                                "Account created successfully!"
-
-                                            onRegisterClick()
-                                        }
-
-                                        result.onFailure { error ->
-
-                                            isLoading = false
-
-                                            registerError =
-                                                error.message
-                                                    ?: "Registration failed. Please try again."
-                                        }
-
-                                    } catch (
-                                        e: Exception
-                                    ) {
-
-                                        isLoading = false
-
-                                        registerError =
-                                            e.message
-                                                ?: "Registration failed. Please try again."
-                                    }
-                                }
-                            },
+                            onClick = { submitRegistration() },
                             enabled = !isLoading,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(54.dp),
+                                .height(52.dp),
                             shape = RoundedCornerShape(16.dp),
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = primaryBlue,
+                                containerColor = DeepTeal,
                                 disabledContainerColor =
-                                    primaryBlue.copy(
+                                    DeepTeal.copy(
                                         alpha = 0.40f
                                     )
                             )
@@ -773,7 +767,7 @@ fun RegisterScreen(
                                 CircularProgressIndicator(
                                     modifier =
                                         Modifier.size(21.dp),
-                                    color = Color.White,
+                                    color = PureWhite,
                                     strokeWidth = 2.dp
                                 )
 
@@ -784,7 +778,8 @@ fun RegisterScreen(
                                         t("register_create_button"),
                                     fontSize = 15.sp,
                                     fontWeight =
-                                        FontWeight.Bold
+                                        FontWeight.Bold,
+                                    color = PureWhite
                                 )
                             }
                         }
@@ -810,7 +805,7 @@ fun RegisterScreen(
                 Text(
                     text =
                         t("register_already"),
-                    color = textGray,
+                    color = TextMuted,
                     fontSize = 12.sp
                 )
 
@@ -820,7 +815,7 @@ fun RegisterScreen(
 
                 Text(
                     text = t("register_login"),
-                    color = primaryBlue,
+                    color = DeepTeal,
                     fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
                     modifier = Modifier
@@ -850,27 +845,25 @@ fun RegisterScreen(
 
                 Box(
                     modifier = Modifier
-                        .size(29.dp)
+                        .size(28.dp)
                         .clip(CircleShape)
                         .background(
-                            Color.White.copy(
-                                alpha = 0.85f
-                            )
+                            SoftMint
                         )
                         .border(
                             1.dp,
-                            borderColor,
+                            Mint,
                             CircleShape
                         ),
                     contentAlignment =
                         Alignment.Center
                 ) {
 
-                    Text(
-                        text = "✓",
-                        color = teal,
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold
+                    Icon(
+                        imageVector = Icons.Default.Check,
+                        contentDescription = null,
+                        tint = DeepTeal,
+                        modifier = Modifier.size(16.dp)
                     )
                 }
 
@@ -881,7 +874,7 @@ fun RegisterScreen(
                 Text(
                     text =
                         t("register_security"),
-                    color = textGray,
+                    color = TextMuted,
                     fontSize = 10.sp
                 )
             }
@@ -906,22 +899,19 @@ private fun RegisterHero(
     val selectedLanguage =
         LocalAppLanguageController.current.selectedLanguage
 
-    val primaryBlue = Color(0xFF1976D2)
-    val teal = Color(0xFF009688)
-
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .height(215.dp)
             .clip(
-                RoundedCornerShape(30.dp)
+                RoundedCornerShape(26.dp)
             )
             .background(
                 Brush.linearGradient(
                     colors = listOf(
-                        primaryBlue,
-                        Color(0xFF1976B8),
-                        teal
+                        DarkTeal,
+                        DeepTeal,
+                        SageGreen
                     )
                 )
             )
@@ -935,8 +925,8 @@ private fun RegisterHero(
                 .align(Alignment.TopEnd)
                 .clip(CircleShape)
                 .background(
-                    Color.White.copy(
-                        alpha = 0.07f
+                    PureWhite.copy(
+                        alpha = 0.08f
                     )
                 )
         )
@@ -947,7 +937,7 @@ private fun RegisterHero(
                 .align(Alignment.BottomStart)
                 .clip(CircleShape)
                 .background(
-                    Color.White.copy(
+                    PureWhite.copy(
                         alpha = 0.06f
                     )
                 )
@@ -974,14 +964,14 @@ private fun RegisterHero(
                         .size(36.dp)
                         .clip(CircleShape)
                         .background(
-                            Color.White.copy(
-                                alpha = 0.15f
+                            PureWhite.copy(
+                                alpha = 0.18f
                             )
                         )
                         .border(
                             width = 1.dp,
-                            color = Color.White.copy(
-                                alpha = 0.25f
+                            color = PureWhite.copy(
+                                alpha = 0.3f
                             ),
                             shape = CircleShape
                         ),
@@ -991,7 +981,7 @@ private fun RegisterHero(
 
                     Text(
                         text = "✚",
-                        color = Color.White,
+                        color = PureWhite,
                         fontSize = 19.sp,
                         fontWeight =
                             FontWeight.Bold
@@ -1006,7 +996,7 @@ private fun RegisterHero(
 
                     Text(
                         text = "MEDASSIST",
-                        color = Color.White,
+                        color = PureWhite,
                         fontSize = 19.sp,
                         fontWeight =
                             FontWeight.ExtraBold
@@ -1014,7 +1004,7 @@ private fun RegisterHero(
 
                     Text(
                         text = "AI HEALTH ASSISTANT",
-                        color = Color(0xFFB9FFF5),
+                        color = Mint,
                         fontSize = 7.sp,
                         fontWeight =
                             FontWeight.Bold,
@@ -1030,7 +1020,7 @@ private fun RegisterHero(
             Text(
                 text =
                     appText("register_hero_start", selectedLanguage),
-                color = Color.White,
+                color = PureWhite,
                 fontSize = 14.sp,
                 lineHeight = 20.sp,
                 fontWeight =
@@ -1073,9 +1063,6 @@ private fun RegisterDoctorBot(
     modifier: Modifier = Modifier
 ) {
 
-    val primaryBlue = Color(0xFF1976D2)
-    val teal = Color(0xFF009688)
-
     Box(
         modifier = modifier.size(119.dp),
         contentAlignment = Alignment.Center
@@ -1090,7 +1077,7 @@ private fun RegisterDoctorBot(
                 .background(
                     Brush.radialGradient(
                         colors = listOf(
-                            Color.White.copy(
+                            PureWhite.copy(
                                 alpha = 0.18f
                             ),
                             Color.Transparent
@@ -1111,7 +1098,7 @@ private fun RegisterDoctorBot(
                     .width(3.dp)
                     .height(12.dp)
                     .background(
-                        Color.White.copy(
+                        PureWhite.copy(
                             alpha = 0.9f
                         )
                     )
@@ -1122,7 +1109,7 @@ private fun RegisterDoctorBot(
                     .size(8.dp)
                     .clip(CircleShape)
                     .background(
-                        Color(0xFF9CFFF0)
+                        Mint
                     )
             )
 
@@ -1144,14 +1131,14 @@ private fun RegisterDoctorBot(
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(
-                                Color.White,
-                                Color(0xFFDCEFF8)
+                                PureWhite,
+                                SoftMint
                             )
                         )
                     )
                     .border(
                         width = 2.dp,
-                        color = Color.White.copy(
+                        color = PureWhite.copy(
                             alpha = 0.8f
                         ),
                         shape =
@@ -1176,7 +1163,7 @@ private fun RegisterDoctorBot(
                                 .size(11.dp)
                                 .clip(CircleShape)
                                 .background(
-                                    primaryBlue
+                                    DarkTeal
                                 )
                         )
 
@@ -1185,7 +1172,7 @@ private fun RegisterDoctorBot(
                                 .size(11.dp)
                                 .clip(CircleShape)
                                 .background(
-                                    primaryBlue
+                                    DarkTeal
                                 )
                         )
                     }
@@ -1202,7 +1189,7 @@ private fun RegisterDoctorBot(
                                 RoundedCornerShape(50)
                             )
                             .background(
-                                teal
+                                DeepTeal
                             )
                     )
                 }
@@ -1216,7 +1203,7 @@ private fun RegisterDoctorBot(
                         .size(19.dp)
                         .clip(CircleShape)
                         .background(
-                            teal
+                            DeepTeal
                         ),
                     contentAlignment =
                         Alignment.Center
@@ -1224,7 +1211,7 @@ private fun RegisterDoctorBot(
 
                     Text(
                         text = "+",
-                        color = Color.White,
+                        color = PureWhite,
                         fontSize = 13.sp,
                         fontWeight =
                             FontWeight.Bold
@@ -1253,7 +1240,7 @@ private fun RegisterDoctorBot(
                         )
                     )
                     .background(
-                        Color.White.copy(
+                        PureWhite.copy(
                             alpha = 0.94f
                         )
                     )
@@ -1268,7 +1255,7 @@ private fun RegisterDoctorBot(
                             RoundedCornerShape(50)
                         )
                         .background(
-                            primaryBlue
+                            DeepTeal
                         )
                 )
             }
@@ -1292,14 +1279,14 @@ private fun HeroBadge(
                 RoundedCornerShape(50)
             )
             .background(
-                Color.White.copy(
-                    alpha = 0.12f
+                PureWhite.copy(
+                    alpha = 0.14f
                 )
             )
             .border(
                 width = 1.dp,
-                color = Color.White.copy(
-                    alpha = 0.18f
+                color = PureWhite.copy(
+                    alpha = 0.22f
                 ),
                 shape =
                     RoundedCornerShape(50)
@@ -1312,8 +1299,8 @@ private fun HeroBadge(
 
         Text(
             text = text,
-            color = Color.White.copy(
-                alpha = 0.92f
+            color = PureWhite.copy(
+                alpha = 0.95f
             ),
             fontSize = 7.sp,
             fontWeight = FontWeight.Bold,
@@ -1334,18 +1321,18 @@ private fun RegisterField(
     label: String,
     placeholder: String,
     leadingText: String,
-    isError: Boolean
+    isError: Boolean,
+    modifier: Modifier = Modifier,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    keyboardActions: KeyboardActions = KeyboardActions.Default
 ) {
-
-    val primaryBlue = Color(0xFF1976D2)
-    val primaryBlueDark = Color(0xFF123A56)
-    val textGray = Color(0xFF71818C)
-    val borderColor = Color(0xFFD8E5E9)
 
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
+        keyboardOptions = keyboardOptions,
+        keyboardActions = keyboardActions,
         label = {
             Text(label)
         },
@@ -1359,7 +1346,7 @@ private fun RegisterField(
                     .size(30.dp)
                     .clip(CircleShape)
                     .background(
-                        Color(0xFFE8F7FB)
+                        SoftMint
                     ),
                 contentAlignment =
                     Alignment.Center
@@ -1367,7 +1354,7 @@ private fun RegisterField(
 
                 Text(
                     text = leadingText,
-                    color = primaryBlue,
+                    color = DeepTeal,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -1378,21 +1365,21 @@ private fun RegisterField(
         shape = RoundedCornerShape(16.dp),
         colors = OutlinedTextFieldDefaults.colors(
             focusedBorderColor =
-                primaryBlue,
+                DeepTeal,
             unfocusedBorderColor =
-                borderColor,
+                Mint,
             focusedLabelColor =
-                primaryBlue,
+                DeepTeal,
             unfocusedLabelColor =
-                textGray,
+                TextMuted,
             focusedTextColor =
-                primaryBlueDark,
+                TextDark,
             unfocusedTextColor =
-                primaryBlueDark,
+                TextDark,
             cursorColor =
-                primaryBlue,
+                DeepTeal,
             errorBorderColor =
-                Color(0xFFD32F2F)
+                StatusError
         )
     )
 }
@@ -1411,18 +1398,18 @@ private fun PasswordRegisterField(
     visible: Boolean,
     onVisibilityChange: () -> Unit,
     isError: Boolean,
-    selectedLanguage: String
+    selectedLanguage: String,
+    modifier: Modifier = Modifier,
+    keyboardOptions: KeyboardOptions = KeyboardOptions.Default,
+    keyboardActions: KeyboardActions = KeyboardActions.Default
 ) {
-
-    val primaryBlue = Color(0xFF1976D2)
-    val primaryBlueDark = Color(0xFF123A56)
-    val textGray = Color(0xFF71818C)
-    val borderColor = Color(0xFFD8E5E9)
 
     OutlinedTextField(
         value = value,
         onValueChange = onValueChange,
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
+        keyboardOptions = keyboardOptions,
+        keyboardActions = keyboardActions,
         label = {
             Text(label)
         },
@@ -1436,7 +1423,7 @@ private fun PasswordRegisterField(
                     .size(30.dp)
                     .clip(CircleShape)
                     .background(
-                        Color(0xFFE8F7FB)
+                        SoftMint
                     ),
                 contentAlignment =
                     Alignment.Center
@@ -1444,7 +1431,7 @@ private fun PasswordRegisterField(
 
                 Text(
                     text = "•",
-                    color = primaryBlue,
+                    color = DeepTeal,
                     fontSize = 20.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -1459,8 +1446,8 @@ private fun PasswordRegisterField(
                     } else {
                         appText("register_show", selectedLanguage)
                     },
-                color = primaryBlue,
-                fontSize = 10.sp,
+                color = DeepTeal,
+                fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
                 modifier = Modifier
                     .clickable {
@@ -1482,21 +1469,21 @@ private fun PasswordRegisterField(
         shape = RoundedCornerShape(16.dp),
         colors = OutlinedTextFieldDefaults.colors(
             focusedBorderColor =
-                primaryBlue,
+                DeepTeal,
             unfocusedBorderColor =
-                borderColor,
+                Mint,
             focusedLabelColor =
-                primaryBlue,
+                DeepTeal,
             unfocusedLabelColor =
-                textGray,
+                TextMuted,
             focusedTextColor =
-                primaryBlueDark,
+                TextDark,
             unfocusedTextColor =
-                primaryBlueDark,
+                TextDark,
             cursorColor =
-                primaryBlue,
+                DeepTeal,
             errorBorderColor =
-                Color(0xFFD32F2F)
+                StatusError
         )
     )
 }
@@ -1513,7 +1500,7 @@ private fun ErrorText(
 
     Text(
         text = text,
-        color = Color(0xFFD32F2F),
+        color = StatusError,
         fontSize = 11.sp,
         lineHeight = 15.sp,
         modifier = Modifier

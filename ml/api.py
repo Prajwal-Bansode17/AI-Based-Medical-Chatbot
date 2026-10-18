@@ -1,10 +1,37 @@
+import http.client
+import json
+import logging
 import os
 import re
 import sqlite3
+import sys
+import threading
+import time
+import uuid
 from datetime import datetime
 from pathlib import Path
+from urllib.parse import urlparse
+
+# Reconfigure console streams to UTF-8 on Windows to safely handle Devanagari (Hindi/Marathi)
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")
+    except Exception:
+        pass
+if hasattr(sys.stderr, "reconfigure"):
+    try:
+        sys.stderr.reconfigure(encoding="utf-8", errors="backslashreplace")
+    except Exception:
+        pass
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger("medassist_api")
 
 import joblib
+import numpy as np
 import pandas as pd
 from flask import Flask, jsonify, request
 from google import genai
@@ -43,57 +70,65 @@ app = Flask(__name__)
 # MULTILINGUAL LANGUAGE HELPERS
 # ============================================================
 
-def detect_language(text):
+def detect_language(text, fallback_lang=None):
     """
     Detect English, Marathi, or Hindi from both native scripts and
     Roman/Latin-script speech transcription.
-
-    Examples:
-        Marathi:  मला ताप आला आहे  /  mala tap aala aahe
-        Hindi:    मुझे बुखार है      /  mujhe bukhar hai
-        English:  I have fever
-
-    The Android speech recognizer may return Marathi/Hindi in Roman
-    letters, so script-only detection is not sufficient.
+    Preserves explicitly requested or established conversation language
+    when reliable Devanagari detection is ambiguous.
     """
     if not text:
-        return "en"
+        return fallback_lang if fallback_lang in {"mr", "hi", "en"} else "en"
 
     text = str(text).strip()
     if not text:
-        return "en"
+        return fallback_lang if fallback_lang in {"mr", "hi", "en"} else "en"
 
     lower = text.lower()
 
     # ---- Devanagari script ----
-    devanagari_count = sum(1 for ch in text if "\u0900" <= ch <= "\u097F")
+    devanagari_words = set(re.findall(r"[\u0900-\u097F]+", text))
+    if devanagari_words:
+        # ळ is uniquely Marathi in Devanagari
+        if any("ळ" in w for w in devanagari_words):
+            return "mr"
 
-    if devanagari_count > 0:
-        marathi_markers = [
+        marathi_markers = {
             "मला", "माझा", "माझी", "माझे", "माझ्या", "माझं", "म्हणजे", "म्हणून",
-            "आहे", "आहेत", "काय", "कशी", "कसा", "कसे", "किती", "ताप", "खोकला",
+            "आहे", "आहेत", "नाही", "काय", "कशी", "कसा", "कसे", "किती", "ताप", "खोकला",
             "सर्दी", "दुखत", "दुखणे", "दुखतं", "वेदना", "पोट", "डोके", "डोकं",
             "घसा", "उलटी", "गरगर", "चक्कर", "कमजोरी", "अशक्तपणा", "औषध", "गोळी",
-            "काळजी", "करू", "करायचं", "घ्यावी", "घ्यावे", "घ्यावं",
-        ]
-        hindi_markers = [
+            "काळजी", "करू", "करायचं", "घ्यावी", "घ्यावे", "घ्यावं", "झाले", "झाली",
+            "झाला", "होते", "होती", "होता", "करावा", "करावी", "करावे", "सांगा",
+            "पहा", "करा", "या", "त्या", "वरून", "पासून", "पर्यंत", "मध्ये", "साठी",
+            "तसेच", "कृपया", "विश्रांती", "भरपूर", "प्या", "डोकेदुखी", "पोटदुखी",
+        }
+        hindi_markers = {
             "मुझे", "मेरा", "मेरी", "मेरे", "मुझको", "क्या", "कैसे", "कैसा",
             "कैसी", "कितना", "कितनी", "कितने", "है", "हैं", "था", "थी", "थे",
-            "बुखार", "खांसी", "जुकाम", "दर्द", "पेट", "सिर", "गला", "उल्टी",
-            "चक्कर", "कमजोरी", "दवा", "गोली", "सावधानी", "करना", "करो", "करूं",
-            "चाहिए",
-        ]
+            "होगा", "होगी", "होंगे", "बुखार", "खांसी", "जुकाम", "दर्द", "पेट",
+            "सिर", "गला", "उल्टी", "चक्कर", "कमजोरी", "दवा", "गोली", "सावधानी",
+            "करना", "करो", "करूं", "चाहिए", "और", "का", "के", "की", "को", "से",
+            "में", "पर", "ने", "सकते", "सकती", "सकता", "करें", "लें", "दें",
+            "पिएं", "खाएं", "रहें", "जाएं", "बताएं", "रखें", "लीजिए", "कीजिए",
+            "आप", "आपका", "आपकी", "आपके", "यह", "वह", "इस", "उस", "इन", "उन",
+            "अगर", "यदि", "तो", "नहीं", "न", "भी", "बहुत", "ज्यादा", "कम",
+            "जब", "तब", "समय", "डॉक्टर", "इलाज", "मरीज", "उपचार", "शरीर",
+            "लक्षण", "पानी", "घोल", "आराम", "बचें", "उबालकर", "तनाव", "बढ़ें",
+            "ताजे", "फल", "भोजन", "सिरदर्द",
+        }
 
-        marathi_score = sum(1 for marker in marathi_markers if marker in text)
-        hindi_score = sum(1 for marker in hindi_markers if marker in text)
+        marathi_score = len(devanagari_words.intersection(marathi_markers))
+        hindi_score = len(devanagari_words.intersection(hindi_markers))
 
         if marathi_score > hindi_score:
             return "mr"
         if hindi_score > marathi_score:
             return "hi"
-        # Unknown Devanagari text: Marathi is the safer default for this
-        # application's target audience.
-        return "mr"
+        # When ambiguous, preserve established conversation language
+        if fallback_lang in {"mr", "hi"}:
+            return fallback_lang
+        return "hi"
 
     # ---- Roman/Latin script ----
     words = set(re.findall(r"[a-zA-Z]+", lower))
@@ -110,19 +145,17 @@ def detect_language(text):
         "aushadha", "goli", "tablet", "kalji", "karu", "karaycha",
         "karaychi", "karayche", "ghyavi", "ghyava", "ghyave", "ghyav",
         "pasun", "paryant", "mi", "mee", "tumhi", "apan", "aapan",
-        # Common shortened/phonetic speech-transcription forms
         "mde", "madhe", "vr", "var", "dkhvl", "dakhvl", "dakhav",
         "bgh", "bagh", "bhai", "yar", "phile", "pahile", "punha",
-        "toch", "tyach", "aata", "ata", "kr", "kru", "kraycha",
-        "kraychi", "krtoy", "krte", "yetoy", "yeto", "hotoy", "hot",
-        "disat", "dist", "distoy", "nahi", "aahe", "ahe",
+        "toch", "tyach", "kr", "kru", "kraycha", "kraychi", "krtoy", "krte",
+        "yetoy", "yeto", "hotoy", "hot", "disat", "dist", "distoy", "nahi",
     }
     roman_hindi_words = {
         "mujhe", "mujhko", "mera", "meri", "mere", "kya", "kaise", "kaisa",
         "kaisi", "kitna", "kitni", "kitne", "hai", "hain", "tha", "thi",
-        "the", "bukhar", "khansi", "jukam", "dard", "pet", "sir", "gala",
-        "ulti", "chakkar", "kamzori", "dawai", "dava", "goli", "savdhani",
-        "karna", "karo", "karu", "karun", "chahiye",
+        "the", "bukhar", "khansi", "jukam", "zukaam", "dard", "pet", "sir", "gala",
+        "ulti", "chakkar", "kamzori", "thakan", "dawai", "dava", "goli", "savdhani",
+        "karna", "karo", "karu", "karun", "chahiye", "main", "bhi",
     }
 
     marathi_score = len(words.intersection(roman_marathi_words))
@@ -172,33 +205,15 @@ def detect_language(text):
         if phrase in lower:
             hindi_score += 5
 
-    if marathi_score > hindi_score and marathi_score > 0:
+    if marathi_score > hindi_score and marathi_score >= 2:
         return "mr"
-    if hindi_score > marathi_score and hindi_score > 0:
+    if hindi_score > marathi_score and hindi_score >= 2:
         return "hi"
-    if marathi_score == hindi_score and marathi_score > 0:
+    if marathi_score == hindi_score and marathi_score >= 2:
         return "mr"
 
     return "en"
 
-
-# ============================================================
-# EXPLICIT OUTPUT-LANGUAGE REQUEST DETECTION
-# ============================================================
-#
-# detect_language() above answers "what language is the user's sentence
-# written in". That is NOT the same question as "what language does the
-# user want the ANSWER in". A user can type/speak entirely in English and
-# still ask for a Marathi answer ("I have back pain, please give me
-# information in Marathi"), or type mostly in Marathi/Hindi and ask for
-# the answer in a different language ("मला back pain आहे, information
-# English मध्ये द्या"). This function looks specifically for the user
-# NAMING a language (English/Hindi/Marathi, in either script, with or
-# without connecting words like "in" / "में" / "मध्ये" / "mein" / "madhe")
-# anywhere in the message. If more than one language name is mentioned,
-# the one mentioned LAST wins, since that is how these requests are
-# phrased in practice ("...information Marathi में दो" / "...explain it
-# in Hindi") — the language name comes right before/at the request itself.
 
 _ENGLISH_LANG_NAME_RE = re.compile(r"\benglish\b", re.IGNORECASE)
 _HINDI_LANG_NAME_RE = re.compile(r"\bhindi\b", re.IGNORECASE)
@@ -212,16 +227,11 @@ _DEVANAGARI_LANG_NAME_TOKENS = {
 
 
 def detect_requested_output_language(text):
-    """
-    Return "en" / "hi" / "mr" if the message explicitly names a response
-    language (e.g. "in Marathi", "मराठीत", "Hindi में", "English मध्ये"),
-    else None. None means: fall back to the detected input language.
-    """
     if not text:
         return None
 
     text = str(text)
-    mentions = []  # (position_in_text, language_code)
+    mentions = []
 
     for pattern, lang in (
         (_ENGLISH_LANG_NAME_RE, "en"),
@@ -248,12 +258,6 @@ def detect_requested_output_language(text):
     return mentions[-1][1]
 
 
-# Exact-phrase shortcuts for a handful of common canned inputs. This is
-# intentionally narrow (full-sentence, exact match only) — it's a cheap
-# first pass, not a translator. Anything else in Marathi/Hindi falls
-# through to normalize_text()'s word-level substitutions, and ultimately
-# to Gemini for real translation. See LANGUAGE_SUPPORT_NOTES at the
-# bottom of this file for what is and isn't covered.
 _MARATHI_PHRASE_SHORTCUTS = {
     "मला ताप आला आहे": "I have fever",
     "मला ताप आहे": "I have fever",
@@ -283,8 +287,6 @@ def translate_input_to_english(text):
     if clean in _HINDI_PHRASE_SHORTCUTS:
         return _HINDI_PHRASE_SHORTCUTS[clean]
 
-    # Preserve everything else as-is (normalize_text() handles word-level
-    # substitution downstream, and Gemini handles full translation).
     return clean
 
 
@@ -294,21 +296,52 @@ def _english_word_count(text):
     return len(re.findall(r"\b[A-Za-z]{2,}\b", str(text)))
 
 
+ALLOWED_CLINICAL_LATIN = {
+    "ors", "bp", "ecg", "mri", "ct", "icu", "iv", "mg", "ml", "dr", "doctor",
+    "paracetamol", "ibuprofen", "aspirin", "azithromycin", "amoxicillin", "cetirizine",
+    "crocin", "dolo", "combiflam", "cough", "syrup", "tablet", "tablets", "capsule",
+    "capsules", "injection", "spo2", "pulse", "glucose", "sugar", "sugar_level", "hba1c",
+    "cbc", "covid", "hiv", "who", "opd", "ent", "o2", "vit", "vitamin", "b12", "d3",
+}
+
+ROMAN_INDIC_MARKERS = {
+    # Hindi markers
+    "mujhe", "mujhko", "mera", "meri", "mere", "kya", "kaise", "kaisa",
+    "kaisi", "kitna", "kitni", "kitne", "hai", "hain", "tha", "thi",
+    "the", "bukhar", "khansi", "jukam", "zukaam", "dard", "pet", "sir", "gala",
+    "ulti", "chakkar", "kamzori", "thakan", "dawai", "dava", "goli", "savdhani",
+    "karna", "karo", "karu", "karun", "chahiye", "main", "aaram", "paani",
+    "peena", "peeyo", "hoga", "hogi", "rahe", "rahein", "hota", "hoti",
+    "hote", "batao", "bataiye", "sambhav", "upchar", "gharelu", "ilaj",
+    "accha", "theek", "din", "se", "ko", "aur", "le", "sakte", "sakti",
+    # Marathi markers
+    "mala", "maza", "mazi", "majha", "majhi", "majhe", "majhya", "aahe",
+    "ahe", "aahat", "aahet", "kay", "kasa", "kashi", "kashe", "kiti",
+    "mhanje", "mhanun", "aata", "ata", "tula", "tyala", "tyachi",
+    "tyache", "zala", "zali", "zale", "zhala", "zhali", "zhalay",
+    "hotay", "hota", "hoti", "hote", "dukh", "dukhat", "dukhte",
+    "dukhtay", "dukhata", "tap", "taap", "khokla", "sardi", "ghasa",
+    "dok", "doka", "dokyala", "garagar", "ashaktpana", "malmal",
+    "oushadha", "aushadh", "aushadha", "kalji", "karu", "karaycha",
+    "karaychi", "karayche", "ghyavi", "ghyava", "ghyave", "ghyav",
+    "pasun", "paryant", "mde", "madhe", "dakhvl", "dakhav", "bagh",
+    "pahile", "punha", "toch", "kraycha", "kraychi", "krtoy", "yetoy",
+    "yeto", "disat", "dist", "distoy", "nahi", "viskranti", "bharpur",
+    "pya",
+}
+
+
 def _looks_mixed_with_english(text, language):
-    """
-    Detect responses that accidentally contain a substantial amount of
-    English while the requested output is Marathi/Hindi.
-    """
     if language not in {"mr", "hi"} or not text:
         return False
 
     value = str(text).strip()
+    lower = value.lower()
 
-    # These are strong signals that a supposedly localized response leaked
-    # the original English template/answer.
     strong_english_phrases = (
         "here is some general information",
         "general information about",
+        "clinical overview for",
         "common symptoms",
         "important:",
         "seek medical attention",
@@ -317,42 +350,57 @@ def _looks_mixed_with_english(text, language):
         "does not provide a diagnosis",
         "what you can do",
         "when to seek",
+        "seek urgent medical care",
     )
-    lower = value.lower()
     if any(phrase in lower for phrase in strong_english_phrases):
         return True
 
-    # A Marathi/Hindi answer can legitimately contain a few standard medical
-    # terms, so only flag it when the Latin-script content is substantial.
-    common_english_leaks = {
-        "here", "is", "some", "general", "information", "about", "the",
-        "important", "this", "information", "for", "guidance", "does",
-        "not", "provide", "diagnosis", "seek", "medical", "attention",
-        "consult", "doctor", "healthcare", "professional", "what", "you",
-        "can", "do", "when", "to", "tell", "me", "and", "we", "will",
-        "go", "step", "by", "step",
+    devanagari_chars = len(re.findall(r"[\u0900-\u097F]", value))
+    latin_words = [w for w in re.findall(r"\b[a-zA-Z]{2,}\b", lower)]
+
+    # If text is written in Devanagari script:
+    if devanagari_chars >= 15:
+        # Filter out clinical terms and medical acronyms (e.g., ORS, Paracetamol, BP, Doctor)
+        non_clinical = [w for w in latin_words if w not in ALLOWED_CLINICAL_LATIN]
+        common_english_leaks = {
+            "here", "is", "some", "general", "information", "about", "the",
+            "this", "for", "guidance", "does", "not", "provide", "diagnosis",
+            "seek", "attention", "healthcare", "professional", "what", "you",
+            "can", "do", "when", "to", "tell", "me", "and", "we", "will",
+            "go", "step", "by", "step", "should", "your", "have", "with", "from",
+        }
+        leaks = [w for w in non_clinical if w in common_english_leaks]
+        # Flag only if significant non-clinical English leakage occurs
+        return len(leaks) >= 3 or len(non_clinical) >= 8
+
+    # If text has no/little Devanagari (Latin script):
+    # Check if it's Roman Hindi or Roman Marathi
+    latin_tokens = set(latin_words)
+    if latin_tokens.intersection(ROMAN_INDIC_MARKERS):
+        # Valid Romanized Hindi/Marathi response; not an English leak
+        return False
+
+    # Otherwise, it's genuine English text being served for a hi/mr request
+    common_english_words = {
+        "the", "and", "is", "in", "it", "you", "that", "he", "was", "for", "on",
+        "are", "as", "with", "his", "they", "at", "be", "this", "have", "from",
+        "or", "one", "had", "by", "word", "but", "not", "what", "all", "were",
+        "we", "when", "your", "can", "said", "there", "use", "an", "each", "which",
+        "she", "do", "how", "their", "if", "will", "up", "other", "about", "out",
+        "many", "then", "them", "these", "so", "some", "her", "would", "make",
+        "like", "him", "into", "time", "has", "look", "two", "more", "write",
+        "go", "see", "number", "no", "way", "could", "people", "my", "than",
+        "first", "water", "been", "call", "who", "oil", "its", "now", "find",
+        "symptoms", "treatment", "pain", "fever", "cough", "doctor", "care",
     }
-    english_tokens = set(re.findall(r"\b[a-zA-Z]{2,}\b", lower))
-    leak_count = len(english_tokens.intersection(common_english_leaks))
-    return leak_count >= 2 or _english_word_count(value) >= 6
+    return len(latin_tokens.intersection(common_english_words)) >= 2 or len(latin_words) >= 4
 
 
-def translate_text_with_gemini(text, language):
-    """
-    Ask Gemini to translate `text` into `language`, changing nothing else.
-    This is deliberately a plain translation prompt (not the medical
-    system instruction used elsewhere) so it can't add, remove, or
-    reinterpret any medical content — only re-express it.
-    Returns None if Gemini isn't configured or the call fails.
-    """
-    if gemini_client is None or not text:
-        return None
+_TRANSLATION_TARGETS = {"hi": "Hindi", "mr": "Marathi"}
 
-    target_language = {"hi": "Hindi", "mr": "Marathi"}.get(language)
-    if target_language is None:
-        return None
 
-    prompt = (
+def _build_translation_prompt(text, target_language):
+    return (
         f"Translate the ENTIRE medical assistant response into {target_language}.\n"
         f"STRICT LANGUAGE REQUIREMENT: Every sentence, heading, bullet, label, "
         f"disclaimer, and explanatory phrase MUST be written in {target_language}. "
@@ -365,10 +413,32 @@ def translate_text_with_gemini(text, language):
         f"SOURCE RESPONSE:\n{text}"
     )
 
+
+def translate_text_with_ollama(text, language):
+    target_language = _TRANSLATION_TARGETS.get(language)
+    if target_language is None or not text:
+        return None
+
+    return ollama_chat(
+        "You are a precise medical translator. You only translate; you never "
+        "add, remove or change medical facts.",
+        _build_translation_prompt(text, target_language),
+        temperature=0.1,
+    )
+
+
+def translate_text_with_gemini(text, language):
+    if gemini_client is None or not text:
+        return None
+
+    target_language = _TRANSLATION_TARGETS.get(language)
+    if target_language is None:
+        return None
+
     try:
         response = gemini_client.models.generate_content(
             model=GEMINI_MODEL,
-            contents=prompt,
+            contents=_build_translation_prompt(text, target_language),
         )
         translated = getattr(response, "text", None)
         return translated.strip() if translated else None
@@ -377,14 +447,15 @@ def translate_text_with_gemini(text, language):
         return None
 
 
-def localize_answer(text, language):
-    """
-    Return a response in exactly the requested language.
+def translate_text_with_ai(text, language):
+    for translator in (translate_text_with_ollama, translate_text_with_gemini):
+        translated = translator(text, language)
+        if translated and not _looks_mixed_with_english(translated, language):
+            return translated.strip()
+    return None
 
-    Important: never prepend a Marathi/Hindi sentence to an English answer.
-    If translation is unavailable, use a short fully localized fallback
-    instead of returning mixed-language output.
-    """
+
+def localize_answer(text, language):
     if not text:
         return text
 
@@ -393,12 +464,48 @@ def localize_answer(text, language):
 
     value = str(text).strip()
 
-    if not _looks_mixed_with_english(value, language):
+    # Validate the requested language as well as English leakage. Ollama can
+    # occasionally answer in Marathi when Hindi was requested, or vice versa.
+    wrong_language = detect_language(value, fallback_lang=language) != language
+    if not _looks_mixed_with_english(value, language) and not wrong_language:
         return value
 
-    translated = translate_text_with_gemini(value, language)
-    if translated and not _looks_mixed_with_english(translated, language):
+    translated = translate_text_with_ai(value, language)
+    if (
+        translated
+        and not _looks_mixed_with_english(translated, language)
+        and detect_language(translated, fallback_lang=language) == language
+    ):
         return translated.strip()
+
+    # Translation failed or wasn't available.
+    # Preserve safe medical warnings and guidance rather than silently replacing with a generic failure message!
+    dev_count = len(re.findall(r"[\u0900-\u097F]", value))
+    if dev_count >= 15:
+        # Strip any English introductory line if present, while preserving all Devanagari medical content
+        lines = value.split("\n")
+        cleaned_lines = [
+            l for l in lines
+            if not any(phrase in l.lower() for phrase in (
+                "clinical overview for",
+                "here is some general information",
+                "general information about"
+            ))
+        ]
+        cleaned = "\n".join(cleaned_lines).strip()
+        if cleaned:
+            return cleaned
+        return value
+
+    # If it is Roman Hindi/Marathi, preserve it
+    lower_words = set(re.findall(r"\b[a-zA-Z]{2,}\b", value.lower()))
+    if lower_words.intersection(ROMAN_INDIC_MARKERS):
+        return value
+
+    # If it is an English answer and translation failed, return value to preserve
+    # all safe medical guidance and warnings rather than giving a canned failure.
+    if value:
+        return value
 
     if language == "mr":
         return (
@@ -416,76 +523,388 @@ def localize_answer(text, language):
 
 
 # ============================================================
-# GEMINI AI
+# AI PROVIDERS: OLLAMA (PRIMARY) + GEMINI (OPTIONAL FALLBACK)
 # ============================================================
 
+def _env_float(name, default):
+    try:
+        return float(os.getenv(name, default))
+    except (TypeError, ValueError):
+        return float(default)
+
+
+def _env_int(name, default):
+    try:
+        return int(os.getenv(name, default))
+    except (TypeError, ValueError):
+        return int(default)
+
+
+def _env_bool(name, default):
+    value = os.getenv(name)
+    if value is None:
+        return bool(default)
+    return value.strip().lower() not in {"0", "false", "no", "off", ""}
+
+
+# ---------------------------- Gemini (fallback) ----------------------------
+
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_MODEL = "gemini-3.6-flash"
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
 gemini_client = None
 
 if GEMINI_API_KEY:
     try:
         gemini_client = genai.Client(api_key=GEMINI_API_KEY)
-        print("Gemini AI : Connected")
+        print("Gemini AI : Connected (optional fallback)")
     except Exception as e:
         print("Gemini AI : Connection failed:", e)
 else:
-    print("Gemini AI : API key not configured")
+    print("Gemini AI : API key not configured (optional fallback disabled)")
 
 
-def generate_gemini_medical_response(
-    user_text, language="en", medical_context="", conversation_context=""
-):
-    if gemini_client is None:
+# ----------------------------- Ollama (primary) ------------------------------
+
+def _normalize_ollama_base_url(value):
+    value = (value or "").strip() or "http://localhost:11434"
+    if "://" not in value:
+        value = "http://" + value
+    return value.rstrip("/")
+
+
+OLLAMA_ENABLED = _env_bool("OLLAMA_ENABLED", True)
+OLLAMA_BASE_URL = _normalize_ollama_base_url(
+    os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
+)
+OLLAMA_MODEL = (os.getenv("OLLAMA_MODEL", "gemma3:latest") or "").strip() or "gemma3:latest"
+OLLAMA_CONNECT_TIMEOUT = _env_float("OLLAMA_CONNECT_TIMEOUT", 3.0)
+# Read timeout tuned to 25s to fit well within Android OkHttpClient's read timeout (90s)
+# while allowing fast failover to Gemini (and offline retrieval) if Ollama is unresponsive.
+OLLAMA_READ_TIMEOUT = _env_float("OLLAMA_READ_TIMEOUT", 25.0)
+OLLAMA_TEMPERATURE = _env_float("OLLAMA_TEMPERATURE", 0.3)
+OLLAMA_NUM_CTX = _env_int("OLLAMA_NUM_CTX", 2048)
+OLLAMA_NUM_PREDICT = _env_int("OLLAMA_NUM_PREDICT", 512)
+OLLAMA_RETRY_COOLDOWN = _env_float("OLLAMA_RETRY_COOLDOWN", 20.0)
+OLLAMA_KEEP_ALIVE = os.getenv("OLLAMA_KEEP_ALIVE", "10m")
+
+
+class OllamaError(Exception):
+    def __init__(self, message, status=None):
+        super().__init__(message)
+        self.status = status
+
+
+_ollama_lock = threading.Lock()
+_ollama_state = {"down_until": 0.0, "last_error": None}
+_ollama_status_cache = {"checked_at": 0.0, "result": None}
+
+
+def _ollama_request(method, path, payload=None, read_timeout=None):
+    parsed = urlparse(OLLAMA_BASE_URL)
+    host = parsed.hostname
+    if not host:
+        raise OllamaError(f"Invalid OLLAMA_BASE_URL: {OLLAMA_BASE_URL}")
+
+    connection_class = (
+        http.client.HTTPSConnection if parsed.scheme == "https"
+        else http.client.HTTPConnection
+    )
+    base_path = parsed.path.rstrip("/")
+    effective_read_timeout = OLLAMA_READ_TIMEOUT if read_timeout is None else read_timeout
+
+    conn = connection_class(host, parsed.port, timeout=OLLAMA_CONNECT_TIMEOUT)
+    try:
+        conn.connect()
+        if conn.sock is not None:
+            conn.sock.settimeout(effective_read_timeout)
+
+        body = json.dumps(payload).encode("utf-8") if payload is not None else None
+        conn.request(
+            method,
+            base_path + path,
+            body=body,
+            headers={"Content-Type": "application/json", "Accept": "application/json"},
+        )
+        response = conn.getresponse()
+        status = response.status
+        raw = response.read()
+    except TimeoutError as e:
+        raise OllamaError(f"Ollama request timed out after {effective_read_timeout:.1f}s at {OLLAMA_BASE_URL}: {e}") from e
+    except (OSError, http.client.HTTPException) as e:
+        raise OllamaError(f"cannot reach Ollama at {OLLAMA_BASE_URL}: {e}") from e
+    finally:
+        try:
+            conn.close()
+        except Exception:
+            pass
+
+    try:
+        data = json.loads(raw.decode("utf-8")) if raw else {}
+    except (ValueError, UnicodeDecodeError):
+        data = None
+
+    if status != 200:
+        detail = data.get("error") if isinstance(data, dict) else None
+        raise OllamaError(f"HTTP {status}: {detail or 'unexpected response'}", status=status)
+    if not isinstance(data, dict):
+        raise OllamaError("Ollama returned a response that is not valid JSON")
+    return data
+
+
+def _ollama_in_cooldown():
+    with _ollama_lock:
+        return time.monotonic() < _ollama_state["down_until"]
+
+
+def _ollama_mark_down(reason):
+    with _ollama_lock:
+        _ollama_state["down_until"] = time.monotonic() + OLLAMA_RETRY_COOLDOWN
+        _ollama_state["last_error"] = reason
+
+
+def _ollama_mark_up():
+    with _ollama_lock:
+        _ollama_state["down_until"] = 0.0
+        _ollama_state["last_error"] = None
+
+
+def ollama_chat(system_prompt, user_prompt, temperature=None, messages=None):
+    if not OLLAMA_ENABLED or _ollama_in_cooldown():
         return None
+
+    if messages is not None:
+        chat_messages = messages
+    else:
+        chat_messages = [
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_prompt},
+        ]
+
+    payload = {
+        "model": OLLAMA_MODEL,
+        "messages": chat_messages,
+        "stream": False,
+        "keep_alive": OLLAMA_KEEP_ALIVE,
+        "options": {
+            "temperature": OLLAMA_TEMPERATURE if temperature is None else temperature,
+            "num_ctx": OLLAMA_NUM_CTX,
+            "num_predict": OLLAMA_NUM_PREDICT,
+        },
+    }
+
+    try:
+        data = _ollama_request("POST", "/api/chat", payload)
+    except OllamaError as e:
+        _ollama_mark_down(str(e))
+        logger.warning("Ollama error (skipping Ollama for %.0fs): %s", OLLAMA_RETRY_COOLDOWN, e)
+        if e.status == 404:
+            logger.info("Ollama hint: is the model installed? Run: ollama pull %s", OLLAMA_MODEL)
+        return None
+
+    message = data.get("message")
+    content = message.get("content") if isinstance(message, dict) else None
+    if not isinstance(content, str) or not content.strip():
+        logger.info("Ollama returned an empty answer; falling back.")
+        return None
+
+    _ollama_mark_up()
+    return content.strip()
+
+
+def _ollama_model_listed(model, names):
+    def canonical(value):
+        value = str(value or "").strip().lower()
+        return value if ":" in value else value + ":latest"
+
+    wanted = canonical(model)
+    return any(canonical(name) == wanted for name in names)
+
+
+def get_ollama_status(max_age=10.0):
+    now = time.monotonic()
+    with _ollama_lock:
+        cached = _ollama_status_cache["result"]
+        if cached is not None and (now - _ollama_status_cache["checked_at"]) < max_age:
+            return dict(cached)
+
+    result = {
+        "enabled": OLLAMA_ENABLED,
+        "base_url": OLLAMA_BASE_URL,
+        "model": OLLAMA_MODEL,
+        "reachable": False,
+        "model_available": False,
+        "error": None,
+    }
+
+    if OLLAMA_ENABLED:
+        try:
+            data = _ollama_request("GET", "/api/tags", read_timeout=5.0)
+            names = []
+            for item in data.get("models", []) or []:
+                if isinstance(item, dict):
+                    names.append(item.get("name") or item.get("model") or "")
+            result["reachable"] = True
+            result["model_available"] = _ollama_model_listed(OLLAMA_MODEL, names)
+        except OllamaError as e:
+            result["error"] = str(e)
+
+    with _ollama_lock:
+        _ollama_status_cache["result"] = dict(result)
+        _ollama_status_cache["checked_at"] = time.monotonic()
+    return result
+
+
+def get_ai_status_fields():
+    try:
+        ollama = get_ollama_status()
+    except Exception:
+        ollama = {"reachable": False, "model_available": False}
+
+    if OLLAMA_ENABLED:
+        primary = "ollama"
+    elif gemini_client is not None:
+        primary = "gemini"
+    else:
+        primary = "none"
+
+    return {
+        "ai_primary_provider": primary,
+        "ollama_enabled": OLLAMA_ENABLED,
+        "ollama_model": OLLAMA_MODEL,
+        "ollama_reachable": bool(ollama.get("reachable")),
+        "ollama_model_available": bool(ollama.get("model_available")),
+        "gemini_configured": gemini_client is not None,
+    }
+
+
+# ------------------------- shared prompt construction ------------------------
+
+def build_session_memory_summary(session_id):
+    if not session_id:
+        return ""
+    try:
+        memories = get_medical_memory(session_id, limit=20)
+    except Exception:
+        return ""
+    if not memories:
+        return ""
+
+    symptom_durations = {}
+    measurements = []
+    clinical_notes = []
+
+    for m in memories:
+        m_type = str(m.get("memory_type") or "").strip().lower()
+        name = str(m.get("name") or "").strip()
+        duration = str(m.get("duration") or "").strip()
+        value = str(m.get("value") or "").strip()
+        unit = str(m.get("unit") or "").strip()
+
+        if m_type == "symptom" and name:
+            if duration and duration != "None":
+                symptom_durations[name] = duration
+            elif name not in symptom_durations:
+                symptom_durations[name] = ""
+        elif m_type in {"blood_pressure", "pulse", "temperature", "blood_sugar", "weight"}:
+            val_str = f"{value} {unit}".strip()
+            item_str = f"{name}: {val_str}"
+            if val_str and item_str not in measurements:
+                measurements.append(item_str)
+        elif m_type in {"location", "severity"} and name:
+            note = f"{m_type}: {name}"
+            if note not in clinical_notes:
+                clinical_notes.append(note)
+
+    summary_parts = []
+    if symptom_durations:
+        s_list = [f"{s} (duration: {d})" if d else s for s, d in symptom_durations.items()]
+        summary_parts.append("Confirmed patient symptoms: " + ", ".join(s_list))
+    if measurements:
+        summary_parts.append("Recorded measurements: " + ", ".join(measurements))
+    if clinical_notes:
+        summary_parts.append("Clinical details: " + ", ".join(clinical_notes))
+
+    return "\n".join(summary_parts)
+
+
+def _build_medical_system_instruction(language, memory_summary=""):
+    language_names = {"en": "English", "mr": "Marathi", "hi": "Hindi"}
+    target_language = language_names.get(language, "English")
+
+    instruction = (
+        f"You are MEDASSIST AI, an expert medical communication assistant.\n"
+        f"TARGET RESPONSE LANGUAGE: {target_language}.\n\n"
+        f"INPUT UNDERSTANDING:\n"
+        f"- The user may communicate in English, Hindi, Marathi, Romanized Marathi, Romanized Hindi, "
+        f"or mixed Hinglish / Maraglish. Voice inputs may feature phonetics or misspellings. Extract clinical intent accurately.\n\n"
+        f"CONVERSATIONAL CONTEXT RULES:\n"
+        f"1. Conversational, empathetic, and direct tone. Never begin with canned intros like 'Here is some general information'.\n"
+        f"2. Seamlessly continue multi-turn conversation context. If the user answers a question (e.g. giving duration, severity, location), "
+        f"acknowledge that detail and move forward.\n"
+        f"3. DO NOT repeatedly ask for details the patient has already provided.\n"
+        f"4. If essential clinical information is still missing, ask AT MOST ONE focused, relevant follow-up question.\n"
+        f"5. Resolve pronouns and references (e.g. 'that pain', 'it is getting worse', 'what should I do now?') using recent conversation turns.\n"
+        f"6. Explain common causes clearly, offer practical general self-care advice, and highlight red-flag warning signs requiring urgent medical attention.\n"
+        f"7. Do not provide a definitive diagnosis or claim certainty. Do not prescribe specific drug dosages.\n"
+        f"8. OUTPUT LANGUAGE REQUIREMENT: Write the ENTIRE response in {target_language}. "
+        f"If the target is Marathi or Hindi, use native Devanagari script. Standard medicine names, units, and proper names may remain intact.\n"
+    )
+    if memory_summary:
+        instruction += f"\nCONFIRMED PATIENT FACTS IN THIS CONVERSATION:\n{memory_summary}\n"
+    return instruction
+
+
+def _build_multi_turn_messages(
+    session_id, system_instruction, current_user_text, language="en", medical_context="", limit=8
+):
+    history = get_chat_history(session_id, limit=limit) if session_id else []
+
+    messages = [{"role": "system", "content": system_instruction}]
+
+    for item in history:
+        role = str(item.get("role", "")).strip().lower()
+        msg = str(item.get("message", "")).strip()
+        if not msg:
+            continue
+        if role == "user":
+            messages.append({"role": "user", "content": msg})
+        elif role == "assistant":
+            messages.append({"role": "assistant", "content": msg})
 
     language_names = {"en": "English", "mr": "Marathi", "hi": "Hindi"}
     target_language = language_names.get(language, "English")
 
-    system_instruction = f"""
-You are MEDASSIST AI, a calm, helpful conversational medical information assistant.
+    current_prompt = current_user_text
+    if medical_context:
+        current_prompt = (
+            f"{current_user_text}\n\n"
+            f"[Clinical reference knowledge: {medical_context}]\n"
+            f"[Instructions: Respond directly in {target_language}. Acknowledge newly provided patient details naturally. "
+            f"If vital details are missing, ask at most one follow-up question. Do not repeat questions already answered.]"
+        )
+    messages.append({"role": "user", "content": current_prompt})
+    return messages
 
-TARGET RESPONSE LANGUAGE: {target_language}
 
-RESPONSE STYLE — VERY IMPORTANT:
-- Respond like a natural, high-quality conversational assistant, not like a FAQ page.
-- Answer the user's exact question first. Do not start every response with a canned phrase
-  such as "Here is some general information".
-- Do not repeat the user's question unless it helps clarify the situation.
-- Use short paragraphs and bullet points only when they genuinely improve readability.
-- For symptoms such as headache, fever, cough, sore throat, body pain, back pain, etc.,
-  briefly explain common possibilities, give practical general-care steps when appropriate,
-  mention important warning signs, and ask 1-2 useful follow-up questions when helpful.
-- Keep the conversation context in mind. If the user says "since yesterday", "what
-  precautions", "is it serious", or "what should I do", connect it to the active symptom.
-- Never route a symptom question to hospital/OPD information unless the user actually asks
-  about a hospital, OPD, department, location, appointment, or similar service.
-- Do not diagnose or claim certainty. Use wording such as "can", "may", or "one possible
-  reason" when appropriate.
-- Do not invent medical facts, medication doses, test results, or personal history.
-- Do not recommend prescription medicines or specific dosages unless explicitly supported by
-  the supplied medical context. Encourage a qualified healthcare professional/pharmacist
-  when medication advice is needed.
-- For severe, sudden, worsening, or emergency symptoms, clearly recommend urgent medical care.
-- Never claim to replace a doctor.
-- Do not introduce yourself in normal answers and do not add greetings unless explicitly asked.
-- Treat the recent conversation as one continuous chat. Do not reset context between messages.
-- If the user gives a short follow-up such as "yes", "no", "since yesterday", "aata kay kru",
-  "is it serious", or "what should I do", infer what they mean from the recent conversation
-  before asking them to repeat information.
-- If the user is still discussing the same symptom, continue that topic naturally until they
-  change the subject or indicate they are satisfied.
+def _format_messages_for_gemini(messages):
+    lines = []
+    for m in messages:
+        role = m.get("role", "user")
+        content = m.get("content", "")
+        if role == "system":
+            lines.append(f"SYSTEM INSTRUCTIONS:\n{content}")
+        elif role == "assistant":
+            lines.append(f"MEDASSIST AI:\n{content}")
+        else:
+            lines.append(f"USER:\n{content}")
+    return "\n\n".join(lines)
 
-STRICT OUTPUT LANGUAGE RULE — HIGHEST PRIORITY:
-- The complete final answer MUST be written in {target_language}.
-- Do NOT mix English with {target_language}.
-- Translate every heading, sentence, bullet, label, warning, disclaimer, and explanatory phrase.
-- Use the native script for Marathi and Hindi whenever possible.
-- Medicine names, standard medical abbreviations, numbers, units, and proper names may remain
-  unchanged when they are standard terms.
-"""
 
-    prompt = f"""
+def _build_medical_user_prompt(user_text, language, medical_context, conversation_context):
+    language_names = {"en": "English", "mr": "Marathi", "hi": "Hindi"}
+    target_language = language_names.get(language, "English")
+
+    return f"""
 User's current message:
 {user_text}
 
@@ -495,54 +914,131 @@ Reliable medical context from the app's knowledge base:
 Recent conversation:
 {conversation_context or "No previous conversation context available."}
 
-Now write the final response for the user in {target_language}.
-Make it conversational, useful, concise, and directly relevant to the current message.
-If this is a follow-up, continue the previous conversation naturally.
-Do not mention the prompt, knowledge base, model, routing, confidence, or internal systems.
-Return only the answer text.
+Write the final response for the user in {target_language}.
+Make it conversational, direct, and helpful. If this is a follow-up, continue the conversation seamlessly.
+Do not mention system prompts, knowledge bases, or internal classifications. Return only the response text.
 """
 
-    # Gemini can temporarily return 503 during high demand. Retry once, then let the
-    # caller use the deterministic local/knowledge-base fallback instead of failing /predict.
+
+def _gemini_generate(contents):
+    if gemini_client is None:
+        return None
+
     for attempt in range(2):
         try:
             response = gemini_client.models.generate_content(
                 model=GEMINI_MODEL,
-                contents=system_instruction + "\n\n" + prompt,
+                contents=contents,
             )
             answer = getattr(response, "text", None)
             if answer and answer.strip():
-                answer = answer.strip()
-
-                # Gemini can occasionally follow the medical content prompt
-                # but still leave English template text in a Marathi/Hindi
-                # answer. Run a strict translation pass only in that case.
-                if _looks_mixed_with_english(answer, language):
-                    translated = translate_text_with_gemini(answer, language)
-                    if translated and not _looks_mixed_with_english(translated, language):
-                        answer = translated.strip()
-
-                # Never return a mixed-language answer when Marathi/Hindi was
-                # explicitly requested. The caller can use a safe localized
-                # fallback if the strict pass also failed.
-                if not _looks_mixed_with_english(answer, language):
-                    return answer
+                return answer.strip()
         except Exception as e:
             print(f"Gemini generation error (attempt {attempt + 1}/2):", e)
             if attempt == 0:
-                import time
                 time.sleep(0.8)
 
     return None
+
+
+# ------------------------------ public generators ----------------------------
+
+def generate_medical_response_with_provider(
+    user_text, language="en", medical_context="", conversation_context="", session_id=None
+):
+    ollama_available = OLLAMA_ENABLED
+    gemini_available = gemini_client is not None
+    if not ollama_available and not gemini_available:
+        return None, None
+
+    memory_summary = build_session_memory_summary(session_id) if session_id else ""
+    system_instruction = _build_medical_system_instruction(language, memory_summary=memory_summary)
+    prompt = _build_medical_user_prompt(
+        user_text, language, medical_context, conversation_context
+    )
+
+    structured_messages = None
+    if session_id:
+        structured_messages = _build_multi_turn_messages(
+            session_id=session_id,
+            system_instruction=system_instruction,
+            current_user_text=user_text,
+            language=language,
+            medical_context=medical_context,
+            limit=8,
+        )
+
+    providers = []
+    if ollama_available:
+        if structured_messages:
+            providers.append(("ollama", lambda: ollama_chat(system_instruction, prompt, messages=structured_messages)))
+        else:
+            providers.append(("ollama", lambda: ollama_chat(system_instruction, prompt)))
+    if gemini_available:
+        if structured_messages:
+            gemini_content = _format_messages_for_gemini(structured_messages)
+        else:
+            gemini_content = system_instruction + "\n\n" + prompt
+        providers.append(
+            ("gemini", lambda: _gemini_generate(gemini_content))
+        )
+
+    for provider_name, call in providers:
+        answer = call()
+        if not answer:
+            continue
+        answer = answer.strip()
+
+        if _looks_mixed_with_english(answer, language):
+            translated = translate_text_with_ai(answer, language)
+            if translated and not _looks_mixed_with_english(translated, language):
+                answer = translated.strip()
+
+        if not _looks_mixed_with_english(answer, language):
+            return answer, provider_name
+
+    return None, None
+
+
+def generate_ai_medical_response(
+    user_text, language="en", medical_context="", conversation_context=""
+):
+    answer, _provider = generate_medical_response_with_provider(
+        user_text=user_text,
+        language=language,
+        medical_context=medical_context,
+        conversation_context=conversation_context,
+    )
+    return answer
+
+
+def generate_gemini_medical_response(
+    user_text, language="en", medical_context="", conversation_context=""
+):
+    return generate_ai_medical_response(
+        user_text=user_text,
+        language=language,
+        medical_context=medical_context,
+        conversation_context=conversation_context,
+    )
 
 
 # ============================================================
 # CHAT DATABASE
 # ============================================================
 
+def _connect():
+    conn = sqlite3.connect(CHAT_DB_FILE, timeout=10)
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+    except sqlite3.Error:
+        pass
+    return conn
+
+
 def init_chat_database():
     CHAT_DB_FILE.parent.mkdir(parents=True, exist_ok=True)
-    conn = sqlite3.connect(CHAT_DB_FILE)
+    conn = _connect()
     conn.execute("""
         CREATE TABLE IF NOT EXISTS chat_history (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -558,7 +1054,7 @@ def init_chat_database():
 
 
 def save_chat_message(session_id, role, message, symptoms=None):
-    conn = sqlite3.connect(CHAT_DB_FILE)
+    conn = _connect()
     symptom_text = ",".join(symptoms) if symptoms else ""
 
     conn.execute(
@@ -574,7 +1070,7 @@ def save_chat_message(session_id, role, message, symptoms=None):
 
 
 def get_chat_history(session_id, limit=20):
-    conn = sqlite3.connect(CHAT_DB_FILE)
+    conn = _connect()
     conn.row_factory = sqlite3.Row
 
     rows = conn.execute(
@@ -593,16 +1089,9 @@ def get_chat_history(session_id, limit=20):
 
 
 def get_last_response_language(session_id):
-    """
-    Return the language used by the most recent assistant response.
-
-    This is intentionally used only when the current message is ambiguous
-    (usually short Roman/voice-transcribed Marathi). It makes the conversation
-    language sticky without forcing an explicitly English message to Marathi.
-    """
     try:
         history = get_chat_history(session_id, limit=20)
-        for item in history:
+        for item in reversed(history):
             role = str(item.get("role", "")).lower()
             if role != "assistant":
                 continue
@@ -615,8 +1104,6 @@ def get_last_response_language(session_id):
             ).strip()
 
             if answer:
-                # The database stores the assistant's already-localized
-                # response. Prefer its script for conversation continuity.
                 devanagari = sum(1 for ch in answer if "\u0900" <= ch <= "\u097F")
                 if devanagari:
                     detected = detect_language(answer)
@@ -629,38 +1116,15 @@ def get_last_response_language(session_id):
 
 
 def is_ambiguous_roman_message(text):
-    """
-    True for short Latin-script messages that contain Marathi/Hindi speech
-    words but may otherwise be classified as English because they are mixed
-    with English medical words/numbers.
-    """
     if not text:
         return False
 
     lower = str(text).lower()
     words = set(re.findall(r"[a-zA-Z]+", lower))
-
-    roman_marathi_markers = {
-        "mala", "maza", "mazi", "majha", "majhi", "majhe", "majhya",
-        "aahe", "ahe", "aahat", "aahet", "kay", "kasa", "kashi", "kiti",
-        "aata", "ata", "tula", "tyala", "tyachi", "tyache", "zala", "zali",
-        "zale", "zhala", "hotay", "hota", "hoti", "hote", "dukh", "dukhat",
-        "dukhtay", "tap", "taap", "khokla", "sardi", "ghasa", "gala",
-        "pot", "dok", "doka", "dokyala", "chakkar", "garagar", "kamjori",
-        "ashaktpana", "ulti", "goli", "kalji", "karu", "karaycha", "karaychi",
-        "karayche", "ghyavi", "ghyava", "ghyave", "pasun", "paryant", "mi",
-        "mee", "tumhi", "apan", "aapan", "mde", "madhe", "vr", "var",
-        "dkhvl", "dakhvl", "dakhav", "bgh", "bagh", "bhai", "yar", "phile",
-        "pahile", "punha", "toch", "tyach", "kr", "kru", "kraycha",
-        "kraychi", "krtoy", "yetoy", "yeto", "hotoy", "hot", "disat",
-        "dist", "distoy", "nahi",
-    }
-
-    return bool(words.intersection(roman_marathi_markers))
+    return bool(words.intersection(ROMAN_INDIC_MARKERS))
 
 
 def build_conversation_context(session_id, limit=12):
-    """Build recent conversation context for Gemini follow-ups."""
     history = get_chat_history(session_id, limit=limit)
     if not history:
         return ""
@@ -702,7 +1166,7 @@ def get_previous_symptoms(session_id):
 
 
 def clear_chat_history(session_id):
-    conn = sqlite3.connect(CHAT_DB_FILE)
+    conn = _connect()
     conn.execute("DELETE FROM chat_history WHERE session_id = ?", (session_id,))
     conn.commit()
     conn.close()
@@ -713,7 +1177,7 @@ def clear_chat_history(session_id):
 # ============================================================
 
 def init_medical_memory_table():
-    conn = sqlite3.connect(CHAT_DB_FILE)
+    conn = _connect()
     conn.execute("""
         CREATE TABLE IF NOT EXISTS medical_memory (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -735,7 +1199,7 @@ def save_medical_memory(
     session_id, memory_type, name, value=None, unit=None, duration=None,
     source_message="",
 ):
-    conn = sqlite3.connect(CHAT_DB_FILE)
+    conn = _connect()
     conn.execute(
         """
         INSERT INTO medical_memory
@@ -759,7 +1223,7 @@ def save_medical_memory(
 
 
 def get_medical_memory(session_id, limit=50):
-    conn = sqlite3.connect(CHAT_DB_FILE)
+    conn = _connect()
     conn.row_factory = sqlite3.Row
 
     rows = conn.execute(
@@ -778,7 +1242,7 @@ def get_medical_memory(session_id, limit=50):
 
 
 def clear_medical_memory(session_id):
-    conn = sqlite3.connect(CHAT_DB_FILE)
+    conn = _connect()
     conn.execute("DELETE FROM medical_memory WHERE session_id = ?", (session_id,))
     conn.commit()
     conn.close()
@@ -837,114 +1301,56 @@ if ANSWER_COLUMN is None:
 # TEXT NORMALIZATION
 # ============================================================
 
-# NOTE ON MULTILINGUAL SUPPORT: everything downstream (symptom detection,
-# medical-query detection, MEDIQ retrieval) runs the text through this
-# function first. The single-word substitutions below are what let
-# Romanized *and* Devanagari-script Marathi/Hindi symptom words get
-# recognized by the rest of the (English-built) pipeline — this is doing
-# real work, not just cosmetic cleanup.
 _NORMALIZE_REPLACEMENTS = {
-    # Romanized Marathi / Hindi
-    "pn": "also",
-    "aahe": "have",
-    "ahe": "have",
-    "mala": "i",
-    "majha": "my",
-    "maza": "my",
-    "majhi": "my",
-    "mujhe": "i",
-    "mera": "my",
-    "meri": "my",
-    "mere": "my",
-    "kay": "what",
-    "kya": "what",
-    "bukhar": "fever",
-    "tap": "fever",
-    "taap": "fever",
-    "sardi": "cold",
-    "khokla": "cough",
-    "khansi": "cough",
-    "kamjori": "weakness",
-    "kamzori": "weakness",
-    "ashaktpana": "weakness",
-    "chakkar": "dizziness",
-    "dukht": "pain",
-    "dukh": "pain",
-    "dard": "pain",
+    # Romanized Marathi / Hindi / Hinglish / Maraglish
+    "pn": "also", "bhi": "also", "pan": "also",
+    "aahe": "have", "ahe": "have", "hai": "have", "hain": "have",
+    "mala": "i", "mujhe": "i", "mujhko": "i", "mi": "i", "main": "i",
+    "majha": "my", "maza": "my", "majhi": "my", "mera": "my", "meri": "my", "mere": "my",
+    "kay": "what", "kya": "what", "kasa": "how", "kaise": "how",
+    "bukhar": "fever", "tap": "fever", "taap": "fever", "fever": "fever",
+    "sardi": "cold", "jukam": "cold", "zukaam": "cold",
+    "khokla": "cough", "khansi": "cough", "dhas": "cough",
+    "kamjori": "weakness", "kamzori": "weakness", "ashaktpana": "weakness", "thakan": "weakness",
+    "chakkar": "dizziness", "garagar": "dizziness",
+    "dukht": "pain", "dukh": "pain", "dukhtay": "pain", "dard": "pain", "dukhne": "pain",
+    "goli": "medicine", "dawa": "medicine", "dawai": "medicine", "aushadh": "medicine",
+    "pot": "stomach", "pet": "stomach", "dok": "head", "doka": "head", "sir": "head",
+    "ghasa": "throat", "gala": "throat", "chhati": "chest", "seena": "chest",
     # Devanagari script (Marathi + Hindi)
-    "आहे": "have",
-    "आहेत": "have",
-    "मला": "i",
-    "माझा": "my",
-    "माझी": "my",
-    "माझे": "my",
-    "मुझे": "i",
-    "मेरा": "my",
-    "मेरी": "my",
-    "मेरे": "my",
-    "काय": "what",
-    "क्या": "what",
-    "ताप": "fever",
-    "बुखार": "fever",
-    "सर्दी": "cold",
-    "जुकाम": "cold",
-    "खोकला": "cough",
-    "खांसी": "cough",
-    "कमजोरी": "weakness",
-    "अशक्तपणा": "weakness",
+    "आहे": "have", "आहेत": "have", "है": "have", "हैं": "have",
+    "मला": "i", "माझा": "my", "माझी": "my", "माझे": "my", "मुझे": "i", "मेरा": "my", "मेरी": "my", "मेरे": "my",
+    "काय": "what", "क्या": "what", "कसे": "how", "कैसे": "how",
+    "ताप": "fever", "बुखार": "fever",
+    "सर्दी": "cold", "जुकाम": "cold",
+    "खोकला": "cough", "खांसी": "cough",
+    "कमजोरी": "weakness", "अशक्तपणा": "weakness", "थकवा": "weakness",
     "चक्कर": "dizziness",
-    "दुखत": "pain",
-    "दुखणे": "pain",
-    "दुखतं": "pain",
-    "दर्द": "pain",
+    "दुखत": "pain", "दुखणे": "pain", "दुखतं": "pain", "दर्द": "pain",
+    "पोट": "stomach", "पेट": "stomach", "डोके": "head", "डोकं": "head", "सिर": "head",
+    "घसा": "throat", "गला": "throat", "छाती": "chest",
+    "औषध": "medicine", "दवा": "medicine", "गोळी": "medicine",
 }
 
-# Devanagari is outside a-z/0-9, so any character-class filter used on
-# this text must include the Devanagari block (\u0900-\u097F) — otherwise
-# Marathi/Hindi script input gets silently stripped down to nothing
-# before it ever reaches symptom or intent detection.
 _WORD_CHAR_PATTERN = re.compile(r"[^a-zA-Z0-9\u0900-\u097F]")
 _FINAL_CHAR_PATTERN = re.compile(r"[^a-z0-9\s\u0900-\u097F]")
 _WHITESPACE_PATTERN = re.compile(r"\s+")
 
 _SPELLING_MAP = {
-    "fevr": "fever",
-    "fvr": "fever",
-    "feaver": "fever",
-    "fevar": "fever",
-    "hedache": "headache",
-    "headche": "headache",
-    "headpain": "headache",
-    "caugh": "cough",
-    "coff": "cough",
-    "vomitng": "vomiting",
-    "vomitting": "vomiting",
-    "diarhea": "diarrhea",
-    "diarrhoea": "diarrhea",
-    "dizines": "dizziness",
-    "dizzyness": "dizziness",
-    "weaknes": "weakness",
-    "stomac": "stomach",
-    "stomache": "stomach",
-    "throate": "throat",
+    "fevr": "fever", "fvr": "fever", "feaver": "fever", "fevar": "fever",
+    "hedache": "headache", "headche": "headache", "headpain": "headache",
+    "caugh": "cough", "coff": "cough", "vomitng": "vomiting", "vomitting": "vomiting",
+    "diarhea": "diarrhea", "diarrhoea": "diarrhea", "dizines": "dizziness",
+    "dizzyness": "dizziness", "weaknes": "weakness", "stomac": "stomach",
+    "stomache": "stomach", "throate": "throat",
 }
 
 _PHRASE_MAP = {
-    "head pain": "headache",
-    "head ache": "headache",
-    "head is paining": "headache",
-    "body pain": "bodypain",
-    "body ache": "bodypain",
-    "high temperature": "fever",
-    "throwing up": "vomiting",
-    "feeling sick": "nausea",
-    "sore throat": "sorethroat",
-    "stomach ache": "stomachpain",
-    "stomach pain": "stomachpain",
-    "chest pain": "chestpain",
-    "back pain": "backpain",
-    "joint pain": "jointpain",
-    "difficulty breathing": "breathing",
+    "head pain": "headache", "head ache": "headache", "head is paining": "headache",
+    "body pain": "bodypain", "body ache": "bodypain", "high temperature": "fever",
+    "throwing up": "vomiting", "feeling sick": "nausea", "sore throat": "sorethroat",
+    "stomach ache": "stomachpain", "stomach pain": "stomachpain", "chest pain": "chestpain",
+    "back pain": "backpain", "joint pain": "jointpain", "difficulty breathing": "breathing",
     "problem breathing": "breathing",
 }
 
@@ -1001,20 +1407,47 @@ print("MEDIQ retrieval index ready.")
 # ============================================================
 
 SYMPTOM_ALIASES = {
-    "fever": ["fever", "fevr", "fvr", "feaver", "temperature", "temp", "bukhar", "tap", "taap", "tapa", "tapu"],
-    "headache": ["headache", "headpain", "head pain", "head ache", "head is paining", "hedache", "doka dukhat", "dok dukhat", "dokyala dukh", "doka dukh"],
-    "cough": ["cough", "caugh", "coff", "khokla", "khokla aahe"],
-    "cold": ["cold", "sardi", "running nose", "runny nose"],
+    "fever": [
+        "fever", "fevr", "fvr", "feaver", "temperature", "temp", "bukhar",
+        "tap", "taap", "tapa", "tapu", "ताप", "बुखार",
+    ],
+    "headache": [
+        "headache", "headpain", "head pain", "head ache", "head is paining", "hedache",
+        "doka dukhat", "dok dukhat", "dokyala dukh", "doka dukh",
+        "dokedukhi", "dokdukhi", "doka dukhtay", "dokyala dukhte", "maje doke dukhtay",
+        "sirdard", "sir dard", "sar dard", "sir me dard", "sir mein dard",
+        "डोकेदुखी", "डोके दुखत", "डोके दुखत आहे", "डोकं दुखतंय", "डोके दुखणे",
+        "सिरदर्द", "सिर दर्द", "सिर में दर्द", "मेरे सिर में दर्द है",
+    ],
+    "cough": [
+        "cough", "caugh", "coff", "khokla", "khansi", "khokla aahe",
+        "खोकला", "खांसी",
+    ],
+    "cold": ["cold", "sardi", "jukam", "zukaam", "running nose", "runny nose"],
     "body_pain": ["body pain", "bodypain", "body ache", "bodyache", "ang dukhat", "anga dukhat"],
-    "stomach_pain": ["stomach pain", "stomachpain", "stomach ache", "stomachache", "pot dukhat", "pota dukhat"],
+    "stomach_pain": [
+        "stomach pain", "stomachpain", "stomach ache", "stomachache",
+        "pot dukhat", "pota dukhat", "potdukhi", "pet dard", "pet mein dard", "pet me dard",
+        "पोटदुखी", "पेट दर्द", "पोट दुखत आहे", "पेट में दर्द",
+    ],
     "chest_pain": ["chest pain", "chestpain", "chest ache"],
-    "back_pain": ["back pain", "backpain", "pathi dukhat", "pathi dukh"],
+    "back_pain": [
+        "back pain", "backpain", "back ache", "backache", "lower back pain", "lower back", "upper back pain", "upper back",
+        "back hurts", "back is hurting", "back hurt", "pain in back",
+        "पाठदुखी", "पाठ दुखत", "पाठ दुखणे", "कंबरदुखी", "कंबर दुखत", "कंबर दुखणे", "पाठीत वेदना", "पाठीत दुखणे",
+        "पाठ खूप दुखत", "पाठीत खूप दुखत", "पाठ फार दुखत", "पाठीत फार दुखत",
+        "pathdukhi", "pathi dukhat", "pathi dukh", "path dukhat", "path dukh", "kambar dukhat", "kambar dukhte", "kambardukhi",
+        "कमर दर्द", "कमर में दर्द", "पीठ दर्द", "पीठ में दर्द", "कमरदुखी",
+        "kamar dard", "kamar mein dard", "kamar me dard", "peeth dard", "peeth mein dard", "peeth me dard", "kamar dukh",
+    ],
     "joint_pain": ["joint pain", "jointpain"],
     "vomiting": ["vomiting", "vomit", "vomitting", "throwing up", "ulti", "ulti hot aahe"],
     "nausea": ["nausea", "feeling sick", "sick feeling", "malmal", "mala malmal"],
     "diarrhea": ["diarrhea", "diarhea", "loose motion", "loose motions"],
-    "dizziness": ["dizziness", "dizines", "dizzyness", "chakkar", "garagar"],
-    "weakness": ["weakness", "weaknes", "kamjori", "ashaktpana", "tired", "fatigue"],
+    "dizziness": [
+        "dizziness", "dizines", "dizzyness", "chakkar", "garagar", "चक्कर",
+    ],
+    "weakness": ["weakness", "weaknes", "kamjori", "kamzori", "ashaktpana", "tired", "fatigue", "thakan"],
     "breathing_problem": [
         "breathing", "breathless", "difficulty breathing", "problem breathing",
         "shortness of breath",
@@ -1025,30 +1458,87 @@ SYMPTOM_ALIASES = {
 }
 
 
+_CLAUSE_BREAK_PATTERN = re.compile(
+    r"\b(?:but|par|parantu|pan|pun|pn|lekin|kintu|mag|mg|and|aur|aani|ani|also)\b|[.,;!?|]",
+    re.IGNORECASE,
+)
+
+
+def _is_match_negated(text, start, end):
+    """
+    Checks if a matched symptom keyword or alias in `text` (occurring between
+    indices `start` and `end`) is preceded or followed by a negation qualifier
+    in English, Roman Hindi/Marathi, or Devanagari within the same clause.
+    """
+    prefix = text[:start].strip()
+    prefix_clauses = _CLAUSE_BREAK_PATTERN.split(prefix)
+    immediate_pre = prefix_clauses[-1].strip() if prefix_clauses else ""
+    preceding = " ".join(immediate_pre.split()[-3:]) if immediate_pre else ""
+
+    neg_pre = [
+        r"\b(?:no|not|neither|nor|without|never|don'?t\s+have|do\s+not\s+have|didn'?t\s+have|did\s+not\s+have|haven'?t|have\s+no|has\s+no)\b",
+        r"\b(?:nahi|nahin|nako|nahiye|naslyas)\b",
+        r"(?:\u0928\u093e\u0939\u0940|\u0928\u0939\u0940\u0902|\u0928\u093e|\u0928\u0915\u094b)\b",
+    ]
+    for pat in neg_pre:
+        if re.search(pat, preceding, re.IGNORECASE):
+            return True
+
+    suffix = text[end:].strip()
+    suffix_clauses = _CLAUSE_BREAK_PATTERN.split(suffix)
+    immediate_post = suffix_clauses[0].strip() if suffix_clauses else ""
+    succeeding = " ".join(immediate_post.split()[:3]) if immediate_post else ""
+
+    neg_post = [
+        r"\b(?:nahi|nahin|nahiye|nako|hot\s+nahi|aahe\s+ka\s+nahi)\b",
+        r"(?:\u0928\u093e\u0939\u0940|\u0928\u0939\u0940\u0902|\u0928\u093e|\u0928\u0915\u094b)\b",
+    ]
+    for pat in neg_post:
+        if re.search(pat, succeeding, re.IGNORECASE):
+            return True
+
+    return False
+
+
 def extract_symptoms(text):
     normalized = normalize_text(text)
 
-    # Common speech-to-text spellings. Android voice input often produces
-    # phonetic Roman Marathi rather than exact dictionary words.
     roman_marathi_normalized = {
-        "tap aala": "fever", "tap ala": "fever", "taap aala": "fever",
-        "taap ala": "fever", "mala tap": "fever", "mala taap": "fever",
+        "tap aala": "fever", "tap ala": "fever",
+        "taap aala": "fever", "taap ala": "fever",
+        "mala tap": "fever", "mala taap": "fever",
         "doka dukhat": "headache", "dok dukhat": "headache",
         "pot dukhat": "stomach pain", "pathi dukhat": "back pain",
+        "path dukhat": "back pain", "kambar dukhat": "back pain",
         "ang dukhat": "body pain", "ulti": "vomiting",
         "mala malmal": "nausea", "chakkar": "dizziness",
         "garagar": "dizziness", "khokla": "cough", "sardi": "cold",
         "kamjori": "weakness", "ashaktpana": "weakness",
     }
+
     for phrase, canonical in roman_marathi_normalized.items():
-        if phrase in normalized:
+        m = re.search(r"(?<!\w)" + re.escape(phrase) + r"(?!\w)", normalized)
+        if m and not _is_match_negated(normalized, m.start(), m.end()):
             normalized += " " + canonical
 
     detected = []
 
     for symptom, aliases in SYMPTOM_ALIASES.items():
         for alias in aliases:
-            if normalize_text(alias) in normalized:
+            alias_normalized = normalize_text(alias)
+
+            # Ignore aliases corrupted by encoding or normalization.
+            if not alias_normalized:
+                continue
+
+            pattern = r"(?<!\w)" + re.escape(alias_normalized) + r"(?!\w)"
+            has_affirmative_match = False
+            for m in re.finditer(pattern, normalized):
+                if not _is_match_negated(normalized, m.start(), m.end()):
+                    has_affirmative_match = True
+                    break
+
+            if has_affirmative_match:
                 if symptom not in detected:
                     detected.append(symptom)
                 break
@@ -1065,7 +1555,8 @@ MEDICAL_KEYWORDS = {
     "allergy", "emergency", "injury", "wound", "dose", "dosage",
     "tap", "taap", "khokla", "sardi", "ghasa", "doka", "dok", "pot",
     "dukhat", "dukh", "ulti", "malmal", "chakkar", "garagar", "kamjori",
-    "ashaktpana", "pathi", "ang", "tapa",
+    "ashaktpana", "pathi", "path", "kamar", "peeth", "कमर", "पीठ", "पाठ",
+    "azaala", "aazar", "ang", "tapa", "dawa", "dawai", "goli", "bukhar", "back",
 }
 
 
@@ -1084,19 +1575,98 @@ def is_medical_query(text):
 
 
 FOLLOWUP_PATTERNS = [
-    "since", "for", "from", "days", "day", "hours", "hour", "weeks", "week",
-    "months", "month", "yes", "no", "also", "still", "now", "today",
-    "yesterday", "same", "worse", "better", "what should i do",
-    "what can i do", "what to do", "what care", "care should i take",
-    "what precautions", "precautions", "how should i care",
-    "how to take care", "home care", "treatment", "remedy", "relief",
-    "it is", "its", "this", "that",
+    # Clear conversational continuations
+    "yes", "no", "also", "still", "worse", "better",
+    # Explicit action-asking phrases
+    "what should i do", "what can i do", "what to do",
+    "what care", "care should i take", "what precautions",
+    "how should i care", "how to take care", "home care",
+    # Marathi/Hindi conversational continuations (normalize_text maps 'kay'/'kya' -> 'what')
+    "aata", "ata", "kya karu", "kay karu", "what karu",
 ]
+
+_FOLLOWUP_RE = re.compile(
+    r"(?<![a-z0-9])(?:"
+    + "|".join(re.escape(p) for p in sorted(FOLLOWUP_PATTERNS, key=len, reverse=True))
+    + r")(?![a-z0-9])"
+)
 
 
 def is_followup_query(text):
     query = normalize_text(text)
-    return any(pattern in query for pattern in FOLLOWUP_PATTERNS)
+    return bool(_FOLLOWUP_RE.search(query))
+
+
+_GREETING_PATTERNS = {
+    "hi", "hello", "hey", "namaste", "namaskar", "pranam",
+    "good morning", "good evening", "good afternoon", "good night",
+    "how are you", "kasa ahes", "kashi ahes", "kya haal hai",
+}
+
+
+def is_greeting(text):
+    if not text:
+        return False
+    norm = normalize_text(text).strip()
+    return norm in _GREETING_PATTERNS or norm.replace(" ", "") in {"hi", "hello", "hey", "namaste", "namaskar"}
+
+
+def is_contextual_followup(text, session_id=None, previous_symptoms=None):
+    """
+    Determines if text is a conversational continuation or follow-up to an
+    ongoing symptom discussion, even if it does not repeat a symptom keyword.
+    """
+    if not text:
+        return False
+
+    norm = normalize_text(text)
+    lower = str(text).lower().strip()
+
+    # 1. Pattern-based continuation
+    if is_followup_query(text):
+        return True
+
+    # 2. Reference to previous symptoms/pain/condition
+    reference_patterns = [
+        "that pain", "this pain", "the pain", "that ache", "this ache",
+        "that discomfort", "it is getting", "it gets", "it started",
+        "it hurts", "it feels", "pain is", "fever is", "cough is",
+        "getting worse", "getting better",
+        "to dard", "ye dard", "woh dard", "te dukhne", "he dukhne",
+        "mg azaala", "mag azaala", "azaala", "kay kru", "kya karu", "kya karein",
+    ]
+    if any(p in lower or p in norm for p in reference_patterns):
+        return True
+
+    # 3. If there is active previous symptom context in the session:
+    if previous_symptoms:
+        # User is answering with a duration or time reference
+        time_reference_phrases = (
+            "since yesterday", "since morning", "two days", "three days",
+            "few days", "couple of days", "hours ago", "days ago",
+        )
+        if extract_duration(text) or any(p in lower or p in norm for p in time_reference_phrases):
+            return True
+
+        # Clinical descriptors of location, severity, or timing
+        clinical_descriptors = {
+            "lower", "upper", "back", "left", "right", "side", "front",
+            "chest", "stomach", "head", "neck", "shoulder", "arm", "leg",
+            "mild", "moderate", "severe", "sharp", "dull", "throbbing",
+            "burning", "heavy", "tight", "constant", "intermittent",
+            "sudden", "gradual", "morning", "night", "eating", "moving",
+            "resting", "sitting", "walking", "khali", "var", "dava", "ujva",
+            "kam", "jast", "thoda", "khoob", "tez", "halka", "jyada",
+        }
+        words = set(re.findall(r"[a-zA-Z]+", lower))
+        if words.intersection(clinical_descriptors):
+            return True
+
+        # Short response (<= 8 words) during an active symptom discussion that isn't a greeting
+        if len(words) <= 8 and not is_greeting(text):
+            return True
+
+    return False
 
 
 INFORMATION_PATTERNS = [
@@ -1141,7 +1711,6 @@ def get_knowledge_response(symptom, question_type):
 
 
 def build_symptom_fallback_response(symptoms):
-    """Safe deterministic fallback when no KB row/Gemini response is available."""
     names = [s.replace("_", " ") for s in symptoms]
     if len(names) == 1:
         topic = names[0]
@@ -1175,7 +1744,7 @@ def build_multi_symptom_response(symptoms, question_type):
     symptom_names = [symptom.replace("_", " ") for symptom, _ in responses]
 
     if len(symptom_names) == 1:
-        intro = f"Here is some general information about {symptom_names[0]}."
+        intro = f"Clinical overview for {symptom_names[0]}:"
     elif len(symptom_names) == 2:
         intro = (
             f"You mentioned {symptom_names[0]} and {symptom_names[1]}. "
@@ -1207,15 +1776,51 @@ def build_multi_symptom_response(symptoms, question_type):
 
 
 DURATION_PATTERNS = [
-    (r"(\d+)\s*(day|days)", "day", "days"),
-    (r"(\d+)\s*(hour|hours)", "hour", "hours"),
-    (r"(\d+)\s*(week|weeks)", "week", "weeks"),
-    (r"(\d+)\s*(month|months)", "month", "months"),
+    (r"(\d+)\s*(?:day|days|din|divas|divasapasun|dina|roj|दिन|दिवस)", "day", "days"),
+    (r"(\d+)\s*(?:hour|hours|ghante|tas|taas|घंटे|तास)", "hour", "hours"),
+    (r"(\d+)\s*(?:week|weeks|hafte|athavda|athavde|हफ्ते|आठवडा|आठवडे)", "week", "weeks"),
+    (r"(\d+)\s*(?:month|months|mahine|mahina|महीने|महिना)", "month", "months"),
+    (r"(?:since|from)\s*(\d+)\s*(?:day|days|din|divas|divasapasun)", "day", "days"),
 ]
 
 
+_WORD_NUMBERS = {
+    "one": "1", "two": "2", "three": "3", "four": "4", "five": "5",
+    "six": "6", "seven": "7", "eight": "8", "nine": "9", "ten": "10",
+    "couple of": "2", "a couple of": "2", "few": "3", "a few": "3",
+    "ek": "1", "don": "2", "do": "2", "teen": "3", "tin": "3", "char": "4",
+    "chaar": "4", "panch": "5", "paanch": "5",
+    "एक": "1", "दो": "2", "दोन": "2", "तीन": "3", "चार": "4", "पाच": "5",
+}
+
+_DEVANAGARI_DIGITS = {
+    "०": "0", "१": "1", "२": "2", "३": "3", "४": "4",
+    "५": "5", "६": "6", "७": "7", "८": "8", "९": "9",
+}
+
+
 def extract_duration(text):
-    query = normalize_text(text)
+    if not text:
+        return None
+
+    query = str(text).lower()
+    for d, a in _DEVANAGARI_DIGITS.items():
+        query = query.replace(d, a)
+
+    for word, num in _WORD_NUMBERS.items():
+        query = re.sub(r"(?<!\w)" + re.escape(word) + r"(?!\w)", num, query)
+
+    # Relative day and morning expressions in English, Hindi, and Marathi
+    if re.search(
+        r"\b(?:yesterday|last\s+night|kal\s+se|kalpasun|kal\s+pasun)\b|कल\s*से|कालपासून|काल\s*पासून",
+        query,
+    ):
+        return "1 day"
+    if re.search(
+        r"\b(?:since|from)?\s*(?:this\s+)?morning\b|आज\s*सकाळपासून|सुबह\s*से|aaj\s*sakali|sakali\s*pasun|subah\s*se",
+        query,
+    ):
+        return "since morning"
 
     for pattern, singular, plural in DURATION_PATTERNS:
         match = re.search(pattern, query)
@@ -1322,12 +1927,30 @@ def build_measurement_response(measurements):
     return "\n".join(lines)
 
 
-def save_structured_memories(session_id, text, symptoms, duration):
-    for symptom in symptoms:
+def save_structured_memories(session_id, text, symptoms, duration, previous_symptoms=None):
+    active_symptoms = list(symptoms) if symptoms else (list(previous_symptoms) if previous_symptoms else [])
+
+    if active_symptoms:
+        for symptom in active_symptoms:
+            save_medical_memory(
+                session_id=session_id, memory_type="symptom", name=symptom,
+                duration=duration, source_message=text,
+            )
+    elif duration:
         save_medical_memory(
-            session_id=session_id, memory_type="symptom", name=symptom,
+            session_id=session_id, memory_type="duration", name="duration",
             duration=duration, source_message=text,
         )
+
+    # Capture location descriptors if present
+    norm = normalize_text(text).lower()
+    for loc in ["lower back", "upper back", "left side", "right side", "chest", "stomach", "head", "neck", "shoulder"]:
+        if loc in norm:
+            save_medical_memory(
+                session_id=session_id, memory_type="location", name=loc,
+                source_message=text,
+            )
+            break
 
     measurements = extract_medical_measurements(text)
     for item in measurements:
@@ -1358,9 +1981,6 @@ def get_recent_memory_summary(session_id, limit=20):
                 symptoms.append(item)
 
         elif item["memory_type"] == "measurement":
-            # get_medical_memory() is newest-first internally. Keep only
-            # the latest value for each measurement so an old value such
-            # as 10 g/dL cannot be shown together with a newer 11 g/dL.
             measurement_name = normalize_text(item.get("name", ""))
             if measurement_name not in latest_measurements:
                 latest_measurements[measurement_name] = item
@@ -1427,14 +2047,18 @@ def _find_requested_memory_name(query):
     for symptom, aliases in SYMPTOM_ALIASES.items():
         for alias in [symptom] + aliases:
             alias_normalized = normalize_text(alias)
-            if alias_normalized and alias_normalized in query:
-                return symptom
+            if alias_normalized:
+                pattern = r"(?<!\w)" + re.escape(alias_normalized) + r"(?!\w)"
+                if re.search(pattern, query):
+                    return symptom
 
     for name, aliases in MEASUREMENT_ALIASES.items():
         for alias in aliases:
             alias_normalized = normalize_text(alias)
-            if alias_normalized and alias_normalized in query:
-                return name
+            if alias_normalized:
+                pattern = r"(?<!\w)" + re.escape(alias_normalized) + r"(?!\w)"
+                if re.search(pattern, query):
+                    return name
 
     return None
 
@@ -1464,9 +2088,6 @@ def build_specific_memory_response(session_id, text):
     symptom_items = [item for item in matching if item.get("memory_type") == "symptom"]
     measurement_items = [item for item in matching if item.get("memory_type") == "measurement"]
 
-    # For a specific measurement recall, show only the latest saved value.
-    # This prevents an older value (for example 10) from being repeated
-    # after the user has reported a newer value (for example 11).
     if measurement_items:
         measurement_items = [measurement_items[-1]]
 
@@ -1532,6 +2153,15 @@ def build_followup_response(session_id, text):
             "Understood. Please continue monitoring your symptoms. If "
             "they become severe, worsen, or new concerning symptoms "
             "develop, seek medical attention."
+        )
+
+    if previous_symptoms:
+        names = [s.replace("_", " ") for s in previous_symptoms]
+        topic = ", ".join(names)
+        return (
+            f"Thank you for the update regarding your {topic}. "
+            "Please rest, stay hydrated, and monitor your condition closely. "
+            "If your symptoms worsen or do not improve, please consult a healthcare professional."
         )
 
     return None
@@ -1602,36 +2232,46 @@ def determine_final_intent(text, model_intent, confidence):
     return str(model_intent)
 
 
+_MEDIQ_BAD_MASK = np.array(
+    [is_bad_answer(a) for a in dataset[ANSWER_COLUMN]], dtype=bool
+)
+_MEDIQ_CATEGORY_NORM = (
+    np.array([normalize_text(c) for c in dataset[CATEGORY_COLUMN]])
+    if CATEGORY_COLUMN is not None
+    else None
+)
+
+
 def retrieve_mediq_answer(user_text, final_intent):
     query = normalize_text(user_text)
     query_vector = vectorizer.transform([query])
     similarities = cosine_similarity(query_vector, retrieval_matrix)[0]
 
-    candidates = []
-    for index in range(len(dataset)):
-        answer = str(dataset.iloc[index][ANSWER_COLUMN])
-        if is_bad_answer(answer):
-            continue
+    raw_scores = np.array(similarities, dtype=float)
+    raw_scores = np.where(_MEDIQ_BAD_MASK, -1.0, raw_scores)
 
-        score = float(similarities[index])
-
-        if CATEGORY_COLUMN is not None:
-            category = normalize_text(dataset.iloc[index][CATEGORY_COLUMN])
-            if category == normalize_text(final_intent):
-                score += 0.20
-
-        candidates.append((index, score))
-
-    if not candidates:
+    # Require actual text similarity before using category as a tie-breaker;
+    # otherwise a generic query like "symptoms" can retrieve unrelated records.
+    raw_best_index = int(raw_scores.argmax())
+    raw_best_score = float(raw_scores[raw_best_index])
+    if raw_best_score < 0.30:
         return None
 
-    candidates.sort(key=lambda item: item[1], reverse=True)
-    best_index, best_score = candidates[0]
+    scores = raw_scores.copy()
+    if _MEDIQ_CATEGORY_NORM is not None:
+        scores = scores + 0.05 * (_MEDIQ_CATEGORY_NORM == normalize_text(final_intent))
+    scores = np.where(_MEDIQ_BAD_MASK, -1.0, scores)
+
+    best_index = int(scores.argmax())
+    best_score = float(raw_scores[best_index])
+    if best_score < 0.30:
+        return None
+
     answer = str(dataset.iloc[best_index][ANSWER_COLUMN])
 
     return {
         "answer": answer,
-        "similarity": round(min(best_score, 1.0), 4),
+        "similarity": round(best_score, 4),
         "source": "mediq",
     }
 
@@ -1650,6 +2290,7 @@ def home():
         "dataset_loaded": True,
         "medical_knowledge_loaded": True,
         "chat_memory": "SQLite",
+        **get_ai_status_fields(),
         "mediq_records": int(len(dataset)),
         "medical_knowledge_records": int(len(medical_knowledge)),
     })
@@ -1663,11 +2304,48 @@ def health():
         "dataset_loaded": True,
         "medical_knowledge_loaded": True,
         "chat_memory": "SQLite",
+        **get_ai_status_fields(),
     })
 
 
 @app.get("/history/<session_id>")
 def history(session_id):
+    sid = str(session_id or "").strip()
+    if not sid:
+        return jsonify({"status": "error", "message": "session_id is required"}), 400
+    return jsonify({
+        "status": "success",
+        "session_id": sid,
+        "history": get_chat_history(sid, limit=50),
+    })
+
+
+@app.delete("/history/<session_id>")
+def delete_history(session_id):
+    sid = str(session_id or "").strip()
+    if not sid:
+        return jsonify({"status": "error", "message": "session_id is required"}), 400
+    clear_chat_history(sid)
+    return jsonify({
+        "status": "success",
+        "message": "Chat history cleared",
+        "session_id": sid,
+    })
+
+
+# ------------------------------------------------------------------
+# Android-compatible alias routes  (query-param style)
+# The Android app calls GET /chat-history?session_id=...
+# and DELETE /chat-history?session_id=...
+# The original /history/<session_id> routes are kept for
+# backward compatibility with any other callers.
+# ------------------------------------------------------------------
+
+@app.get("/chat-history")
+def chat_history_get():
+    session_id = request.args.get("session_id", "").strip()
+    if not session_id:
+        return jsonify({"status": "error", "message": "session_id is required"}), 400
     return jsonify({
         "status": "success",
         "session_id": session_id,
@@ -1675,8 +2353,11 @@ def history(session_id):
     })
 
 
-@app.delete("/history/<session_id>")
-def delete_history(session_id):
+@app.delete("/chat-history")
+def chat_history_delete():
+    session_id = request.args.get("session_id", "").strip()
+    if not session_id:
+        return jsonify({"status": "error", "message": "session_id is required"}), 400
     clear_chat_history(session_id)
     return jsonify({
         "status": "success",
@@ -1687,21 +2368,178 @@ def delete_history(session_id):
 
 @app.get("/memory/<session_id>")
 def memory(session_id):
+    sid = str(session_id or "").strip()
+    if not sid:
+        return jsonify({"status": "error", "message": "session_id is required"}), 400
     return jsonify({
         "status": "success",
-        "session_id": session_id,
-        "memory": get_medical_memory(session_id, limit=100),
+        "session_id": sid,
+        "memory": get_medical_memory(sid, limit=100),
     })
 
 
 @app.delete("/memory/<session_id>")
 def delete_memory(session_id):
-    clear_medical_memory(session_id)
+    sid = str(session_id or "").strip()
+    if not sid:
+        return jsonify({"status": "error", "message": "session_id is required"}), 400
+    clear_medical_memory(sid)
     return jsonify({
         "status": "success",
         "message": "Structured medical memory cleared",
-        "session_id": session_id,
+        "session_id": sid,
     })
+
+
+# ============================================================
+# SAFETY RULES (emergency + crisis red flags)
+# ============================================================
+
+_PERSONAL_TOKENS = {
+    "i", "my", "me", "im", "am", "he", "she", "him", "her", "his",
+    "mother", "father", "mom", "dad", "wife", "husband", "son",
+    "daughter", "baby", "child", "friend", "brother", "sister",
+    "patient", "someone",
+}
+_INFO_ONLY_PHRASES = (
+    "symptoms of", "signs of", "what are the symptoms", "what are the signs",
+    "causes of", "symptom of",
+)
+
+
+def _compile_all(patterns):
+    return [re.compile(p, re.IGNORECASE) for p in patterns]
+
+
+_CRISIS_PATTERNS = _compile_all([
+    r"\b(suicide|suicidal|kill\s+myself|end\s+my\s+life|end\s+it\s+all|"
+    r"want\s+to\s+die|wanna\s+die|hurt\s+myself|harm\s+myself|self[-\s]?harm|"
+    r"don'?t\s+want\s+to\s+live|no\s+reason\s+to\s+live)\b",
+    r"आत्महत्या|खुदकुशी|मरावेसे\s*वाटत|मरायचे\s*आहे|मरायचं\s*आहे|"
+    r"जगावेसे\s*वाटत\s*नाही|मरना\s*चाहत|जीना\s*नहीं\s*चाहत",
+    r"atmahatya|aatmhatya|khudkushi|khudkhushi|marave\s*vat|"
+    r"mala\s*marayche|marna\s*chahta|marna\s*chahti|"
+    r"jeena\s*nahi\s*chahta|jeena\s*nahi\s*chahti",
+])
+
+_EMERGENCY_PATTERNS = _compile_all([
+    r"\b(can'?t|cannot|can\s+not|unable\s+to|not\s+able\s+to|couldn'?t)\s+breathe?\b",
+    r"\b(gasping|choking)\b",
+    r"\b(throat|tongue)\s+(is\s+)?(swelling|swollen|closing)\b",
+    r"\b(unconscious|unresponsive|passed\s+out|collapsed|not\s+responding|not\s+waking\s+up)\b",
+    r"\b(seizure|seizures|convulsion|convulsions)\b",
+    r"\b(face|facial)\s+(is\s+)?droop|\bslurred\s+speech\b",
+    r"\b(heavy|severe|uncontrolled|profuse)\s+bleeding\b",
+    r"\bbleeding\s+(heavily|a\s+lot|won'?t\s+stop|not\s+stopping)\b",
+    r"\b(vomit|vomiting|vomited|cough|coughing|coughed)\s+(up\s+)?blood\b",
+    r"\bblood\s+in\s+(my\s+)?vomit\b",
+    r"\b(overdose|overdosed|poisoned|poisoning|snake\s*bite|bitten\s+by\s+a\s+snake)\b",
+    r"\bswallowed\s+(poison|pesticide|bleach|acid)\b",
+    r"severe\s+chest\s*pain|chest\s*pain\s+(is\s+)?(severe|unbearable|crushing)",
+    r"श्वास\s*घेता\s*येत\s*नाही|सांस\s*(नहीं|नही)\s*(ले|आ)",
+    r"बेशुद्ध|बेहोश",
+    r"आकडी|फिट\s*(आली|येत)|मिर्गी\s*का\s*दौरा",
+    r"रक्ताची\s*उलटी|खून\s*की\s*उल्टी|खूप\s*रक्त|बहुत\s*खून",
+    r"सर्पदंश|साप\s*चावला|सांप\s*(ने\s*)?काट|जहर\s*खा",
+    r"shwas\s*ghet\s*(yet\s*)?nahi|saans\s*nahi\s*(le|aa)|sans\s*nahi\s*(le|aa)",
+    r"beshuddh|behosh|besudh",
+    r"aakdi|akdi|fit\s*(aali|aala)",
+    r"khup\s*rakt|rakta\s*chi\s*ulti|khoon\s*ki\s*ulti|bahut\s*khoon",
+    r"sap\s*chavla|saap\s*chavla|saanp\s*(ne\s*)?kata|zahar\s*kha",
+])
+
+_CHEST_RE = re.compile(
+    r"chest\s*(pain|tightness|pressure|heaviness)|chestpain|छातीत|सीने|chhati|seene",
+    re.IGNORECASE,
+)
+_CHEST_COMPANION_RE = re.compile(
+    r"breath|sweat|jaw|left\s+arm|crushing|radiat|श्वास|सांस|घाम|पसीना|"
+    r"shwas|saans|ghaam|pasina|dhap|धाप",
+    re.IGNORECASE,
+)
+
+
+def detect_safety_flag(raw_text, analysis_text, normalized_query):
+    blob = " ".join([
+        str(raw_text or "").lower(),
+        str(analysis_text or "").lower(),
+        str(normalized_query or ""),
+    ])
+    tokens = set(re.findall(r"[a-z]+", str(normalized_query or "")))
+    informational = (
+        any(p in blob for p in _INFO_ONLY_PHRASES)
+        and not tokens.intersection(_PERSONAL_TOKENS)
+    )
+    if informational:
+        return None
+
+    if any(p.search(blob) for p in _CRISIS_PATTERNS):
+        return "crisis"
+    if any(p.search(blob) for p in _EMERGENCY_PATTERNS):
+        return "emergency"
+    if _CHEST_RE.search(blob) and _CHEST_COMPANION_RE.search(blob):
+        return "emergency"
+    return None
+
+
+SAFETY_MESSAGES = {
+    "emergency": {
+        "en": (
+            "This may be a medical emergency. Please call 112 (or your local "
+            "ambulance service, such as 108 in many Indian states) or go to the "
+            "nearest hospital emergency department right now. If someone is "
+            "with you, ask them to stay with you and help. Do not wait for the "
+            "symptoms to pass or try to treat this at home. This assistant "
+            "cannot examine you or give emergency care."
+        ),
+        "mr": (
+            "ही वैद्यकीय आणीबाणी असू शकते. कृपया त्वरित 112 (किंवा 108 रुग्णवाहिका) "
+            "वर कॉल करा किंवा जवळच्या रुग्णालयातील आपत्कालीन विभागात जा. शक्य "
+            "असल्यास जवळच्या व्यक्तीला तुमच्यासोबत राहायला सांगा. लक्षणे आपोआप "
+            "कमी होण्याची वाट पाहू नका आणि घरी उपचार करण्याचा प्रयत्न करू नका. "
+            "हा सहाय्यक तुमची तपासणी करू शकत नाही किंवा आपत्कालीन उपचार देऊ शकत नाही."
+        ),
+        "hi": (
+            "यह चिकित्सा आपातकाल हो सकता है। कृपया तुरंत 112 (या 108 एम्बुलेंस) पर "
+            "कॉल करें या नज़दीकी अस्पताल के आपातकालीन विभाग में जाएं। यदि संभव हो तो "
+            "किसी पास के व्यक्ति से अपने साथ रहने को कहें। लक्षण अपने आप ठीक होने का "
+            "इंतज़ार न करें और घर पर इलाज करने की कोशिश न करें। यह सहायक आपकी जांच नहीं "
+            "कर सकता और आपातकालीन उपचार नहीं दे सकता।"
+        ),
+    },
+    "crisis": {
+        "en": (
+            "I'm really sorry you're going through this, and I'm glad you said "
+            "it out loud. You don't have to face it alone. If you might act on "
+            "these thoughts or are in immediate danger, please call 112 now or "
+            "go to the nearest emergency department, and ask someone you trust "
+            "to stay with you. In India you can also call Tele-MANAS at 14416 "
+            "(free, 24/7) to talk with a trained counsellor. I'm here with you."
+        ),
+        "mr": (
+            "तुम्ही हे बोलून दाखवलं याबद्दल मला आनंद आहे, आणि तुम्ही ज्या त्रासातून "
+            "जात आहात त्याबद्दल मला खूप वाईट वाटतं. हे तुम्हाला एकट्याने सहन करावं "
+            "लागणार नाही. जर तुम्ही स्वतःला इजा करण्याची शक्यता असेल किंवा तात्काळ "
+            "धोक्यात असाल, तर कृपया आत्ताच 112 वर कॉल करा किंवा जवळच्या रुग्णालयातील "
+            "आपत्कालीन विभागात जा आणि विश्वासू व्यक्तीला तुमच्यासोबत राहायला सांगा. "
+            "भारतात तुम्ही प्रशिक्षित समुपदेशकाशी बोलण्यासाठी Tele-MANAS ला 14416 वर "
+            "(मोफत, २४x७) कॉल करू शकता. मी तुमच्यासोबत आहे."
+        ),
+        "hi": (
+            "आपने यह बात कही, मुझे इसकी खुशी है, और आप जिस तकलीफ से गुज़र रहे हैं उसके "
+            "लिए मुझे बहुत दुख है। आपको इसे अकेले नहीं झेलना है। अगर आप खुद को नुकसान "
+            "पहुँचा सकते हैं या तुरंत खतरे में हैं, तो कृपया अभी 112 पर कॉल करें या "
+            "नज़दीकी अस्पताल के आपातकालीन विभाग में जाएं, और किसी भरोसेमंद व्यक्ति से "
+            "अपने साथ रहने को कहें। भारत में आप प्रशिक्षित काउंसलर से बात करने के लिए "
+            "Tele-MANAS को 14416 पर (निःशुल्क, 24x7) कॉल कर सकते हैं। मैं आपके साथ हूँ।"
+        ),
+    },
+}
+
+
+def build_safety_response(kind, language):
+    messages = SAFETY_MESSAGES.get(kind, SAFETY_MESSAGES["emergency"])
+    return messages.get(language) or messages["en"]
 
 
 MEMORY_QUESTION_WORDS = [
@@ -1710,6 +2548,8 @@ MEMORY_QUESTION_WORDS = [
 ]
 
 MEMORY_RECALL_PATTERNS = [
+    "what symptoms did i mention earlier", "what symptoms did i mention before",
+    "what symptoms have i mentioned", "which symptoms did i mention earlier",
     "what did i tell you before", "what did i tell you earlier",
     "what did i say before", "what did i say earlier",
     "what did i tell you about my health",
@@ -1739,6 +2579,10 @@ CARE_PHRASES = [
 ]
 
 
+MAX_TEXT_LENGTH = 2000
+MAX_SESSION_ID_LENGTH = 128
+
+
 @app.post("/predict")
 def predict():
     data = request.get_json(silent=True)
@@ -1752,27 +2596,21 @@ def predict():
     text = text.strip()
     if not text:
         return jsonify({"status": "error", "message": "text cannot be empty"}), 400
+    if len(text) > MAX_TEXT_LENGTH:
+        return jsonify({
+            "status": "error",
+            "message": f"text is too long (maximum {MAX_TEXT_LENGTH} characters)",
+        }), 400
 
-    # Auto-detect the spoken/typed language up front. `analysis_text` is
-    # what the ML/NLP pipeline actually reasons over; `text` (original,
-    # in whatever language/script it arrived in) is kept for storage,
-    # memory recall, and Gemini prompts. See LANGUAGE_SUPPORT_NOTES below
-    # for exactly what this covers.
-    detected_language = detect_language(text)
-
-    # requested_output_language is set only when the user EXPLICITLY named
-    # a response language (e.g. "in Marathi", "Hindi में"). When present it
-    # always wins over the language the sentence happens to be written in.
-    # final_language is what actually goes into every "language" field in
-    # the JSON response and into every Gemini/localization call below —
-    # detected_language is used only to decide how to pre-process the
-    # input text (analysis_text), never for the response language.
-    requested_output_language = detect_requested_output_language(text)
-
-    # Keep the conversation language stable for short/mixed Roman Marathi
-    # messages. Explicit "in English/Marathi/Hindi" always wins.
-    session_id = str(data.get("session_id", "default_user")).strip() or "default_user"
+    _raw_sid = str(data.get("session_id") or "").strip()[:MAX_SESSION_ID_LENGTH]
+    session_id = _raw_sid if _raw_sid else ("anon_" + uuid.uuid4().hex)
     previous_response_language = get_last_response_language(session_id)
+
+    requested_output_language = detect_requested_output_language(text)
+    detected_language = detect_language(
+        text,
+        fallback_lang=requested_output_language or previous_response_language,
+    )
 
     if requested_output_language:
         final_language = requested_output_language
@@ -1783,21 +2621,11 @@ def predict():
     else:
         final_language = detected_language
 
-    analysis_text = (
-        translate_input_to_english(text)
-        if detected_language in {"mr", "hi"}
-        else text
-    )
-
-    # A short Roman Marathi follow-up can be classified as English because it
-    # contains numbers/English medical words. If the conversation is already
-    # Marathi, use the same translation path for NLP/intent extraction.
-    if (
-        detected_language == "en"
-        and final_language == "mr"
-        and is_ambiguous_roman_message(text)
-    ):
+    # Support transliterated / mixed Hinglish and Maraglish
+    if detected_language in {"mr", "hi"} or is_ambiguous_roman_message(text):
         analysis_text = translate_input_to_english(text)
+    else:
+        analysis_text = text
 
     try:
         model_prediction = str(model.predict([analysis_text])[0])
@@ -1820,17 +2648,48 @@ def predict():
         normalized_query = normalize_text(text)
 
         # ----------------------------------------------------
+        # SAFETY RULES (highest priority)
+        # ----------------------------------------------------
+        safety_flag = detect_safety_flag(text, analysis_text, normalized_query)
+        if safety_flag:
+            safety_answer = build_safety_response(safety_flag, final_language)
+            safety_symptoms = symptoms if safety_flag == "emergency" else []
+
+            save_chat_message(session_id, "user", text, safety_symptoms)
+            if safety_flag == "emergency":
+                save_structured_memories(
+                    session_id=session_id, text=text, symptoms=symptoms,
+                    duration=duration,
+                )
+            save_chat_message(session_id, "assistant", safety_answer, safety_symptoms)
+
+            return jsonify({
+                "status": "success",
+                "session_id": session_id,
+                "question": text,
+                "intent": "emergency" if safety_flag == "emergency" else "crisis_support",
+                "confidence": round(confidence, 4),
+                "symptoms": safety_symptoms,
+                "previous_symptoms": previous_symptoms,
+                "duration": duration,
+                "measurements": measurements,
+                "medical_query": True,
+                "answer": safety_answer,
+                "answer_similarity": 1.0,
+                "source": "safety_rules",
+                "language": final_language,
+                "emergency": True,
+                "safety_flag": safety_flag,
+            })
+
+        # ----------------------------------------------------
         # SPECIFIC MEMORY RECALL
-        # e.g. "Do you remember my fever?" / "What was my BP?"
-        # Runs before generic memory and MEDIQ.
         # ----------------------------------------------------
         has_memory_language = any(
             word in normalized_query.split() for word in MEMORY_QUESTION_WORDS
         )
 
         specific_memory_answer = None
-        # A NEW measurement must always be treated as a current report, not
-        # a recall of an older saved value (e.g. "my hemoglobin is 11 g/dL").
         if has_memory_language and not measurements:
             specific_memory_answer = build_specific_memory_response(session_id, text)
 
@@ -1881,27 +2740,39 @@ def predict():
         # ----------------------------------------------------
         # FOLLOW-UP
         # ----------------------------------------------------
-        if is_followup_query(text) and not symptoms and previous_symptoms:
+        is_followup = is_contextual_followup(text, session_id=session_id, previous_symptoms=previous_symptoms)
+        if is_followup and previous_symptoms and (not symptoms or set(symptoms).issubset(set(previous_symptoms))):
             followup_context = ""
             if any(phrase in normalized_query for phrase in CARE_PHRASES):
                 followup_context = build_multi_symptom_response(
                     previous_symptoms, "assistance"
                 ) or ""
 
-            followup_answer = generate_gemini_medical_response(
+            ai_answer, ai_provider = generate_medical_response_with_provider(
                 user_text=text,
                 language=final_language,
                 medical_context=followup_context,
                 conversation_context=conversation_context,
+                session_id=session_id,
             )
 
-            if not followup_answer:
-                followup_answer = build_followup_response(session_id, text)
-                if followup_answer:
-                    followup_answer = localize_answer(followup_answer, final_language)
+            if ai_answer:
+                followup_answer = ai_answer
+                source = ai_provider
+            else:
+                followup_raw = build_followup_response(session_id, text)
+                followup_answer = localize_answer(followup_raw, final_language) if followup_raw else None
+                source = "conversation_memory"
 
             if followup_answer:
-                save_chat_message(session_id, "user", text, [])
+                save_structured_memories(
+                    session_id=session_id,
+                    text=text,
+                    symptoms=symptoms,
+                    duration=duration,
+                    previous_symptoms=previous_symptoms,
+                )
+                save_chat_message(session_id, "user", text, previous_symptoms)
                 save_chat_message(session_id, "assistant", followup_answer, previous_symptoms)
 
                 return jsonify({
@@ -1912,27 +2783,30 @@ def predict():
                     "confidence": round(confidence, 4),
                     "symptoms": previous_symptoms,
                     "previous_symptoms": previous_symptoms,
+                    "duration": duration,
+                    "measurements": measurements,
                     "medical_query": True,
                     "answer": followup_answer,
                     "answer_similarity": 1.0,
-                    "source": "conversation_memory",
+                    "source": source,
                     "language": final_language,
                 })
 
         # ----------------------------------------------------
         # GENERAL (non-medical) QUERY
         # ----------------------------------------------------
-        if not medical_query:
-            gemini_answer = generate_gemini_medical_response(
+        if not medical_query and not is_followup:
+            ai_answer, ai_provider = generate_medical_response_with_provider(
                 user_text=text,
                 language=final_language,
                 medical_context="",
                 conversation_context=conversation_context,
+                session_id=session_id,
             )
 
-            if gemini_answer:
+            if ai_answer:
                 save_chat_message(session_id, "user", text, symptoms)
-                save_chat_message(session_id, "assistant", gemini_answer, symptoms)
+                save_chat_message(session_id, "assistant", ai_answer, symptoms)
 
                 return jsonify({
                     "status": "success",
@@ -1942,9 +2816,9 @@ def predict():
                     "confidence": round(confidence, 4),
                     "symptoms": symptoms,
                     "medical_query": False,
-                    "answer": gemini_answer,
+                    "answer": ai_answer,
                     "answer_similarity": 1.0,
-                    "source": "gemini",
+                    "source": ai_provider,
                     "language": final_language,
                 })
 
@@ -1972,18 +2846,23 @@ def predict():
         # ----------------------------------------------------
         if measurements and not symptoms:
             measurement_context = build_measurement_response(measurements)
-            gemini_measurement_answer = generate_gemini_medical_response(
+            ai_measurement_answer, measurement_provider = generate_medical_response_with_provider(
                 user_text=text,
                 language=final_language,
                 medical_context=measurement_context,
                 conversation_context=conversation_context,
+                session_id=session_id,
             )
-            final_answer = gemini_measurement_answer or localize_answer(
+            final_answer = ai_measurement_answer or localize_answer(
                 measurement_context, final_language
             )
 
             save_structured_memories(
-                session_id=session_id, text=text, symptoms=symptoms, duration=duration
+                session_id=session_id,
+                text=text,
+                symptoms=symptoms,
+                duration=duration,
+                previous_symptoms=previous_symptoms,
             )
             save_chat_message(session_id, "user", text, symptoms)
             save_chat_message(session_id, "assistant", final_answer, symptoms)
@@ -2001,7 +2880,7 @@ def predict():
                 "medical_query": True,
                 "answer": final_answer,
                 "answer_similarity": 1.0,
-                "source": "gemini" if gemini_measurement_answer else "measurement",
+                "source": measurement_provider if ai_measurement_answer else "measurement",
                 "language": final_language,
             })
 
@@ -2009,36 +2888,40 @@ def predict():
         # MEDICAL RESPONSE (symptom-based)
         # ----------------------------------------------------
         if symptoms:
+            # Accumulate with previous symptoms in ongoing conversation for holistic clinical guidance
+            combined_symptoms = list(dict.fromkeys(symptoms + (previous_symptoms or [])))
             question_type = get_question_type(text)
-            medical_answer = build_multi_symptom_response(symptoms, question_type)
+            medical_answer = build_multi_symptom_response(combined_symptoms, question_type)
 
-            # Always let Gemini handle a detected symptom as a conversation.
-            # The knowledge-base text is context, not a canned final response.
-            # This prevents the old FAQ-style output and keeps follow-up context alive.
-            gemini_medical_answer = generate_gemini_medical_response(
+            ai_medical_answer, symptom_provider = generate_medical_response_with_provider(
                 user_text=text,
                 language=final_language,
                 medical_context=medical_answer or "No specific knowledge-base entry was found. Give conservative general medical guidance.",
                 conversation_context=conversation_context,
+                session_id=session_id,
             )
 
-            if gemini_medical_answer:
-                final_answer = localize_answer(gemini_medical_answer, final_language)
-                source = "gemini"
+            if ai_medical_answer:
+                final_answer = localize_answer(ai_medical_answer, final_language)
+                source = symptom_provider
             elif medical_answer:
                 final_answer = localize_answer(medical_answer, final_language)
                 source = "medical_knowledge"
             else:
                 final_answer = localize_answer(
-                    build_symptom_fallback_response(symptoms), final_language
+                    build_symptom_fallback_response(combined_symptoms), final_language
                 )
                 source = "symptom_fallback"
 
-            save_chat_message(session_id, "user", text, symptoms)
+            save_chat_message(session_id, "user", text, combined_symptoms)
             save_structured_memories(
-                session_id=session_id, text=text, symptoms=symptoms, duration=duration
+                session_id=session_id,
+                text=text,
+                symptoms=symptoms,
+                duration=duration,
+                previous_symptoms=previous_symptoms,
             )
-            save_chat_message(session_id, "assistant", final_answer, symptoms)
+            save_chat_message(session_id, "assistant", final_answer, combined_symptoms)
 
             return jsonify({
                 "status": "success",
@@ -2046,7 +2929,8 @@ def predict():
                 "question": text,
                 "intent": final_intent,
                 "confidence": round(confidence, 4),
-                "symptoms": symptoms,
+                "symptoms": combined_symptoms,
+                "new_symptoms": symptoms,
                 "previous_symptoms": previous_symptoms,
                 "duration": duration,
                 "measurements": measurements,
@@ -2065,20 +2949,25 @@ def predict():
         if mediq_result is not None:
             answer = mediq_result["answer"]
 
-            gemini_mediq_answer = generate_gemini_medical_response(
+            ai_mediq_answer, mediq_provider = generate_medical_response_with_provider(
                 user_text=text,
                 language=final_language,
                 medical_context=answer,
                 conversation_context=conversation_context,
+                session_id=session_id,
             )
 
-            if gemini_mediq_answer:
-                answer = localize_answer(gemini_mediq_answer, final_language)
+            if ai_mediq_answer:
+                answer = localize_answer(ai_mediq_answer, final_language)
             else:
                 answer = localize_answer(answer, final_language)
 
             save_structured_memories(
-                session_id=session_id, text=text, symptoms=symptoms, duration=duration
+                session_id=session_id,
+                text=text,
+                symptoms=symptoms,
+                duration=duration,
+                previous_symptoms=previous_symptoms,
             )
             save_chat_message(session_id, "user", text, symptoms)
             save_chat_message(session_id, "assistant", answer, symptoms)
@@ -2096,7 +2985,7 @@ def predict():
                 "medical_query": True,
                 "answer": answer,
                 "answer_similarity": mediq_result["similarity"],
-                "source": "gemini" if gemini_mediq_answer else "mediq",
+                "source": mediq_provider if ai_mediq_answer else "mediq",
                 "language": final_language,
             })
 
@@ -2111,7 +3000,11 @@ def predict():
         )
 
         save_structured_memories(
-            session_id=session_id, text=text, symptoms=symptoms, duration=duration
+            session_id=session_id,
+            text=text,
+            symptoms=symptoms,
+            duration=duration,
+            previous_symptoms=previous_symptoms,
         )
         save_chat_message(session_id, "user", text, symptoms)
         save_chat_message(session_id, "assistant", answer, symptoms)
@@ -2139,49 +3032,6 @@ def predict():
         }), 500
 
 
-# ============================================================
-# LANGUAGE_SUPPORT_NOTES
-# ============================================================
-#
-# What "auto-detect and respond in that language" covers now:
-#
-# 1. detect_language() looks at every incoming message (script +
-#    Romanized word/phrase scoring) and returns "en" / "hi" / "mr".
-# 2. normalize_text() used to silently strip all Devanagari characters
-#    before symptom/intent detection ever saw them (its character
-#    filters only kept a-z0-9). That's fixed here, and the word-level
-#    substitution table now covers common symptom words in Devanagari
-#    as well as Romanized script, so single-word symptom mentions in
-#    either script are recognized correctly by extract_symptoms() /
-#    is_medical_query().
-# 3. localize_answer() is now applied to every hardcoded / knowledge-base
-#    / MEDIQ answer that ISN'T already generated by Gemini in the target
-#    language, so every JSON response's "language" field now matches the
-#    actual language of its "answer" text. Previously several branches
-#    (structured memory recall in particular) always answered in English
-#    regardless of detected_language, and a couple of others claimed a
-#    language in the response without actually translating the text.
-#
-# What this does NOT fully solve, honestly:
-#
-# - Free-form Devanagari or Romanized sentences beyond the recognized
-#   single symptom words still won't be understood by the ML classifier
-#   or MEDIQ's TF-IDF retrieval (both are trained on English text) —
-#   those paths still rely on Gemini to carry the conversation. If
-#   GEMINI_API_KEY isn't set, non-English input outside the exact
-#   phrase shortcuts / recognized symptom words will mostly land in
-#   general_fallback() or the safe fallback, just now at least
-#   correctly labeled/localized rather than silently English.
-# - localize_answer()'s Gemini path makes one extra API call for any
-#   fallback branch that hits it in a non-English conversation (mainly
-#   memory recall right now, since Gemini wasn't wired into those
-#   branches before) — a latency/cost tradeoff worth knowing about.
-# - The Devanagari/Romanized translations added throughout this file
-#   are limited to common symptom vocabulary and haven't been reviewed
-#   by a native speaker; worth a sanity check before this goes in front
-#   of real users.
-
-
 if __name__ == "__main__":
     print("----------------------------------------")
     print("MEDASSIST AI API")
@@ -2193,11 +3043,22 @@ if __name__ == "__main__":
     print("Chat DB      :", CHAT_DB_FILE)
     print("MEDIQ Records:", len(dataset))
     print("Medical KB Records:", len(medical_knowledge))
+    _ollama_info = get_ollama_status(max_age=0)
+    if OLLAMA_ENABLED:
+        print("AI Primary   : Ollama")
+        print("Ollama URL   :", OLLAMA_BASE_URL)
+        if not _ollama_info["reachable"]:
+            print("Ollama Status: NOT reachable -", _ollama_info["error"])
+        elif _ollama_info["model_available"]:
+            print("Ollama Status: Connected, model ready:", OLLAMA_MODEL)
+        else:
+            print("Ollama Status: Connected, but model not installed. Run: ollama pull", OLLAMA_MODEL)
+    else:
+        print("AI Primary   : Ollama disabled (OLLAMA_ENABLED=0)")
+    print("Gemini       :", "Configured (fallback)" if gemini_client is not None else "Not configured")
     print("API Port     : 5000")
     print("LAN URL      : http://<YOUR-LAPTOP-IP>:5000")
     print("Android BASE_URL must point to the laptop running Flask.")
     print("----------------------------------------")
 
-    # Keep 0.0.0.0 here. Put the actual laptop IP (for example 192.168.1.7)
-    # in the Android RetrofitClient BASE_URL instead.
     app.run(host="0.0.0.0", port=5000, debug=False)

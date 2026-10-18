@@ -48,29 +48,33 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ai_based_medical_chatbot.ui.theme.DarkTeal
+import com.example.ai_based_medical_chatbot.ui.theme.DeepTeal
+import com.example.ai_based_medical_chatbot.ui.theme.Ivory
+import com.example.ai_based_medical_chatbot.ui.theme.Mint
+import com.example.ai_based_medical_chatbot.ui.theme.PureWhite
+import com.example.ai_based_medical_chatbot.ui.theme.SageGreen
+import com.example.ai_based_medical_chatbot.ui.theme.SoftMint
+import com.example.ai_based_medical_chatbot.ui.theme.TextDark
+import com.example.ai_based_medical_chatbot.ui.theme.TextMuted
 import kotlinx.coroutines.delay
 
 @Composable
 fun SplashScreen(
     onSplashFinished: () -> Unit
 ) {
-
     // ============================================================
-    // MEDASSIST AI THEME
+    // APPROVED MEDASSIST AI THEME
     // ============================================================
 
-    val backgroundTop = Color(0xFFF7FCFF)
-    val backgroundBottom = Color(0xFFE8F7FA)
+    val backgroundTop = Ivory
+    val backgroundBottom = SoftMint
 
-    val primaryBlue = Color(0xFF1976D2)
-    val primaryBlueDark = Color(0xFF123A56)
-
-    val teal = Color(0xFF009688)
-    val softTeal = Color(0xFF4DB6AC)
-
-    val textGray = Color(0xFF71818C)
-    val borderColor = Color(0xFFDDECEF)
-
+    val primaryTeal = DeepTeal
+    val darkTeal = DarkTeal
+    val mint = Mint
+    val textGray = TextMuted
+    val borderColor = Mint
 
     // ============================================================
     // ANIMATION
@@ -93,19 +97,6 @@ fun SplashScreen(
         label = "SplashAnimation"
     )
 
-    val botFloat by infiniteTransition.animateFloat(
-        initialValue = -5f,
-        targetValue = 5f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(
-                durationMillis = 1800,
-                easing = FastOutSlowInEasing
-            ),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "BotFloat"
-    )
-
     val glowScale by infiniteTransition.animateFloat(
         initialValue = 0.92f,
         targetValue = 1.08f,
@@ -119,20 +110,15 @@ fun SplashScreen(
         label = "GlowScale"
     )
 
-
     // ============================================================
     // SPLASH TIMER
     // ============================================================
 
     LaunchedEffect(Unit) {
-
         showContent = true
-
         delay(2500)
-
         onSplashFinished()
     }
-
 
     // ============================================================
     // ROOT
@@ -153,7 +139,6 @@ fun SplashScreen(
             .navigationBarsPadding()
     ) {
 
-
         // ========================================================
         // TOP RIGHT GLOW
         // ========================================================
@@ -164,11 +149,10 @@ fun SplashScreen(
                 .align(Alignment.TopEnd)
                 .scale(glowScale)
                 .background(
-                    color = primaryBlue.copy(alpha = 0.06f),
+                    color = primaryTeal.copy(alpha = 0.08f),
                     shape = CircleShape
                 )
         )
-
 
         // ========================================================
         // BOTTOM LEFT GLOW
@@ -180,11 +164,10 @@ fun SplashScreen(
                 .align(Alignment.BottomStart)
                 .scale(glowScale)
                 .background(
-                    color = teal.copy(alpha = 0.055f),
+                    color = SageGreen.copy(alpha = 0.12f),
                     shape = CircleShape
                 )
         )
-
 
         // ========================================================
         // MAIN CONTENT
@@ -193,13 +176,10 @@ fun SplashScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(
-                    horizontal = 22.dp
-                ),
+                .padding(horizontal = 22.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
             verticalArrangement = Arrangement.Center
         ) {
-
 
             // ====================================================
             // AI DOCTOR BOT CARD
@@ -226,7 +206,6 @@ fun SplashScreen(
                 ) {
 
                     // Soft glow behind bot
-
                     Box(
                         modifier = Modifier
                             .size(195.dp)
@@ -235,41 +214,31 @@ fun SplashScreen(
                             .background(
                                 Brush.radialGradient(
                                     colors = listOf(
-                                        primaryBlue.copy(
-                                            alpha = 0.15f
-                                        ),
-                                        teal.copy(
-                                            alpha = 0.07f
-                                        ),
+                                        primaryTeal.copy(alpha = 0.18f),
+                                        SageGreen.copy(alpha = 0.10f),
                                         Color.Transparent
                                     )
                                 )
                             )
                     )
 
-
                     // Bot container
-
                     Box(
                         modifier = Modifier
                             .size(170.dp)
-                            .clip(
-                                RoundedCornerShape(38.dp)
-                            )
+                            .clip(RoundedCornerShape(38.dp))
                             .background(
                                 Brush.linearGradient(
                                     colors = listOf(
-                                        primaryBlue,
-                                        Color(0xFF1976B8),
-                                        teal
+                                        darkTeal,
+                                        primaryTeal,
+                                        SageGreen
                                     )
                                 )
                             )
                             .border(
                                 width = 1.5.dp,
-                                color = Color.White.copy(
-                                    alpha = 0.55f
-                                ),
+                                color = PureWhite.copy(alpha = 0.65f),
                                 shape = RoundedCornerShape(38.dp)
                             )
                             .padding(10.dp),
@@ -277,179 +246,108 @@ fun SplashScreen(
                     ) {
 
                         Column(
-                            horizontalAlignment =
-                                Alignment.CenterHorizontally,
-                            modifier = Modifier
-                                .scale(1f)
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            modifier = Modifier.scale(1f)
                         ) {
 
                             // Antenna
-
                             Box(
                                 modifier = Modifier
                                     .width(4.dp)
                                     .height(15.dp)
-                                    .background(
-                                        Color.White.copy(
-                                            alpha = 0.9f
-                                        )
-                                    )
+                                    .background(PureWhite.copy(alpha = 0.9f))
                             )
 
                             Box(
                                 modifier = Modifier
                                     .size(10.dp)
                                     .clip(CircleShape)
-                                    .background(
-                                        Color(0xFF9CFFF0)
-                                    )
+                                    .background(mint)
                             )
 
-                            Spacer(
-                                modifier =
-                                    Modifier.height(5.dp)
-                            )
-
+                            Spacer(modifier = Modifier.height(5.dp))
 
                             // Robot head
-
                             Box(
                                 modifier = Modifier
-                                    .size(
-                                        width = 92.dp,
-                                        height = 76.dp
-                                    )
-                                    .clip(
-                                        RoundedCornerShape(
-                                            25.dp
-                                        )
-                                    )
+                                    .size(width = 92.dp, height = 76.dp)
+                                    .clip(RoundedCornerShape(25.dp))
                                     .background(
                                         Brush.verticalGradient(
                                             colors = listOf(
-                                                Color.White,
-                                                Color(0xFFDDF2F8)
+                                                PureWhite,
+                                                SoftMint
                                             )
                                         )
                                     )
                                     .border(
                                         width = 2.dp,
-                                        color = Color.White.copy(
-                                            alpha = 0.85f
-                                        ),
-                                        shape =
-                                            RoundedCornerShape(
-                                                25.dp
-                                            )
+                                        color = PureWhite.copy(alpha = 0.9f),
+                                        shape = RoundedCornerShape(25.dp)
                                     ),
-                                contentAlignment =
-                                    Alignment.Center
+                                contentAlignment = Alignment.Center
                             ) {
 
                                 Column(
-                                    horizontalAlignment =
-                                        Alignment.CenterHorizontally
+                                    horizontalAlignment = Alignment.CenterHorizontally
                                 ) {
 
                                     // Eyes
-
                                     Row(
-                                        horizontalArrangement =
-                                            Arrangement.spacedBy(
-                                                20.dp
-                                            )
+                                        horizontalArrangement = Arrangement.spacedBy(20.dp)
                                     ) {
-
                                         Box(
                                             modifier = Modifier
                                                 .size(13.dp)
-                                                .clip(
-                                                    CircleShape
-                                                )
-                                                .background(
-                                                    primaryBlue
-                                                )
+                                                .clip(CircleShape)
+                                                .background(darkTeal)
                                         )
 
                                         Box(
                                             modifier = Modifier
                                                 .size(13.dp)
-                                                .clip(
-                                                    CircleShape
-                                                )
-                                                .background(
-                                                    primaryBlue
-                                                )
+                                                .clip(CircleShape)
+                                                .background(darkTeal)
                                         )
                                     }
 
-                                    Spacer(
-                                        modifier =
-                                            Modifier.height(8.dp)
-                                    )
+                                    Spacer(modifier = Modifier.height(8.dp))
 
                                     // Smile
-
                                     Box(
                                         modifier = Modifier
                                             .width(31.dp)
                                             .height(5.dp)
-                                            .clip(
-                                                RoundedCornerShape(
-                                                    50
-                                                )
-                                            )
-                                            .background(
-                                                teal
-                                            )
+                                            .clip(RoundedCornerShape(50))
+                                            .background(primaryTeal)
                                     )
                                 }
 
-
-                                // Medical cross
-
+                                // Medical cross badge
                                 Box(
                                     modifier = Modifier
-                                        .align(
-                                            Alignment.TopEnd
-                                        )
+                                        .align(Alignment.TopEnd)
                                         .padding(7.dp)
                                         .size(22.dp)
-                                        .clip(
-                                            CircleShape
-                                        )
-                                        .background(
-                                            teal
-                                        ),
-                                    contentAlignment =
-                                        Alignment.Center
+                                        .clip(CircleShape)
+                                        .background(primaryTeal),
+                                    contentAlignment = Alignment.Center
                                 ) {
-
                                     Text(
                                         text = "+",
-                                        color = Color.White,
+                                        color = PureWhite,
                                         fontSize = 15.sp,
-                                        fontWeight =
-                                            FontWeight.Bold
+                                        fontWeight = FontWeight.Bold
                                     )
                                 }
                             }
 
-
-                            Spacer(
-                                modifier =
-                                    Modifier.height(5.dp)
-                            )
-
+                            Spacer(modifier = Modifier.height(5.dp))
 
                             // Bot body
-
                             Box(
                                 modifier = Modifier
-                                    .size(
-                                        width = 72.dp,
-                                        height = 31.dp
-                                    )
+                                    .size(width = 72.dp, height = 31.dp)
                                     .clip(
                                         RoundedCornerShape(
                                             topStart = 18.dp,
@@ -458,73 +356,42 @@ fun SplashScreen(
                                             bottomEnd = 9.dp
                                         )
                                     )
-                                    .background(
-                                        Color.White.copy(
-                                            alpha = 0.94f
-                                        )
-                                    )
+                                    .background(PureWhite.copy(alpha = 0.94f))
                             ) {
-
                                 Box(
                                     modifier = Modifier
-                                        .align(
-                                            Alignment.Center
-                                        )
+                                        .align(Alignment.Center)
                                         .width(27.dp)
                                         .height(4.dp)
-                                        .clip(
-                                            RoundedCornerShape(
-                                                50
-                                            )
-                                        )
-                                        .background(
-                                            primaryBlue
-                                        )
+                                        .clip(RoundedCornerShape(50))
+                                        .background(primaryTeal)
                                 )
                             }
                         }
                     }
 
-
-                    // Floating medical plus
-
+                    // Floating medical plus badge
                     Box(
                         modifier = Modifier
                             .align(Alignment.TopEnd)
-                            .padding(
-                                top = 15.dp,
-                                end = 5.dp
-                            )
+                            .padding(top = 15.dp, end = 5.dp)
                             .size(36.dp)
                             .clip(CircleShape)
-                            .background(
-                                Color.White
-                            )
-                            .border(
-                                1.dp,
-                                borderColor,
-                                CircleShape
-                            ),
-                        contentAlignment =
-                            Alignment.Center
+                            .background(PureWhite)
+                            .border(1.dp, borderColor, CircleShape),
+                        contentAlignment = Alignment.Center
                     ) {
-
                         Text(
                             text = "✚",
-                            color = teal,
+                            color = primaryTeal,
                             fontSize = 19.sp,
-                            fontWeight =
-                                FontWeight.Bold
+                            fontWeight = FontWeight.Bold
                         )
                     }
                 }
             }
 
-
-            Spacer(
-                modifier = Modifier.height(23.dp)
-            )
-
+            Spacer(modifier = Modifier.height(23.dp))
 
             // ====================================================
             // APP NAME
@@ -533,27 +400,16 @@ fun SplashScreen(
             AnimatedVisibility(
                 visible = showContent,
                 enter = fadeIn(
-                    tween(
-                        durationMillis = 650,
-                        delayMillis = 150
-                    )
+                    tween(durationMillis = 650, delayMillis = 150)
                 ) + slideInVertically(
                     initialOffsetY = { 20 },
-                    animationSpec = tween(
-                        durationMillis = 650,
-                        delayMillis = 150
-                    )
+                    animationSpec = tween(durationMillis = 650, delayMillis = 150)
                 )
             ) {
-
-                Column(
-                    horizontalAlignment =
-                        Alignment.CenterHorizontally
-                ) {
-
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     Text(
                         text = "MEDASSIST",
-                        color = primaryBlueDark,
+                        color = darkTeal,
                         fontSize = 30.sp,
                         fontWeight = FontWeight.ExtraBold,
                         letterSpacing = 0.5.sp
@@ -561,7 +417,7 @@ fun SplashScreen(
 
                     Text(
                         text = "AI",
-                        color = teal,
+                        color = primaryTeal,
                         fontSize = 17.sp,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 1.sp
@@ -569,11 +425,7 @@ fun SplashScreen(
                 }
             }
 
-
-            Spacer(
-                modifier = Modifier.height(7.dp)
-            )
-
+            Spacer(modifier = Modifier.height(7.dp))
 
             // ====================================================
             // TAGLINE
@@ -581,14 +433,8 @@ fun SplashScreen(
 
             AnimatedVisibility(
                 visible = showContent,
-                enter = fadeIn(
-                    tween(
-                        durationMillis = 650,
-                        delayMillis = 250
-                    )
-                )
+                enter = fadeIn(tween(durationMillis = 650, delayMillis = 250))
             ) {
-
                 Text(
                     text = "Your intelligent health companion",
                     color = textGray,
@@ -598,11 +444,7 @@ fun SplashScreen(
                 )
             }
 
-
-            Spacer(
-                modifier = Modifier.height(38.dp)
-            )
-
+            Spacer(modifier = Modifier.height(38.dp))
 
             // ====================================================
             // STATUS
@@ -610,33 +452,18 @@ fun SplashScreen(
 
             AnimatedVisibility(
                 visible = showContent,
-                enter = fadeIn(
-                    tween(
-                        durationMillis = 650,
-                        delayMillis = 400
-                    )
-                )
+                enter = fadeIn(tween(durationMillis = 650, delayMillis = 400))
             ) {
-
-                Column(
-                    horizontalAlignment =
-                        Alignment.CenterHorizontally
-                ) {
-
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
                     LinearProgressIndicator(
                         modifier = Modifier
                             .width(130.dp)
                             .height(4.dp),
-                        color = primaryBlue,
-                        trackColor =
-                            primaryBlue.copy(
-                                alpha = 0.12f
-                            )
+                        color = primaryTeal,
+                        trackColor = primaryTeal.copy(alpha = 0.15f)
                     )
 
-                    Spacer(
-                        modifier = Modifier.height(12.dp)
-                    )
+                    Spacer(modifier = Modifier.height(12.dp))
 
                     Text(
                         text = "Preparing your AI health assistant...",
@@ -647,11 +474,7 @@ fun SplashScreen(
                 }
             }
 
-
-            Spacer(
-                modifier = Modifier.height(36.dp)
-            )
-
+            Spacer(modifier = Modifier.height(36.dp))
 
             // ====================================================
             // SECURITY BADGE
@@ -659,61 +482,35 @@ fun SplashScreen(
 
             AnimatedVisibility(
                 visible = showContent,
-                enter = fadeIn(
-                    tween(
-                        durationMillis = 650,
-                        delayMillis = 550
-                    )
-                )
+                enter = fadeIn(tween(durationMillis = 650, delayMillis = 550))
             ) {
-
                 Row(
-                    verticalAlignment =
-                        Alignment.CenterVertically,
-                    horizontalArrangement =
-                        Arrangement.Center
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center
                 ) {
-
                     Box(
                         modifier = Modifier
                             .size(31.dp)
                             .clip(CircleShape)
-                            .background(
-                                Color.White.copy(
-                                    alpha = 0.85f
-                                )
-                            )
-                            .border(
-                                1.dp,
-                                borderColor,
-                                CircleShape
-                            ),
-                        contentAlignment =
-                            Alignment.Center
+                            .background(PureWhite.copy(alpha = 0.85f))
+                            .border(1.dp, borderColor, CircleShape),
+                        contentAlignment = Alignment.Center
                     ) {
-
                         Icon(
-                            imageVector =
-                                Icons.Default.Lock,
-                            contentDescription =
-                                "Secure",
-                            tint = primaryBlue,
-                            modifier =
-                                Modifier.size(15.dp)
+                            imageVector = Icons.Default.Lock,
+                            contentDescription = "Secure",
+                            tint = primaryTeal,
+                            modifier = Modifier.size(15.dp)
                         )
                     }
 
-                    Spacer(
-                        modifier = Modifier.width(8.dp)
-                    )
+                    Spacer(modifier = Modifier.width(8.dp))
 
                     Text(
-                        text =
-                            "Secure • Simple • Intelligent",
+                        text = "Secure • Simple • Intelligent",
                         color = textGray,
                         fontSize = 10.sp,
-                        fontWeight =
-                            FontWeight.Medium
+                        fontWeight = FontWeight.Medium
                     )
                 }
             }
