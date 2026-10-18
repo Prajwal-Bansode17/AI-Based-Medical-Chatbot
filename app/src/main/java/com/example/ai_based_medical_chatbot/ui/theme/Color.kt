@@ -3,45 +3,76 @@ package com.example.ai_based_medical_chatbot.ui.theme
 import androidx.compose.ui.graphics.Color
 
 // ============================================================
-// MEDASSIST AI - Brand Colors
+// MEDASSIST AI - Global Healthcare Design Tokens
+// Approved Palette: Deep Teal + Sage Green + Ivory + Mint + Coral
 // ============================================================
 
-// Primary Medical Blue
-val MedicalBlue = Color(0xFF1976D2)
-val MedicalBlueDark = Color(0xFF115293)
-val MedicalBlueLight = Color(0xFF63A4FF)
+// Primary Healthcare Teals
+val DeepTeal = Color(0xFF087F8C)
+val DarkTeal = Color(0xFF075E66)
+val SageGreen = Color(0xFF76A99A)
 
-// Secondary Teal
-val MedicalTeal = Color(0xFF009688)
-val MedicalTealDark = Color(0xFF00695C)
-val MedicalTealLight = Color(0xFF52C7B8)
-
-// Backgrounds
-val MedicalBackground = Color(0xFFF5F9FD)
-val MedicalSurface = Color(0xFFFFFFFF)
-val MedicalSurfaceVariant = Color(0xFFEAF3FA)
-
-// Text
-val MedicalTextPrimary = Color(0xFF172B4D)
-val MedicalTextSecondary = Color(0xFF60758A)
-val MedicalTextLight = Color(0xFF8A9BAB)
-
-// Borders / Dividers
-val MedicalBorder = Color(0xFFD9E6F0)
-
-// Status Colors
-val MedicalSuccess = Color(0xFF2E7D32)
-val MedicalWarning = Color(0xFFED8B00)
-val MedicalError = Color(0xFFD32F2F)
-
-// White / Black
+// Surfaces & Backgrounds
+val Ivory = Color(0xFFF7F5EF)
+val Mint = Color(0xFFDCEFE8)
+val SoftMint = Color(0xFFEDF6F1)
 val PureWhite = Color(0xFFFFFFFF)
 val PureBlack = Color(0xFF000000)
 
-// Dark Theme
-val DarkBackground = Color(0xFF0D1824)
-val DarkSurface = Color(0xFF142536)
-val DarkSurfaceVariant = Color(0xFF203447)
+// Backward-compatible primary aliases
+val PrimaryTeal = DeepTeal
+val PrimaryTealDark = DarkTeal
+val PrimaryTealLight = SageGreen
 
-val DarkTextPrimary = Color(0xFFEAF4FC)
-val DarkTextSecondary = Color(0xFFB8C9D8)
+// Backward-compatible surface aliases
+val LightGreenSurface = SoftMint
+val LightGreenSoft = Ivory
+val LightGreenBorder = Mint
+
+val AppBackground = Ivory
+val AppSurface = PureWhite
+val AppSurfaceVariant = SoftMint
+
+// Slate & Neutral Text Hierarchy
+val TextDark = Color(0xFF263238)
+val TextMuted = Color(0xFF607D8B)
+val TextLight = Color(0xFF90A4AE)
+
+// Neutral Borders and Dividers
+val BorderLight = Mint
+val BorderSubtle = Color(0xFFE5ECE9)
+val DividerColor = Color(0xFFE2E8EA)
+
+// Coral Accents (Used Sparingly)
+val CoralAccent = Color(0xFFE7A58B)
+val CoralAccentSoft = Color(0xFFFBF1EC)
+val CoralAccentBorder = Color(0xFFF3C7B5)
+
+// Status / Feedback Accents
+val StatusSuccess = Color(0xFF2E7D32)
+val StatusWarning = Color(0xFFF57C00)
+val StatusError = Color(0xFFD32F2F)
+val StatusErrorBackground = Color(0xFFFFEBEE)
+val StatusErrorBorder = Color(0xFFFFCDD2)
+
+// Backward Compatibility Aliases (maps existing names to new green palette)
+val MedicalBlue = PrimaryTeal
+val MedicalBlueDark = PrimaryTealDark
+val MedicalBlueLight = LightGreenSurface
+
+val MedicalTeal = PrimaryTeal
+val MedicalTealDark = PrimaryTealDark
+val MedicalTealLight = PrimaryTealLight
+
+val MedicalBackground = AppBackground
+val MedicalSurface = AppSurface
+val MedicalSurfaceVariant = AppSurfaceVariant
+
+val MedicalTextPrimary = TextDark
+val MedicalTextSecondary = TextMuted
+val MedicalTextLight = TextLight
+
+val MedicalBorder = BorderLight
+val MedicalSuccess = StatusSuccess
+val MedicalWarning = StatusWarning
+val MedicalError = StatusError

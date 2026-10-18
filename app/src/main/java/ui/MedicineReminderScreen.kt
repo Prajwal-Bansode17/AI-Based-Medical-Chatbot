@@ -22,12 +22,21 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -36,8 +45,10 @@ import androidx.compose.material3.Divider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
@@ -48,25 +59,60 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardCapitalization
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
 import androidx.core.content.ContextCompat
 import com.example.ai_based_medical_chatbot.MedicineReminder
 import com.example.ai_based_medical_chatbot.MedicineReminderRepository
 import com.example.ai_based_medical_chatbot.MedicineReminderScheduler
+import com.example.ai_based_medical_chatbot.ui.theme.DeepTeal
+import com.example.ai_based_medical_chatbot.ui.theme.DarkTeal
+import com.example.ai_based_medical_chatbot.ui.theme.SageGreen
+import com.example.ai_based_medical_chatbot.ui.theme.Ivory
+import com.example.ai_based_medical_chatbot.ui.theme.Mint
+import com.example.ai_based_medical_chatbot.ui.theme.SoftMint
+import com.example.ai_based_medical_chatbot.ui.theme.CoralAccent
+import com.example.ai_based_medical_chatbot.ui.theme.PureWhite
+import com.example.ai_based_medical_chatbot.ui.theme.AppBackground
+import com.example.ai_based_medical_chatbot.ui.theme.AppSurface
+import com.example.ai_based_medical_chatbot.ui.theme.LightGreenBorder
+import com.example.ai_based_medical_chatbot.ui.theme.LightGreenSoft
+import com.example.ai_based_medical_chatbot.ui.theme.LightGreenSurface
+import com.example.ai_based_medical_chatbot.ui.theme.PrimaryTeal
+import com.example.ai_based_medical_chatbot.ui.theme.PrimaryTealDark
+import com.example.ai_based_medical_chatbot.ui.theme.StatusError
+import com.example.ai_based_medical_chatbot.ui.theme.StatusErrorBackground
+import com.example.ai_based_medical_chatbot.ui.theme.StatusErrorBorder
+import com.example.ai_based_medical_chatbot.ui.theme.StatusSuccess
+import com.example.ai_based_medical_chatbot.ui.theme.StatusWarning
+import com.example.ai_based_medical_chatbot.ui.theme.TextDark
+import com.example.ai_based_medical_chatbot.ui.theme.TextMuted
+import com.example.ai_based_medical_chatbot.ui.theme.TextLight
+import com.example.ai_based_medical_chatbot.LocalAppLanguageController
+import com.example.ai_based_medical_chatbot.appText
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
-private val ReminderBlue = Color(0xFF176B83)
-private val ReminderLightBlue = Color(0xFFEAF5F8)
-private val ReminderBackground = Color(0xFFF6FBFC)
-private val ReminderGreen = Color(0xFF2E8B72)
-private val ReminderRed = Color(0xFFC94B4B)
+private val ReminderBlue = DeepTeal
+private val ReminderDarkBlue = DarkTeal
+private val ReminderLightBlue = SoftMint
+private val ReminderBackground = Ivory
+private val ReminderCardSurface = PureWhite
+private val ReminderMintBorder = Mint
+private val ReminderGreen = SageGreen
+private val ReminderRed = StatusError
 
 @OptIn(ExperimentalMaterial3Api::class)
 @androidx.compose.runtime.Composable
@@ -75,6 +121,23 @@ fun MedicineReminderScreen(
     initialReminder: MedicineReminder? = null
 ) {
     val context = LocalContext.current
+    val appLanguageController = LocalAppLanguageController.current
+    val selectedLanguage = appLanguageController.selectedLanguage
+    fun t(key: String): String = appText(key, selectedLanguage)
+
+    fun localizedSlot(slot: String): String = when (slot) {
+        "Morning" -> t("slot_morning")
+        "Afternoon" -> t("slot_afternoon")
+        "Evening" -> t("slot_evening")
+        "Night" -> t("slot_night")
+        else -> slot
+    }
+
+    fun localizedMeal(meal: String): String = when (meal) {
+        "Before Food" -> t("meal_before_food")
+        "After Food" -> t("meal_after_food")
+        else -> meal
+    }
 
     fun slotFromPrescription(value: String): String {
         val text = value.lowercase()
@@ -124,6 +187,12 @@ fun MedicineReminderScreen(
         mutableStateOf(initialReminder?.instructions.orEmpty())
     }
 
+    val strengthFocusRequester = remember { FocusRequester() }
+    val durationFocusRequester = remember { FocusRequester() }
+    val startDateFocusRequester = remember { FocusRequester() }
+    val endDateFocusRequester = remember { FocusRequester() }
+    val instructionsFocusRequester = remember { FocusRequester() }
+
     var reminders by remember {
         mutableStateOf(MedicineReminderRepository.getAll(context))
     }
@@ -149,7 +218,7 @@ fun MedicineReminderScreen(
             if (granted) {
                 errorMessage = ""
             } else {
-                errorMessage = "Please allow notifications from Android Settings."
+                errorMessage = t("reminder_error_permission")
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
                     context.startActivity(
                         Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).apply {
@@ -212,6 +281,45 @@ fun MedicineReminderScreen(
         ).show()
     }
 
+    fun saveReminder() {
+        when {
+            medicineName.isBlank() -> {
+                errorMessage = t("reminder_error_enter_name")
+                successMessage = ""
+            }
+
+            selectedTime.isBlank() -> {
+                errorMessage = t("reminder_error_select_time")
+                successMessage = ""
+            }
+
+            else -> {
+                val reminder =
+                    MedicineReminder(
+                        medicineName = medicineName.trim(),
+                        strength = strength.trim(),
+                        time = selectedTime.trim(),
+                        daySlot = selectedSlot,
+                        mealTiming = selectedMeal,
+                        duration = duration.trim(),
+                        startDate = startDate.trim(),
+                        endDate = endDate.trim(),
+                        instructions = instructions.trim(),
+                        enabled = true
+                    )
+
+                MedicineReminderScheduler(context)
+                    .scheduleAndSave(reminder)
+
+                refresh()
+                clearForm()
+
+                errorMessage = ""
+                successMessage = t("reminder_success_saved")
+            }
+        }
+    }
+
     Scaffold(
         containerColor = ReminderBackground,
         topBar = {
@@ -219,28 +327,33 @@ fun MedicineReminderScreen(
                 title = {
                     Column {
                         Text(
-                            text = "My Medicine Reminders",
-                            fontWeight = FontWeight.Bold
+                            text = t("reminder_title"),
+                            fontWeight = FontWeight.Bold,
+                            color = ReminderDarkBlue
                         )
                         Text(
-                            text = "Set simple reminders for your medicines",
+                            text = t("reminder_subtitle"),
                             style = MaterialTheme.typography.labelMedium,
-                            color = ReminderBlue
+                            color = TextMuted
                         )
                     }
                 },
                 navigationIcon = {
-                    Text(
-                        text = "‹",
+                    IconButton(
+                        onClick = onBackClick,
                         modifier = Modifier
-                            .padding(horizontal = 16.dp)
-                            .clickable { onBackClick() },
-                        style = MaterialTheme.typography.headlineMedium,
-                        color = ReminderBlue
-                    )
+                            .padding(start = 6.dp)
+                            .size(44.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = t("back"),
+                            tint = ReminderBlue
+                        )
+                    }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color.White
+                    containerColor = ReminderCardSurface
                 )
             )
         }
@@ -250,6 +363,7 @@ fun MedicineReminderScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(padding)
+                .imePadding()
                 .padding(horizontal = 16.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
@@ -258,27 +372,30 @@ fun MedicineReminderScreen(
 
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(22.dp),
+                    shape = RoundedCornerShape(20.dp),
                     colors = CardDefaults.cardColors(
                         containerColor = ReminderLightBlue
-                    )
+                    ),
+                    border = BorderStroke(1.dp, ReminderMintBorder)
                 ) {
                     Row(
-                        modifier = Modifier.padding(18.dp),
+                        modifier = Modifier.padding(16.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Box(
                             modifier = Modifier
-                                .size(52.dp)
+                                .size(48.dp)
                                 .background(
-                                    Color.White,
-                                    RoundedCornerShape(16.dp)
+                                    ReminderCardSurface,
+                                    RoundedCornerShape(14.dp)
                                 ),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(
-                                text = "💊",
-                                style = MaterialTheme.typography.headlineSmall
+                            Icon(
+                                imageVector = PillVectorIcon,
+                                contentDescription = null,
+                                tint = ReminderBlue,
+                                modifier = Modifier.size(24.dp)
                             )
                         }
 
@@ -286,13 +403,15 @@ fun MedicineReminderScreen(
 
                         Column {
                             Text(
-                                text = "Add a medicine reminder",
+                                text = t("reminder_intro_title"),
                                 fontWeight = FontWeight.Bold,
                                 color = ReminderBlue
                             )
+                            Spacer(modifier = Modifier.height(2.dp))
                             Text(
-                                text = "We will remind you when it is time to take it.",
-                                style = MaterialTheme.typography.bodySmall
+                                text = t("reminder_intro_desc"),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextMuted
                             )
                         }
                     }
@@ -305,8 +424,9 @@ fun MedicineReminderScreen(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(18.dp),
                         colors = CardDefaults.cardColors(
-                            containerColor = Color(0xFFFFF7E6)
-                        )
+                            containerColor = ReminderLightBlue
+                        ),
+                        border = BorderStroke(1.dp, ReminderMintBorder)
                     ) {
                         Row(
                             modifier = Modifier
@@ -314,9 +434,11 @@ fun MedicineReminderScreen(
                                 .padding(14.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = "🔔",
-                                style = MaterialTheme.typography.titleLarge
+                            Icon(
+                                imageVector = Icons.Default.Notifications,
+                                contentDescription = "Notification",
+                                tint = ReminderDarkBlue,
+                                modifier = Modifier.size(24.dp)
                             )
 
                             Spacer(modifier = Modifier.width(10.dp))
@@ -325,13 +447,14 @@ fun MedicineReminderScreen(
                                 modifier = Modifier.weight(1f)
                             ) {
                                 Text(
-                                    text = "Allow notifications",
+                                    text = t("reminder_allow_notifications"),
                                     fontWeight = FontWeight.Bold,
-                                    color = ReminderBlue
+                                    color = ReminderDarkBlue
                                 )
                                 Text(
-                                    text = "So MedAssist can remind you on time.",
-                                    style = MaterialTheme.typography.bodySmall
+                                    text = t("reminder_notifications_desc"),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = TextMuted
                                 )
                             }
 
@@ -369,7 +492,7 @@ fun MedicineReminderScreen(
                                     containerColor = ReminderBlue
                                 )
                             ) {
-                                Text("Allow")
+                                Text(t("reminder_allow_btn"))
                             }
                         }
                     }
@@ -377,24 +500,37 @@ fun MedicineReminderScreen(
             }
 
             item {
+                val fieldColors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = ReminderBlue,
+                    unfocusedBorderColor = ReminderMintBorder,
+                    focusedLabelColor = ReminderBlue,
+                    unfocusedLabelColor = TextMuted,
+                    focusedTextColor = TextDark,
+                    unfocusedTextColor = TextDark,
+                    focusedContainerColor = ReminderCardSurface,
+                    unfocusedContainerColor = ReminderLightBlue.copy(alpha = 0.25f)
+                )
+
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
                         .animateContentSize(),
-                    shape = RoundedCornerShape(22.dp),
+                    shape = RoundedCornerShape(20.dp),
                     colors = CardDefaults.cardColors(
-                        containerColor = Color.White
-                    )
+                        containerColor = ReminderCardSurface
+                    ),
+                    border = BorderStroke(1.dp, ReminderMintBorder),
+                    elevation = CardDefaults.cardElevation(2.dp)
                 ) {
                     Column(
                         modifier = Modifier.padding(18.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         Text(
-                            text = "Add Medicine",
+                            text = t("reminder_add_medicine"),
                             style = MaterialTheme.typography.titleLarge,
                             fontWeight = FontWeight.Bold,
-                            color = ReminderBlue
+                            color = ReminderDarkBlue
                         )
 
                         OutlinedTextField(
@@ -405,19 +541,40 @@ fun MedicineReminderScreen(
                                 successMessage = ""
                             },
                             modifier = Modifier.fillMaxWidth(),
+                            keyboardOptions = KeyboardOptions(
+                                capitalization = KeyboardCapitalization.Words,
+                                keyboardType = KeyboardType.Text,
+                                imeAction = ImeAction.Next
+                            ),
+                            keyboardActions = KeyboardActions(
+                                onNext = { strengthFocusRequester.requestFocus() }
+                            ),
                             textStyle = TextStyle(fontWeight = FontWeight.Medium),
-                            label = { Text("Medicine name *") },
-                            placeholder = { Text("e.g. Paracetamol") },
+                            label = { Text(t("reminder_med_name_label")) },
+                            placeholder = { Text(t("reminder_med_name_placeholder")) },
+                            colors = fieldColors,
+                            shape = RoundedCornerShape(12.dp),
                             singleLine = true
                         )
 
                         OutlinedTextField(
                             value = strength,
                             onValueChange = { strength = it },
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(strengthFocusRequester),
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Text,
+                                imeAction = ImeAction.Next
+                            ),
+                            keyboardActions = KeyboardActions(
+                                onNext = { durationFocusRequester.requestFocus() }
+                            ),
                             textStyle = TextStyle(fontWeight = FontWeight.Medium),
-                            label = { Text("Strength (optional)") },
-                            placeholder = { Text("e.g. 650 mg") },
+                            label = { Text(t("reminder_strength_label")) },
+                            placeholder = { Text(t("reminder_strength_placeholder")) },
+                            colors = fieldColors,
+                            shape = RoundedCornerShape(12.dp),
                             singleLine = true
                         )
 
@@ -428,8 +585,10 @@ fun MedicineReminderScreen(
                                 value = selectedTime,
                                 onValueChange = {},
                                 modifier = Modifier.fillMaxWidth(),
-                                label = { Text("What time? *") },
-                                placeholder = { Text("Tap here to choose time") },
+                                label = { Text(t("reminder_what_time")) },
+                                placeholder = { Text(t("reminder_choose_time_tap")) },
+                                colors = fieldColors,
+                                shape = RoundedCornerShape(12.dp),
                                 readOnly = true,
                                 singleLine = true
                             )
@@ -444,8 +603,9 @@ fun MedicineReminderScreen(
                         }
 
                         Text(
-                            text = "When should you take it?",
-                            fontWeight = FontWeight.SemiBold
+                            text = t("reminder_when_take"),
+                            fontWeight = FontWeight.SemiBold,
+                            color = ReminderDarkBlue
                         )
 
                         Column(
@@ -457,13 +617,13 @@ fun MedicineReminderScreen(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 SimpleTimeSlotChip(
-                                    text = "☀ Morning",
+                                    text = localizedSlot("Morning"),
                                     selected = selectedSlot == "Morning",
                                     onClick = { selectedSlot = "Morning" },
                                     modifier = Modifier.weight(1f)
                                 )
                                 SimpleTimeSlotChip(
-                                    text = "☀ Afternoon",
+                                    text = localizedSlot("Afternoon"),
                                     selected = selectedSlot == "Afternoon",
                                     onClick = { selectedSlot = "Afternoon" },
                                     modifier = Modifier.weight(1f)
@@ -474,13 +634,13 @@ fun MedicineReminderScreen(
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
                                 SimpleTimeSlotChip(
-                                    text = "🌆 Evening",
+                                    text = localizedSlot("Evening"),
                                     selected = selectedSlot == "Evening",
                                     onClick = { selectedSlot = "Evening" },
                                     modifier = Modifier.weight(1f)
                                 )
                                 SimpleTimeSlotChip(
-                                    text = "🌙 Night",
+                                    text = localizedSlot("Night"),
                                     selected = selectedSlot == "Night",
                                     onClick = { selectedSlot = "Night" },
                                     modifier = Modifier.weight(1f)
@@ -489,8 +649,9 @@ fun MedicineReminderScreen(
                         }
 
                         Text(
-                            text = "Before or after food?",
-                            fontWeight = FontWeight.SemiBold
+                            text = t("reminder_before_after_food"),
+                            fontWeight = FontWeight.SemiBold,
+                            color = ReminderDarkBlue
                         )
 
                         Row(
@@ -498,13 +659,13 @@ fun MedicineReminderScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             SimpleTimeSlotChip(
-                                text = "Before Food",
+                                text = localizedMeal("Before Food"),
                                 selected = selectedMeal == "Before Food",
                                 onClick = { selectedMeal = "Before Food" },
                                 modifier = Modifier.weight(1f)
                             )
                             SimpleTimeSlotChip(
-                                text = "After Food",
+                                text = localizedMeal("After Food"),
                                 selected = selectedMeal == "After Food",
                                 onClick = { selectedMeal = "After Food" },
                                 modifier = Modifier.weight(1f)
@@ -514,40 +675,85 @@ fun MedicineReminderScreen(
                         OutlinedTextField(
                             value = duration,
                             onValueChange = { duration = it },
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(durationFocusRequester),
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Text,
+                                imeAction = ImeAction.Next
+                            ),
+                            keyboardActions = KeyboardActions(
+                                onNext = { startDateFocusRequester.requestFocus() }
+                            ),
                             textStyle = TextStyle(fontWeight = FontWeight.Medium),
-                            label = { Text("How many days?") },
-                            placeholder = { Text("e.g. 5 days") },
+                            label = { Text(t("reminder_how_many_days")) },
+                            placeholder = { Text(t("reminder_days_placeholder")) },
+                            colors = fieldColors,
+                            shape = RoundedCornerShape(12.dp),
                             singleLine = true
                         )
 
                         OutlinedTextField(
                             value = startDate,
                             onValueChange = { startDate = it },
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(startDateFocusRequester),
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Text,
+                                imeAction = ImeAction.Next
+                            ),
+                            keyboardActions = KeyboardActions(
+                                onNext = { endDateFocusRequester.requestFocus() }
+                            ),
                             textStyle = TextStyle(fontWeight = FontWeight.Medium),
-                            label = { Text("Start date") },
+                            label = { Text(t("reminder_start_date")) },
                             placeholder = { Text("e.g. 29/09/2026") },
+                            colors = fieldColors,
+                            shape = RoundedCornerShape(12.dp),
                             singleLine = true
                         )
 
                         OutlinedTextField(
                             value = endDate,
                             onValueChange = { endDate = it },
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(endDateFocusRequester),
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Text,
+                                imeAction = ImeAction.Next
+                            ),
+                            keyboardActions = KeyboardActions(
+                                onNext = { instructionsFocusRequester.requestFocus() }
+                            ),
                             textStyle = TextStyle(fontWeight = FontWeight.Medium),
-                            label = { Text("End date") },
+                            label = { Text(t("reminder_end_date")) },
                             placeholder = { Text("e.g. 03/10/2026") },
+                            colors = fieldColors,
+                            shape = RoundedCornerShape(12.dp),
                             singleLine = true
                         )
 
                         OutlinedTextField(
                             value = instructions,
                             onValueChange = { instructions = it },
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .focusRequester(instructionsFocusRequester),
+                            keyboardOptions = KeyboardOptions(
+                                capitalization = KeyboardCapitalization.Sentences,
+                                keyboardType = KeyboardType.Text,
+                                imeAction = ImeAction.Done
+                            ),
+                            keyboardActions = KeyboardActions(
+                                onDone = { saveReminder() }
+                            ),
                             textStyle = TextStyle(fontWeight = FontWeight.Medium),
-                            label = { Text("How should you take it?") },
-                            placeholder = { Text("e.g. Take with water") },
+                            label = { Text(t("reminder_how_take")) },
+                            placeholder = { Text(t("reminder_instructions_placeholder")) },
+                            colors = fieldColors,
+                            shape = RoundedCornerShape(12.dp),
                             minLines = 2,
                             maxLines = 4
                         )
@@ -570,45 +776,7 @@ fun MedicineReminderScreen(
                         }
 
                         Button(
-                            onClick = {
-                                when {
-                                    medicineName.isBlank() -> {
-                                        errorMessage = "Please enter medicine name."
-                                        successMessage = ""
-                                    }
-
-                                    selectedTime.isBlank() -> {
-                                        errorMessage = "Please select reminder time."
-                                        successMessage = ""
-                                    }
-
-                                    else -> {
-                                        val reminder =
-                                            MedicineReminder(
-                                                medicineName = medicineName.trim(),
-                                                strength = strength.trim(),
-                                                time = selectedTime.trim(),
-                                                daySlot = selectedSlot,
-                                                mealTiming = selectedMeal,
-                                                duration = duration.trim(),
-                                                startDate = startDate.trim(),
-                                                endDate = endDate.trim(),
-                                                instructions = instructions.trim(),
-                                                enabled = true
-                                            )
-
-                                        MedicineReminderScheduler(context)
-                                            .scheduleAndSave(reminder)
-
-                                        refresh()
-                                        clearForm()
-
-                                        errorMessage = ""
-                                        successMessage =
-                                            "Reminder saved successfully."
-                                    }
-                                }
-                            },
+                            onClick = { saveReminder() },
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(52.dp),
@@ -618,8 +786,9 @@ fun MedicineReminderScreen(
                             )
                         ) {
                             Text(
-                                text = "Save Medicine Reminder",
-                                fontWeight = FontWeight.Bold
+                                text = t("reminder_save_button"),
+                                fontWeight = FontWeight.Bold,
+                                color = PureWhite
                             )
                         }
                     }
@@ -628,10 +797,10 @@ fun MedicineReminderScreen(
 
             item {
                 Text(
-                    text = "Saved Reminders",
+                    text = t("reminder_saved_reminders"),
                     style = MaterialTheme.typography.titleLarge,
                     fontWeight = FontWeight.Bold,
-                    color = ReminderBlue
+                    color = ReminderDarkBlue
                 )
             }
 
@@ -640,16 +809,22 @@ fun MedicineReminderScreen(
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(20.dp),
-                        colors = CardDefaults.cardColors(containerColor = Color.White)
+                        colors = CardDefaults.cardColors(containerColor = ReminderCardSurface),
+                        border = BorderStroke(1.dp, ReminderMintBorder)
                     ) {
                         Column(
                             modifier = Modifier.fillMaxWidth().padding(24.dp),
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Text(text = "🔔", style = MaterialTheme.typography.headlineMedium)
+                            Icon(
+                                imageVector = Icons.Default.Notifications,
+                                contentDescription = null,
+                                tint = ReminderDarkBlue,
+                                modifier = Modifier.size(36.dp)
+                            )
                             Spacer(modifier = Modifier.height(8.dp))
-                            Text(text = "No medicine reminders yet", fontWeight = FontWeight.Bold)
-                            Text(text = "Add your first reminder above.", style = MaterialTheme.typography.bodySmall)
+                            Text(text = t("reminder_no_reminders_yet"), fontWeight = FontWeight.Bold, color = ReminderDarkBlue)
+                            Text(text = t("reminder_add_first_above"), style = MaterialTheme.typography.bodySmall, color = TextMuted)
                         }
                     }
                 }
@@ -661,8 +836,8 @@ fun MedicineReminderScreen(
                 groupedReminders.forEach { (dayKey, dayReminders) ->
                     item {
                         Text(
-                            text = reminderDayLabel(dayKey),
-                            color = ReminderBlue,
+                            text = reminderDayLabel(dayKey, ::t),
+                            color = ReminderDarkBlue,
                             fontWeight = FontWeight.Bold,
                             style = MaterialTheme.typography.titleMedium,
                             modifier = Modifier.padding(top = 4.dp)
@@ -675,6 +850,9 @@ fun MedicineReminderScreen(
                     ) { reminder ->
                         ReminderCard(
                             reminder = reminder,
+                            localizedSlot = ::localizedSlot,
+                            localizedMeal = ::localizedMeal,
+                            t = ::t,
                             onToggle = { enabled ->
                                 MedicineReminderScheduler(context).updateEnabled(reminder.id, enabled)
                                 refresh()
@@ -699,7 +877,7 @@ fun MedicineReminderScreen(
 private fun reminderDayKey(timeMillis: Long): String =
     SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).format(Date(timeMillis))
 
-private fun reminderDayLabel(dayKey: String): String {
+private fun reminderDayLabel(dayKey: String, t: (String) -> String): String {
     val parsed = try {
         SimpleDateFormat("yyyy-MM-dd", Locale.getDefault()).parse(dayKey)
     } catch (_: Exception) { null }
@@ -711,13 +889,13 @@ private fun reminderDayLabel(dayKey: String): String {
 
     if (today.get(Calendar.YEAR) == target.get(Calendar.YEAR) &&
         today.get(Calendar.DAY_OF_YEAR) == target.get(Calendar.DAY_OF_YEAR)) {
-        return "Today • ${SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(parsed)}"
+        return "${t("today")} • ${SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(parsed)}"
     }
 
     val yesterday = Calendar.getInstance().apply { add(Calendar.DAY_OF_YEAR, -1) }
     if (yesterday.get(Calendar.YEAR) == target.get(Calendar.YEAR) &&
         yesterday.get(Calendar.DAY_OF_YEAR) == target.get(Calendar.DAY_OF_YEAR)) {
-        return "Yesterday • ${SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(parsed)}"
+        return "${t("yesterday")} • ${SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(parsed)}"
     }
 
     return SimpleDateFormat("dd MMM yyyy", Locale.getDefault()).format(parsed)
@@ -731,19 +909,20 @@ private fun SimpleTimeSlotChip(
     modifier: Modifier = Modifier
 ) {
     val containerColor by animateColorAsState(
-        targetValue = if (selected) ReminderBlue else Color.White,
+        targetValue = if (selected) ReminderBlue else ReminderCardSurface,
         animationSpec = tween(180),
         label = "slot_color"
     )
 
     Card(
         modifier = modifier
-            .height(52.dp)
+            .height(48.dp)
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(15.dp),
+        shape = RoundedCornerShape(14.dp),
         colors = CardDefaults.cardColors(containerColor = containerColor),
+        border = BorderStroke(1.dp, if (selected) ReminderBlue else ReminderMintBorder),
         elevation = CardDefaults.cardElevation(
-            defaultElevation = if (selected) 3.dp else 1.dp
+            defaultElevation = if (selected) 2.dp else 0.dp
         )
     ) {
         Box(
@@ -752,7 +931,7 @@ private fun SimpleTimeSlotChip(
         ) {
             Text(
                 text = text,
-                color = if (selected) Color.White else ReminderBlue,
+                color = if (selected) PureWhite else ReminderDarkBlue,
                 fontWeight = FontWeight.SemiBold,
                 style = MaterialTheme.typography.labelLarge
             )
@@ -763,6 +942,9 @@ private fun SimpleTimeSlotChip(
 @androidx.compose.runtime.Composable
 private fun ReminderCard(
     reminder: MedicineReminder,
+    localizedSlot: (String) -> String,
+    localizedMeal: (String) -> String,
+    t: (String) -> String,
     onToggle: (Boolean) -> Unit,
     onDelete: () -> Unit
 ) {
@@ -772,10 +954,12 @@ private fun ReminderCard(
         modifier = Modifier
             .fillMaxWidth()
             .animateContentSize(),
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(
-            containerColor = Color.White
-        )
+            containerColor = ReminderCardSurface
+        ),
+        border = BorderStroke(1.dp, ReminderMintBorder),
+        elevation = CardDefaults.cardElevation(2.dp)
     ) {
         Column(
             modifier = Modifier.padding(16.dp)
@@ -793,9 +977,11 @@ private fun ReminderCard(
                         ),
                     contentAlignment = Alignment.Center
                 ) {
-                    Text(
-                        text = "💊",
-                        style = MaterialTheme.typography.titleLarge
+                    Icon(
+                        imageVector = PillVectorIcon,
+                        contentDescription = null,
+                        tint = ReminderBlue,
+                        modifier = Modifier.size(24.dp)
                     )
                 }
 
@@ -806,7 +992,7 @@ private fun ReminderCard(
                 ) {
                     Text(
                         text = reminder.medicineName.ifBlank {
-                            "Medicine"
+                            t("medicine")
                         },
                         fontWeight = FontWeight.Bold,
                         color = ReminderBlue
@@ -815,26 +1001,35 @@ private fun ReminderCard(
                     if (reminder.strength.isNotBlank()) {
                         Text(
                             text = reminder.strength,
-                            style = MaterialTheme.typography.bodySmall
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TextMuted
                         )
                     }
 
                     Text(
                         text = reminder.time,
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
+                        fontWeight = FontWeight.Bold,
+                        color = TextDark
                     )
                 }
 
                 Switch(
                     checked = reminder.enabled,
-                    onCheckedChange = onToggle
+                    onCheckedChange = onToggle,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = PureWhite,
+                        checkedTrackColor = ReminderBlue,
+                        uncheckedThumbColor = TextMuted,
+                        uncheckedTrackColor = ReminderLightBlue,
+                        uncheckedBorderColor = ReminderMintBorder
+                    )
                 )
             }
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            Divider()
+            Divider(color = ReminderMintBorder.copy(alpha = 0.5f))
 
             Spacer(modifier = Modifier.height(10.dp))
 
@@ -842,15 +1037,15 @@ private fun ReminderCard(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                ReminderTag(reminder.daySlot)
-                ReminderTag(reminder.mealTiming)
+                ReminderTag(localizedSlot(reminder.daySlot))
+                ReminderTag(localizedMeal(reminder.mealTiming))
                 if (reminder.duration.isNotBlank()) {
                     ReminderTag(reminder.duration)
                 }
             }
 
             Text(
-                text = if (showDetails) "Hide details" else "View details",
+                text = if (showDetails) t("reminder_hide_details") else t("reminder_view_details"),
                 modifier = Modifier
                     .padding(top = 10.dp)
                     .clickable {
@@ -868,50 +1063,54 @@ private fun ReminderCard(
                     shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(
                         containerColor = ReminderLightBlue
-                    )
+                    ),
+                    border = BorderStroke(1.dp, ReminderMintBorder)
                 ) {
                     Column(
                         modifier = Modifier.padding(14.dp),
                         verticalArrangement = Arrangement.spacedBy(7.dp)
                     ) {
                         Text(
-                            text = "Reminder Summary",
-                            color = ReminderBlue,
+                            text = t("reminder_details_summary"),
+                            color = ReminderDarkBlue,
                             fontWeight = FontWeight.Bold
                         )
 
                         Text(
-                            text = "⏰ ${reminder.time}  •  ${reminder.daySlot}",
-                            fontWeight = FontWeight.SemiBold
+                            text = "${reminder.time}  •  ${localizedSlot(reminder.daySlot)}",
+                            fontWeight = FontWeight.SemiBold,
+                            color = TextDark
                         )
 
                         Text(
-                            text = "🍽 ${reminder.mealTiming}" +
+                            text = localizedMeal(reminder.mealTiming) +
                                     if (reminder.duration.isNotBlank()) {
                                         "  •  ${reminder.duration}"
                                     } else {
                                         ""
-                                    }
+                                    },
+                            color = TextDark
                         )
 
                         if (reminder.startDate.isNotBlank() || reminder.endDate.isNotBlank()) {
                             Text(
-                                text = "📅 " +
-                                        listOfNotNull(
-                                            reminder.startDate.takeIf { it.isNotBlank() },
-                                            reminder.endDate.takeIf { it.isNotBlank() }
-                                        ).joinToString(" → ")
+                                text = listOfNotNull(
+                                    reminder.startDate.takeIf { it.isNotBlank() },
+                                    reminder.endDate.takeIf { it.isNotBlank() }
+                                ).joinToString(" → "),
+                                color = TextDark
                             )
                         }
 
                         if (reminder.instructions.isNotBlank()) {
                             Text(
-                                text = "💡 ${reminder.instructions}"
+                                text = reminder.instructions,
+                                color = TextDark
                             )
                         }
 
                         Text(
-                            text = "Delete Reminder",
+                            text = t("reminder_delete_btn"),
                             modifier = Modifier
                                 .padding(top = 4.dp)
                                 .clickable { onDelete() },
@@ -937,6 +1136,10 @@ private fun ReminderTag(
                 ReminderLightBlue,
                 RoundedCornerShape(10.dp)
             )
+            .border(
+                BorderStroke(1.dp, ReminderMintBorder),
+                RoundedCornerShape(10.dp)
+            )
             .padding(
                 horizontal = 10.dp,
                 vertical = 6.dp
@@ -945,7 +1148,8 @@ private fun ReminderTag(
         Text(
             text = text,
             style = MaterialTheme.typography.labelSmall,
-            color = ReminderBlue
+            color = ReminderDarkBlue,
+            fontWeight = FontWeight.Medium
         )
     }
 }

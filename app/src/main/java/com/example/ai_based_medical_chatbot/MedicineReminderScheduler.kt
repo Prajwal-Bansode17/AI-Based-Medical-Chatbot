@@ -182,7 +182,6 @@ class MedicineReminderReceiver : BroadcastReceiver() {
         reminder: MedicineReminder
     ) {
         val title = buildString {
-            append("💊 ")
             append(reminder.medicineName.ifBlank { "Medicine Reminder" })
             if (reminder.strength.isNotBlank()) {
                 append(" • ")

@@ -16,6 +16,7 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
+import androidx.core.content.edit
 import androidx.fragment.app.FragmentActivity
 import com.example.ai_based_medical_chatbot.data.SupabaseClient
 import com.example.ai_based_medical_chatbot.data.api.RetrofitClient
@@ -27,6 +28,7 @@ import ui.ChatHistoryRepository
 import ui.ChatHistoryScreen
 import ui.DashboardScreen
 import ui.ForgotPasswordScreen
+import ui.HealthProfileScreen
 import ui.HealthTipsScreen
 import ui.LoginScreen
 import ui.MedicineDetailScreen
@@ -35,6 +37,7 @@ import ui.MedicineReminderScreen
 import ui.ProfileScreen
 import ui.PrescriptionScannerScreen
 import ui.RegisterScreen
+import ui.ResetPasswordScreen
 import ui.SplashScreen
 import ui.SymptomsCheckerScreen
 
@@ -46,10 +49,9 @@ private fun biometricEnabled(context: Context): Boolean =
         .getBoolean(BIOMETRIC_ENABLED, false)
 
 private fun setBiometricEnabled(context: Context, enabled: Boolean) {
-    context.getSharedPreferences(AUTH_PREFS, Context.MODE_PRIVATE)
-        .edit()
-        .putBoolean(BIOMETRIC_ENABLED, enabled)
-        .apply()
+    context.getSharedPreferences(AUTH_PREFS, Context.MODE_PRIVATE).edit {
+        putBoolean(BIOMETRIC_ENABLED, enabled)
+    }
 }
 
 private fun deviceAuthenticationAvailable(context: Context): Boolean {
@@ -108,31 +110,50 @@ private fun openDeviceAuthentication(
 
 class MainActivity : FragmentActivity() {
 
+    private var recoveryIntentUri = mutableStateOf<android.net.Uri?>(null)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
         RetrofitClient.initialize(applicationContext)
 
+        intent?.data?.let { uri ->
+            if (uri.scheme == "medassist" && uri.host == "reset-password") {
+                recoveryIntentUri.value = uri
+            }
+        }
+
         setContent {
             AIBasedMedicalChatbotTheme {
                 ProvideAppLanguage {
-                    MedicalChatbotNavigation()
+                    MedicalChatbotNavigation(
+                        recoveryUri = recoveryIntentUri.value,
+                        onRecoveryUriHandled = { recoveryIntentUri.value = null }
+                    )
                 }
+            }
+        }
+    }
+
+    override fun onNewIntent(intent: android.content.Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        intent.data?.let { uri ->
+            if (uri.scheme == "medassist" && uri.host == "reset-password") {
+                recoveryIntentUri.value = uri
             }
         }
     }
 }
 
 @Composable
-private fun MedicalChatbotNavigation() {
+private fun MedicalChatbotNavigation(
+    recoveryUri: android.net.Uri? = null,
+    onRecoveryUriHandled: () -> Unit = {}
+) {
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
-
-    // App-wide language state. Individual screens can read this through
-    // LocalAppLanguageController without changing their existing
-    // navigation/API callbacks.
-    val appLanguage = LocalAppLanguageController.current
 
     val screenStack = remember {
         mutableStateListOf("splash")
@@ -145,8 +166,47 @@ private fun MedicalChatbotNavigation() {
     var biometricError by remember { mutableStateOf("") }
     var selectedMedicine by remember { mutableStateOf<ui.Medicine?>(null) }
     var reminderPrefill by remember { mutableStateOf<MedicineReminder?>(null) }
+    var selectedHistorySessionId by remember { mutableStateOf<String?>(null) }
+    var recoveryAccessToken by remember { mutableStateOf("") }
+    var initialChatQuery by remember { mutableStateOf<String?>(null) }
 
     val currentScreen = screenStack.lastOrNull() ?: "login"
+
+    // Deep Link Recovery Handler
+    androidx.compose.runtime.LaunchedEffect(recoveryUri) {
+        val uri = recoveryUri ?: return@LaunchedEffect
+        // Safe extraction without logging raw sensitive tokens
+        var token = ""
+
+        // Check 1: Query parameters (e.g. ?token=... or ?access_token=...)
+        val queryToken = uri.getQueryParameter("access_token")
+            ?: uri.getQueryParameter("token")
+        if (!queryToken.isNullOrBlank()) {
+            token = queryToken.trim()
+        }
+
+        // Check 2: Fragment / Hash parameters (Supabase Auth default: #access_token=...&type=recovery)
+        if (token.isBlank()) {
+            val fragment = uri.fragment
+            if (!fragment.isNullOrBlank()) {
+                val params = fragment.split("&").associate { segment ->
+                    val parts = segment.split("=", limit = 2)
+                    if (parts.size == 2) parts[0].trim() to parts[1].trim() else "" to ""
+                }
+                val fragToken = params["access_token"] ?: params["token"]
+                if (!fragToken.isNullOrBlank()) {
+                    token = fragToken
+                }
+            }
+        }
+
+        if (token.isNotBlank()) {
+            recoveryAccessToken = token
+            screenStack.clear()
+            screenStack.add("resetPassword")
+        }
+        onRecoveryUriHandled()
+    }
 
     fun go(screen: String) {
         screenStack.add(screen)
@@ -160,7 +220,7 @@ private fun MedicalChatbotNavigation() {
 
     BackHandler(enabled = currentScreen != "login" && currentScreen != "dashboard") {
         when (currentScreen) {
-            "forgotPassword", "register", "biometric" -> {
+            "forgotPassword", "register", "biometric", "resetPassword" -> {
                 screenStack.clear()
                 screenStack.add("login")
             }
@@ -428,6 +488,23 @@ private fun MedicalChatbotNavigation() {
             )
         }
 
+        "resetPassword" -> {
+            ResetPasswordScreen(
+                recoveryToken = recoveryAccessToken,
+                onPasswordResetSuccess = {
+                    recoveryAccessToken = ""
+                    loginError = ""
+                    screenStack.clear()
+                    screenStack.add("login")
+                },
+                onCancel = {
+                    recoveryAccessToken = ""
+                    screenStack.clear()
+                    screenStack.add("login")
+                }
+            )
+        }
+
         "dashboard" -> {
             DashboardScreen(
                 userName = userName,
@@ -437,6 +514,12 @@ private fun MedicalChatbotNavigation() {
                 },
 
                 onChatbotClick = {
+                    initialChatQuery = null
+                    go("chatbot")
+                },
+
+                onSymptomSubmit = { symptomQuery ->
+                    initialChatQuery = symptomQuery
                     go("chatbot")
                 },
 
@@ -462,6 +545,30 @@ private fun MedicalChatbotNavigation() {
 
                 onMedicineReminderClick = {
                     go("medicineReminder")
+                },
+
+                onHealthProfileClick = {
+                    go("healthProfile")
+                },
+
+                onLogoutClick = {
+                    val currentUserId = SupabaseClient.getSavedUser(context)?.id
+                    ChatHistoryRepository.clearActiveSession(context, currentUserId)
+                    SupabaseClient.clearSession(context)
+
+                    setBiometricEnabled(
+                        context,
+                        false
+                    )
+
+                    userName = ""
+                    userEmail = ""
+                    loginError = ""
+                    loginLoading = false
+                    biometricError = ""
+
+                    screenStack.clear()
+                    screenStack.add("login")
                 }
             )
         }
@@ -473,6 +580,10 @@ private fun MedicalChatbotNavigation() {
 
                 onBackClick = {
                     back()
+                },
+
+                onHealthProfileClick = {
+                    go("healthProfile")
                 },
 
                 onSetReminderClick = { name, strength, frequency, duration, instructions, timing, mealTiming, howToTake ->
@@ -516,7 +627,13 @@ private fun MedicalChatbotNavigation() {
 
         "chatbot" -> {
             ChatbotScreen(
+                initialUserQuery = initialChatQuery,
+                onViewTranscript = { targetSessionId ->
+                    selectedHistorySessionId = targetSessionId
+                    go("chatHistory")
+                },
                 onBack = {
+                    initialChatQuery = null
                     back()
                 }
             )
@@ -524,6 +641,7 @@ private fun MedicalChatbotNavigation() {
 
         "chatHistory" -> {
             ChatHistoryScreen(
+                sessionId = selectedHistorySessionId,
                 onBackClick = {
                     back()
                 }
@@ -596,6 +714,17 @@ private fun MedicalChatbotNavigation() {
         "healthTips" -> {
             HealthTipsScreen(
                 onBackClick = {
+                    back()
+                }
+            )
+        }
+
+        "healthProfile" -> {
+            HealthProfileScreen(
+                onBack = {
+                    back()
+                },
+                onContinue = {
                     back()
                 }
             )

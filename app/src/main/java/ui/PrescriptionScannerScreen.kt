@@ -65,11 +65,36 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 import androidx.core.content.ContextCompat
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
+import com.example.ai_based_medical_chatbot.ui.theme.DeepTeal
+import com.example.ai_based_medical_chatbot.ui.theme.DarkTeal
+import com.example.ai_based_medical_chatbot.ui.theme.SageGreen
+import com.example.ai_based_medical_chatbot.ui.theme.Ivory
+import com.example.ai_based_medical_chatbot.ui.theme.Mint
+import com.example.ai_based_medical_chatbot.ui.theme.SoftMint
+import com.example.ai_based_medical_chatbot.ui.theme.CoralAccent
+import com.example.ai_based_medical_chatbot.ui.theme.AppBackground
+import com.example.ai_based_medical_chatbot.ui.theme.AppSurface
+import com.example.ai_based_medical_chatbot.ui.theme.LightGreenBorder
+import com.example.ai_based_medical_chatbot.ui.theme.LightGreenSoft
+import com.example.ai_based_medical_chatbot.ui.theme.LightGreenSurface
+import com.example.ai_based_medical_chatbot.ui.theme.PrimaryTeal
+import com.example.ai_based_medical_chatbot.ui.theme.PrimaryTealDark
+import com.example.ai_based_medical_chatbot.ui.theme.PureWhite
+import com.example.ai_based_medical_chatbot.ui.theme.StatusSuccess
+import com.example.ai_based_medical_chatbot.ui.theme.TextDark
+import com.example.ai_based_medical_chatbot.ui.theme.TextMuted
 
 import com.example.ai_based_medical_chatbot.R
 import com.example.ai_based_medical_chatbot.LocalAppLanguageController
@@ -956,30 +981,30 @@ fun PrescriptionScannerScreen(
     val context = LocalContext.current
     val verificationScope = rememberCoroutineScope()
 
-    val primary = Color(0xFF087EA4)
-    val darkBlue = Color(0xFF123A56)
-    val gray = Color(0xFF71818C)
+    val primary = DeepTeal
+    val darkBlue = DarkTeal
+    val gray = TextMuted
 
-    val backgroundTop = Color(0xFFEAF8FC)
-    val backgroundBottom = Color(0xFFD8F0F6)
+    val backgroundTop = Ivory
+    val backgroundBottom = SoftMint
 
     // Save Prescription fields: keep extracted/editable text clearly visible.
     val reviewFieldColors = TextFieldDefaults.colors(
-        focusedTextColor = darkBlue,
-        unfocusedTextColor = darkBlue,
-        disabledTextColor = darkBlue,
-        focusedLabelColor = primary,
-        unfocusedLabelColor = gray,
-        disabledLabelColor = gray,
-        focusedPlaceholderColor = gray,
-        unfocusedPlaceholderColor = gray,
-        focusedContainerColor = Color.White,
-        unfocusedContainerColor = Color.White,
-        disabledContainerColor = Color.White,
-        cursorColor = primary,
-        focusedIndicatorColor = primary,
-        unfocusedIndicatorColor = gray,
-        disabledIndicatorColor = gray
+        focusedTextColor = TextDark,
+        unfocusedTextColor = TextDark,
+        disabledTextColor = TextDark,
+        focusedLabelColor = DeepTeal,
+        unfocusedLabelColor = TextMuted,
+        disabledLabelColor = TextMuted,
+        focusedPlaceholderColor = TextMuted,
+        unfocusedPlaceholderColor = TextMuted,
+        focusedContainerColor = PureWhite,
+        unfocusedContainerColor = PureWhite,
+        disabledContainerColor = PureWhite,
+        cursorColor = DeepTeal,
+        focusedIndicatorColor = DeepTeal,
+        unfocusedIndicatorColor = Mint,
+        disabledIndicatorColor = Mint.copy(alpha = 0.5f)
     )
 
     var selectedImageUri by remember {
@@ -1149,46 +1174,46 @@ fun PrescriptionScannerScreen(
     val extractedTitle = when (selectedLanguage) {
 
         "मराठी" ->
-            "📝 मिळालेली माहिती"
+            "मिळालेली माहिती"
 
         "हिन्दी" ->
-            "📝 निकाली गई जानकारी"
+            "निकाली गई जानकारी"
 
         else ->
-            "📝 Extracted Information"
+            "Extracted Information"
     }
 
 
     val languageLabel = when (selectedLanguage) {
 
         "मराठी" ->
-            "🌐 परिणामाची भाषा"
+            "परिणामाची भाषा"
 
         "हिन्दी" ->
-            "🌐 परिणाम की भाषा"
+            "परिणाम की भाषा"
 
         else ->
-            "🌐 Result language"
+            "Result language"
     }
 
 
     val warningText = when (selectedLanguage) {
 
         "मराठी" ->
-            "⚠ हस्तलिखित प्रिस्क्रिप्शन OCR द्वारे अचूकपणे वाचले जाऊ शकत नाही. औषधाचे नाव, strength आणि dosage डॉक्टर किंवा फार्मासिस्टकडून नेहमी तपासा."
+            "हस्तलिखित प्रिस्क्रिप्शन OCR द्वारे अचूकपणे वाचले जाऊ शकत नाही. औषधाचे नाव, strength आणि dosage डॉक्टर किंवा फार्मासिस्टकडून नेहमी तपासा."
 
         "हिन्दी" ->
-            "⚠ हस्तलिखित प्रिस्क्रिप्शन को OCR सही तरीके से नहीं पढ़ सकता। दवा का नाम, strength और dosage डॉक्टर या फार्मासिस्ट से हमेशा सत्यापित करें."
+            "हस्तलिखित प्रिस्क्रिप्शन को OCR सही तरीके से नहीं पढ़ सकता। दवा का नाम, strength और dosage डॉक्टर या फार्मासिस्ट से हमेशा सत्यापित करें."
 
         else ->
-            "⚠ Handwritten prescriptions may not be read accurately by OCR. Always verify extracted medicine names, strength and dosage with a doctor or pharmacist."
+            "Handwritten prescriptions may not be read accurately by OCR. Always verify extracted medicine names, strength and dosage with a doctor or pharmacist."
     }
 
 
     val reviewTitle = when (selectedLanguage) {
-        "मराठी" -> "✏️ माहिती तपासा व बदला"
-        "हिन्दी" -> "✏️ जानकारी जाँचें और बदलें"
-        else -> "✏️ Save Prescription"
+        "मराठी" -> "माहिती तपासा व बदला"
+        "हिन्दी" -> "जानकारी जाँचें और बदलें"
+        else -> "Save Prescription"
     }
     val doctorLabel = when (selectedLanguage) {
         "मराठी" -> "डॉक्टरचे नाव"
@@ -1211,9 +1236,9 @@ fun PrescriptionScannerScreen(
         else -> "Diagnosis"
     }
     val medicinesLabel = when (selectedLanguage) {
-        "मराठी" -> "💊 औषधे"
-        "हिन्दी" -> "💊 दवाइयाँ"
-        else -> "💊 Medicines"
+        "मराठी" -> "औषधे"
+        "हिन्दी" -> "दवाइयाँ"
+        else -> "Medicines"
     }
     val medicineNameLabel = when (selectedLanguage) {
         "मराठी" -> "औषधाचे नाव"
@@ -1236,31 +1261,31 @@ fun PrescriptionScannerScreen(
         else -> "+ Add Medicine"
     }
     val savePrescriptionText = when (selectedLanguage) {
-        "मराठी" -> "💾 प्रिस्क्रिप्शन सेव्ह करा"
-        "हिन्दी" -> "💾 प्रिस्क्रिप्शन सेव करें"
-        else -> "💾 Save Prescription"
+        "मराठी" -> "प्रिस्क्रिप्शन सेव्ह करा"
+        "हिन्दी" -> "प्रिस्क्रिप्शन सेव करें"
+        else -> "Save Prescription"
     }
     val summaryTitle = when (selectedLanguage) {
-        "मराठी" -> "📋 प्रिस्क्रिप्शन सारांश"
-        "हिन्दी" -> "📋 प्रिस्क्रिप्शन सारांश"
-        else -> "📋 Prescription Summary"
+        "मराठी" -> "प्रिस्क्रिप्शन सारांश"
+        "हिन्दी" -> "प्रिस्क्रिप्शन सारांश"
+        else -> "Prescription Summary"
     }
     val savedText = when (selectedLanguage) {
-        "मराठी" -> "✓ प्रिस्क्रिप्शन यशस्वीपणे सेव्ह झाले"
-        "हिन्दी" -> "✓ प्रिस्क्रिप्शन सफलतापूर्वक सेव हो गया"
-        else -> "✓ Prescription saved successfully"
+        "मराठी" -> "प्रिस्क्रिप्शन यशस्वीपणे सेव्ह झाले"
+        "हिन्दी" -> "प्रिस्क्रिप्शन सफलतापूर्वक सेव हो गया"
+        else -> "Prescription saved successfully"
     }
     val verifyText = when (selectedLanguage) {
-        "मराठी" -> "⚠ OCR माहिती फक्त reference साठी आहे. औषधाचे नाव, strength आणि dosage डॉक्टर किंवा फार्मासिस्टकडून verify करा."
-        "हिन्दी" -> "⚠ OCR जानकारी केवल reference के लिए है। दवा का नाम, strength और dosage डॉक्टर या फार्मासिस्ट से verify करें."
-        else -> "⚠ OCR information is for reference only. Verify medicine name, strength and dosage with a doctor or pharmacist."
+        "मराठी" -> "OCR माहिती फक्त reference साठी आहे. औषधाचे नाव, strength आणि dosage डॉक्टर किंवा फार्मासिस्टकडून verify करा."
+        "हिन्दी" -> "OCR जानकारी केवल reference के लिए है। दवा का नाम, strength और dosage डॉक्टर या फार्मासिस्ट से verify करें."
+        else -> "OCR information is for reference only. Verify medicine name, strength and dosage with a doctor or pharmacist."
     }
 
 
     val cameraText = when (selectedLanguage) {
-        "मराठी" -> "📷 कॅमेरा"
-        "हिन्दी" -> "📷 कैमरा"
-        else -> "📷 Camera"
+        "मराठी" -> "कॅमेरा"
+        "हिन्दी" -> "कैमरा"
+        else -> "Camera"
     }
 
     val galleryText = when (selectedLanguage) {
@@ -1320,15 +1345,15 @@ fun PrescriptionScannerScreen(
     }
 
     val sharePrescriptionText = when (selectedLanguage) {
-        "मराठी" -> "↗ प्रिस्क्रिप्शन शेअर करा"
-        "हिन्दी" -> "↗ प्रिस्क्रिप्शन शेयर करें"
-        else -> "↗ Share Prescription"
+        "मराठी" -> "प्रिस्क्रिप्शन शेअर करा"
+        "हिन्दी" -> "प्रिस्क्रिप्शन शेयर करें"
+        else -> "Share Prescription"
     }
 
     val prescriptionSummaryText = when (selectedLanguage) {
-        "मराठी" -> "📋 प्रिस्क्रिप्शन सारांश"
-        "हिन्दी" -> "📋 प्रिस्क्रिप्शन सारांश"
-        else -> "📋 Prescription Summary"
+        "मराठी" -> "प्रिस्क्रिप्शन सारांश"
+        "हिन्दी" -> "प्रिस्क्रिप्शन सारांश"
+        else -> "Prescription Summary"
     }
 
     val medicinesText = when (selectedLanguage) {
@@ -2093,29 +2118,26 @@ fun PrescriptionScannerScreen(
 
 
             // =====================================================
-            // BACK BUTTON
+            // BACK BUTTON & TOP BAR
             // =====================================================
 
-            Button(
+            IconButton(
                 onClick = onBackClick,
-                modifier = Modifier.size(48.dp),
-                contentPadding =
-                    PaddingValues(0.dp),
-                shape =
-                    RoundedCornerShape(50.dp),
-                colors =
-                    ButtonDefaults.buttonColors(
-                        containerColor = Color.White,
-                        contentColor = darkBlue
-                    )
+                modifier = Modifier
+                    .size(44.dp)
+                    .background(PureWhite, RoundedCornerShape(12.dp))
+                    .border(BorderStroke(1.dp, Mint), RoundedCornerShape(12.dp)),
+                colors = IconButtonDefaults.iconButtonColors(
+                    containerColor = PureWhite,
+                    contentColor = DarkTeal
+                )
             ) {
-
-                Text(
-                    text = "‹",
-                    fontSize = 32.sp
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "Back",
+                    tint = DarkTeal
                 )
             }
-
 
             // =====================================================
             // HEADER
@@ -2123,24 +2145,21 @@ fun PrescriptionScannerScreen(
 
             Text(
                 text = scannerTitle,
-                color = darkBlue,
+                color = DarkTeal,
                 fontSize = 24.sp,
                 fontWeight = FontWeight.Bold
             )
 
-
             Text(
                 text = scannerDescription,
-                color = gray,
+                color = TextMuted,
                 fontSize = 13.sp,
                 lineHeight = 19.sp
             )
 
-
             Spacer(
                 modifier = Modifier.height(2.dp)
             )
-
 
             // =====================================================
             // SCANNER CARD
@@ -2148,25 +2167,22 @@ fun PrescriptionScannerScreen(
 
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(24.dp),
-                colors =
-                    CardDefaults.cardColors(
-                        containerColor = Color.White
-                    ),
-                elevation =
-                    CardDefaults.cardElevation(
-                        defaultElevation = 5.dp
-                    )
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = PureWhite
+                ),
+                border = BorderStroke(1.dp, Mint),
+                elevation = CardDefaults.cardElevation(
+                    defaultElevation = 2.dp
+                )
             ) {
 
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(20.dp),
-                    horizontalAlignment =
-                        Alignment.CenterHorizontally
+                        .padding(18.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
                 ) {
-
 
                     // =================================================
                     // NO IMAGE
@@ -2176,90 +2192,72 @@ fun PrescriptionScannerScreen(
 
                         Box(
                             modifier = Modifier
-                                .size(76.dp)
+                                .size(72.dp)
                                 .background(
-                                    primary.copy(
-                                        alpha = 0.12f
-                                    ),
-                                    RoundedCornerShape(22.dp)
-                                ),
-                            contentAlignment =
-                                Alignment.Center
+                                    SoftMint,
+                                    RoundedCornerShape(20.dp)
+                                )
+                                .border(BorderStroke(1.dp, Mint), RoundedCornerShape(20.dp)),
+                            contentAlignment = Alignment.Center
                         ) {
-
-                            Text(
-                                text = "📄",
-                                fontSize = 38.sp
+                            Icon(
+                                imageVector = DocumentScannerVectorIcon,
+                                contentDescription = null,
+                                tint = DeepTeal,
+                                modifier = Modifier.size(36.dp)
                             )
                         }
 
-
                         Spacer(
-                            modifier =
-                                Modifier.height(16.dp)
+                            modifier = Modifier.height(14.dp)
                         )
-
 
                         Text(
                             text = scanTitle,
-                            color = darkBlue,
-                            fontSize = 19.sp,
-                            fontWeight =
-                                FontWeight.Bold
+                            color = DarkTeal,
+                            fontSize = 18.sp,
+                            fontWeight = FontWeight.Bold
                         )
-
 
                         Spacer(
-                            modifier =
-                                Modifier.height(7.dp)
+                            modifier = Modifier.height(6.dp)
                         )
-
 
                         Text(
                             text = scanDescription,
-                            color = gray,
-                            fontSize = 12.sp,
+                            color = TextMuted,
+                            fontSize = 13.sp,
                             lineHeight = 18.sp
                         )
 
-
                         Spacer(
-                            modifier =
-                                Modifier.height(18.dp)
+                            modifier = Modifier.height(18.dp)
                         )
 
-
                         Row(
-                            modifier =
-                                Modifier.fillMaxWidth(),
-                            horizontalArrangement =
-                                Arrangement.spacedBy(10.dp)
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
 
                             Button(
                                 onClick = {
                                     openCamera()
                                 },
-                                modifier =
-                                    Modifier.weight(1f),
-                                shape =
-                                    RoundedCornerShape(16.dp),
-                                colors =
-                                    ButtonDefaults.buttonColors(
-                                        containerColor =
-                                            primary
-                                    )
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(48.dp),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = DeepTeal,
+                                    contentColor = PureWhite
+                                )
                             ) {
-
                                 Text(
-                                    text =
-                                        "📷 Camera",
+                                    text = cameraText,
                                     fontSize = 13.sp,
-                                    fontWeight =
-                                        FontWeight.SemiBold
+                                    fontWeight = FontWeight.SemiBold
                                 )
                             }
-
 
                             Button(
                                 onClick = {
@@ -2267,29 +2265,26 @@ fun PrescriptionScannerScreen(
                                         "image/*"
                                     )
                                 },
-                                modifier =
-                                    Modifier.weight(1f),
-                                shape =
-                                    RoundedCornerShape(16.dp),
-                                colors =
-                                    ButtonDefaults.buttonColors(
-                                        containerColor = Color(0xFFEAF5F8),
-                                        contentColor = Color(0xFF176B83)
-                                    )
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(48.dp),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = SoftMint,
+                                    contentColor = DarkTeal
+                                ),
+                                border = BorderStroke(1.dp, Mint)
                             ) {
-
                                 Text(
                                     text = galleryText,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Medium,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
                                     maxLines = 1
                                 )
                             }
                         }
 
-
                     } else {
-
 
                         // =================================================
                         // IMAGE SELECTED
@@ -2297,71 +2292,52 @@ fun PrescriptionScannerScreen(
 
                         Text(
                             text = selectedTitle,
-                            color = darkBlue,
+                            color = DarkTeal,
                             fontSize = 18.sp,
-                            fontWeight =
-                                FontWeight.Bold
+                            fontWeight = FontWeight.Bold
                         )
-
 
                         Spacer(
-                            modifier =
-                                Modifier.height(12.dp)
+                            modifier = Modifier.height(12.dp)
                         )
 
-
-                        PrescriptionImagePreview(
-                            uri =
-                                selectedImageUri,
-                            modifier =
-                                Modifier
-                                    .fillMaxWidth()
-                                    .height(300.dp)
-                                    .background(
-                                        Color(0xFFF5F8FA),
-                                        RoundedCornerShape(18.dp)
-                                    )
-                        )
-
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(300.dp)
+                                .background(
+                                    SoftMint,
+                                    RoundedCornerShape(18.dp)
+                                )
+                                .border(BorderStroke(1.dp, Mint), RoundedCornerShape(18.dp))
+                        ) {
+                            PrescriptionImagePreview(
+                                uri = selectedImageUri,
+                                modifier = Modifier.fillMaxSize()
+                            )
+                        }
 
                         Spacer(
-                            modifier =
-                                Modifier.height(15.dp)
+                            modifier = Modifier.height(15.dp)
                         )
-
 
                         // =================================================
                         // IMAGE BUTTONS
                         // =================================================
 
                         Row(
-                            modifier =
-                                Modifier.fillMaxWidth(),
-                            horizontalArrangement =
-                                Arrangement.spacedBy(10.dp)
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
 
                             Button(
                                 onClick = {
-
-                                    selectedImageUri =
-                                        null
-
-                                    cameraUri =
-                                        null
-
-                                    extractedText =
-                                        ""
-
-                                    translatedText =
-                                        ""
-
-                                    ocrError =
-                                        ""
-
-                                    isProcessing =
-                                        false
-
+                                    selectedImageUri = null
+                                    cameraUri = null
+                                    extractedText = ""
+                                    translatedText = ""
+                                    ocrError = ""
+                                    isProcessing = false
                                     isReviewMode = false
                                     isSaved = false
                                     savedPrescriptionId = ""
@@ -2374,55 +2350,48 @@ fun PrescriptionScannerScreen(
                                     medicineRows = listOf(PrescriptionMedicineDraft())
                                     medicineVerification = emptyMap()
                                 },
-                                modifier =
-                                    Modifier.weight(1f),
-                                shape =
-                                    RoundedCornerShape(16.dp),
-                                colors =
-                                    ButtonDefaults.buttonColors(
-                                        containerColor = Color(0xFFEAF5F8),
-                                        contentColor = Color(0xFF176B83)
-                                    )
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(48.dp),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = SoftMint,
+                                    contentColor = DarkTeal
+                                ),
+                                border = BorderStroke(1.dp, Mint)
                             ) {
-
                                 Text(
                                     text = galleryText,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.Medium,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
                                     maxLines = 1
                                 )
                             }
-
 
                             Button(
                                 onClick = {
                                     openCamera()
                                 },
-                                modifier =
-                                    Modifier.weight(1f),
-                                shape =
-                                    RoundedCornerShape(16.dp),
-                                colors =
-                                    ButtonDefaults.buttonColors(
-                                        containerColor =
-                                            primary
-                                    )
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(48.dp),
+                                shape = RoundedCornerShape(14.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = DeepTeal,
+                                    contentColor = PureWhite
+                                )
                             ) {
-
                                 Text(
-                                    text =
-                                        "📷 $retakeText",
-                                    fontSize = 12.sp
+                                    text = retakeText,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold
                                 )
                             }
                         }
 
-
                         Spacer(
-                            modifier =
-                                Modifier.height(18.dp)
+                            modifier = Modifier.height(18.dp)
                         )
-
 
                         // =================================================
                         // PROCESSING
@@ -2431,27 +2400,21 @@ fun PrescriptionScannerScreen(
                         if (isProcessing) {
 
                             CircularProgressIndicator(
-                                modifier =
-                                    Modifier.size(32.dp),
-                                color = primary
+                                modifier = Modifier.size(32.dp),
+                                color = DeepTeal
                             )
-
 
                             Spacer(
-                                modifier =
-                                    Modifier.height(8.dp)
+                                modifier = Modifier.height(8.dp)
                             )
-
 
                             Text(
                                 text = readingText,
-                                color = darkBlue,
+                                color = DarkTeal,
                                 fontSize = 13.sp,
-                                fontWeight =
-                                    FontWeight.Medium
+                                fontWeight = FontWeight.Medium
                             )
                         }
-
 
                         // =================================================
                         // ERROR
@@ -2460,24 +2423,20 @@ fun PrescriptionScannerScreen(
                         if (ocrError.isNotEmpty()) {
 
                             Spacer(
-                                modifier =
-                                    Modifier.height(8.dp)
+                                modifier = Modifier.height(8.dp)
                             )
 
-
                             Text(
-                                text =
-                                    "⚠ $ocrError",
-                                color =
-                                    Color(0xFFB45309),
+                                text = ocrError,
+                                color = Color(0xFFB45309),
                                 fontSize = 12.sp,
                                 lineHeight = 17.sp
                             )
                         }
 
-
                         // =================================================
                         // RESULT / REVIEW / SUMMARY
+                        // =================================================
 
                         if (!isReviewMode && !isSaved && extractedText.isNotBlank()) {
 
@@ -2492,22 +2451,23 @@ fun PrescriptionScannerScreen(
 
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(22.dp),
+                                shape = RoundedCornerShape(18.dp),
                                 colors = CardDefaults.cardColors(
-                                    containerColor = Color.White
+                                    containerColor = PureWhite
                                 ),
+                                border = BorderStroke(1.dp, Mint),
                                 elevation = CardDefaults.cardElevation(
-                                    defaultElevation = 4.dp
+                                    defaultElevation = 2.dp
                                 )
                             ) {
                                 Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(horizontal = 18.dp, vertical = 20.dp)
+                                        .padding(horizontal = 18.dp, vertical = 18.dp)
                                 ) {
                                     Text(
                                         text = prescriptionSummaryText,
-                                        color = darkBlue,
+                                        color = DarkTeal,
                                         fontSize = 18.sp,
                                         fontWeight = FontWeight.Bold
                                     )
@@ -2515,19 +2475,19 @@ fun PrescriptionScannerScreen(
                                     Spacer(modifier = Modifier.height(14.dp))
 
                                     if (preview.hospitalName.isNotBlank()) {
-                                        SummaryLine(hospitalClinicLabel, preview.hospitalName, darkBlue)
+                                        SummaryLine(hospitalClinicLabel, preview.hospitalName, DarkTeal)
                                     }
                                     if (preview.doctorName.isNotBlank()) {
-                                        SummaryLine(doctorSummaryLabel, preview.doctorName, darkBlue)
+                                        SummaryLine(doctorSummaryLabel, preview.doctorName, DarkTeal)
                                     }
                                     if (preview.patientName.isNotBlank()) {
-                                        SummaryLine(patientSummaryLabel, preview.patientName, darkBlue)
+                                        SummaryLine(patientSummaryLabel, preview.patientName, DarkTeal)
                                     }
                                     if (preview.date.isNotBlank()) {
-                                        SummaryLine(dateLabel, preview.date, darkBlue)
+                                        SummaryLine(dateLabel, preview.date, DarkTeal)
                                     }
                                     if (preview.diagnosis.isNotBlank()) {
-                                        SummaryLine(diagnosisLabel, preview.diagnosis, darkBlue)
+                                        SummaryLine(diagnosisLabel, preview.diagnosis, DarkTeal)
                                     }
 
                                     if (previewMedicines.isNotEmpty()) {
@@ -2535,7 +2495,7 @@ fun PrescriptionScannerScreen(
 
                                         Text(
                                             text = medicinesText,
-                                            color = darkBlue,
+                                            color = DarkTeal,
                                             fontSize = 15.sp,
                                             fontWeight = FontWeight.Bold
                                         )
@@ -2549,8 +2509,9 @@ fun PrescriptionScannerScreen(
                                                     .padding(bottom = 8.dp),
                                                 shape = RoundedCornerShape(14.dp),
                                                 colors = CardDefaults.cardColors(
-                                                    containerColor = Color(0xFFF4F9FB)
-                                                )
+                                                    containerColor = SoftMint
+                                                ),
+                                                border = BorderStroke(1.dp, Mint)
                                             ) {
                                                 Column(
                                                     modifier = Modifier
@@ -2559,7 +2520,7 @@ fun PrescriptionScannerScreen(
                                                 ) {
                                                     Text(
                                                         text = "${index + 1}. ${medicine.medicineName}",
-                                                        color = darkBlue,
+                                                        color = DarkTeal,
                                                         fontSize = 14.sp,
                                                         fontWeight = FontWeight.SemiBold
                                                     )
@@ -2567,42 +2528,42 @@ fun PrescriptionScannerScreen(
                                                     if (medicine.strength.isNotBlank()) {
                                                         Text(
                                                             text = "$strengthLabel: ${medicine.strength}",
-                                                            color = gray,
+                                                            color = TextMuted,
                                                             fontSize = 11.sp
                                                         )
                                                     }
                                                     if (medicine.frequency.isNotBlank()) {
                                                         Text(
                                                             text = "$frequencyLabel: ${medicine.frequency}",
-                                                            color = gray,
+                                                            color = TextMuted,
                                                             fontSize = 11.sp
                                                         )
                                                     }
                                                     if (medicine.timing.isNotBlank()) {
                                                         Text(
                                                             text = "$timeLabel: ${medicine.timing}",
-                                                            color = gray,
+                                                            color = TextMuted,
                                                             fontSize = 11.sp
                                                         )
                                                     }
                                                     if (medicine.mealTiming.isNotBlank()) {
                                                         Text(
                                                             text = "$foodLabel: ${medicine.mealTiming}",
-                                                            color = gray,
+                                                            color = TextMuted,
                                                             fontSize = 11.sp
                                                         )
                                                     }
                                                     if (medicine.duration.isNotBlank()) {
                                                         Text(
                                                             text = "$durationLabel: ${medicine.duration}",
-                                                            color = gray,
+                                                            color = TextMuted,
                                                             fontSize = 11.sp
                                                         )
                                                     }
                                                     if (medicine.howToTake.isNotBlank()) {
                                                         Text(
                                                             text = "$howToTakeLabel: ${medicine.howToTake}",
-                                                            color = gray,
+                                                            color = TextMuted,
                                                             fontSize = 11.sp,
                                                             lineHeight = 16.sp
                                                         )
@@ -2616,24 +2577,27 @@ fun PrescriptionScannerScreen(
 
                                     Text(
                                         text = verifyBeforeSaveText,
-                                        color = gray,
-                                        fontSize = 10.sp,
+                                        color = TextMuted,
+                                        fontSize = 11.sp,
                                         lineHeight = 15.sp
                                     )
 
-                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Spacer(modifier = Modifier.height(14.dp))
 
                                     Button(
                                         onClick = { saveCurrentPrescription() },
-                                        modifier = Modifier.fillMaxWidth(),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(50.dp),
                                         shape = RoundedCornerShape(14.dp),
                                         colors = ButtonDefaults.buttonColors(
-                                            containerColor = primary
+                                            containerColor = DeepTeal,
+                                            contentColor = PureWhite
                                         )
                                     ) {
                                         Text(
                                             text = savePrescriptionText,
-                                            fontSize = 13.sp,
+                                            fontSize = 14.sp,
                                             fontWeight = FontWeight.Bold
                                         )
                                     }
@@ -2645,12 +2609,13 @@ fun PrescriptionScannerScreen(
 
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
-                                shape = RoundedCornerShape(20.dp),
+                                shape = RoundedCornerShape(18.dp),
                                 colors = CardDefaults.cardColors(
-                                    containerColor = Color.White
+                                    containerColor = PureWhite
                                 ),
+                                border = BorderStroke(1.dp, Mint),
                                 elevation = CardDefaults.cardElevation(
-                                    defaultElevation = 4.dp
+                                    defaultElevation = 2.dp
                                 )
                             ) {
                                 Column(
@@ -2660,7 +2625,7 @@ fun PrescriptionScannerScreen(
                                 ) {
                                     Text(
                                         text = savedText,
-                                        color = Color(0xFF18794E),
+                                        color = StatusSuccess,
                                         fontSize = 14.sp,
                                         fontWeight = FontWeight.Bold
                                     )
@@ -2669,7 +2634,7 @@ fun PrescriptionScannerScreen(
 
                                     Text(
                                         text = summaryTitle,
-                                        color = darkBlue,
+                                        color = DarkTeal,
                                         fontSize = 18.sp,
                                         fontWeight = FontWeight.Bold
                                     )
@@ -2679,7 +2644,7 @@ fun PrescriptionScannerScreen(
                                     if (doctorName.isNotBlank()) {
                                         Text(
                                             text = "$doctorLabel: $doctorName",
-                                            color = Color(0xFF263943),
+                                            color = TextDark,
                                             fontSize = 13.sp,
                                             modifier = Modifier.padding(bottom = 6.dp)
                                         )
@@ -2688,7 +2653,7 @@ fun PrescriptionScannerScreen(
                                     if (hospitalName.isNotBlank()) {
                                         Text(
                                             text = "Hospital / Clinic: $hospitalName",
-                                            color = Color(0xFF263943),
+                                            color = TextDark,
                                             fontSize = 13.sp,
                                             modifier = Modifier.padding(bottom = 6.dp)
                                         )
@@ -2697,7 +2662,7 @@ fun PrescriptionScannerScreen(
                                     if (patientName.isNotBlank()) {
                                         Text(
                                             text = "$patientLabel: $patientName",
-                                            color = Color(0xFF263943),
+                                            color = TextDark,
                                             fontSize = 13.sp,
                                             modifier = Modifier.padding(bottom = 6.dp)
                                         )
@@ -2706,7 +2671,7 @@ fun PrescriptionScannerScreen(
                                     if (prescriptionDate.isNotBlank()) {
                                         Text(
                                             text = "$dateLabel: $prescriptionDate",
-                                            color = Color(0xFF263943),
+                                            color = TextDark,
                                             fontSize = 13.sp,
                                             modifier = Modifier.padding(bottom = 6.dp)
                                         )
@@ -2715,7 +2680,7 @@ fun PrescriptionScannerScreen(
                                     if (diagnosis.isNotBlank()) {
                                         Text(
                                             text = "$diagnosisLabel: $diagnosis",
-                                            color = Color(0xFF263943),
+                                            color = TextDark,
                                             fontSize = 13.sp,
                                             modifier = Modifier.padding(bottom = 10.dp)
                                         )
@@ -2723,7 +2688,7 @@ fun PrescriptionScannerScreen(
 
                                     Text(
                                         text = medicinesLabel,
-                                        color = darkBlue,
+                                        color = DarkTeal,
                                         fontSize = 14.sp,
                                         fontWeight = FontWeight.Bold
                                     )
@@ -2746,8 +2711,9 @@ fun PrescriptionScannerScreen(
                                                     .padding(bottom = 8.dp),
                                                 shape = RoundedCornerShape(14.dp),
                                                 colors = CardDefaults.cardColors(
-                                                    containerColor = Color(0xFFF5F9FB)
-                                                )
+                                                    containerColor = SoftMint
+                                                ),
+                                                border = BorderStroke(1.dp, Mint)
                                             ) {
                                                 Column(
                                                     modifier = Modifier
@@ -2756,7 +2722,7 @@ fun PrescriptionScannerScreen(
                                                 ) {
                                                     Text(
                                                         text = "${index + 1}. ${medicine.medicineName.ifBlank { "Medicine" }}",
-                                                        color = darkBlue,
+                                                        color = DarkTeal,
                                                         fontSize = 14.sp,
                                                         fontWeight = FontWeight.SemiBold
                                                     )
@@ -2764,7 +2730,7 @@ fun PrescriptionScannerScreen(
                                                     if (medicine.strength.isNotBlank()) {
                                                         Text(
                                                             text = "$strengthLabel: ${medicine.strength}",
-                                                            color = Color(0xFF263943),
+                                                            color = TextDark,
                                                             fontSize = 12.sp
                                                         )
                                                     }
@@ -2772,7 +2738,7 @@ fun PrescriptionScannerScreen(
                                                     if (medicine.timing.isNotBlank()) {
                                                         Text(
                                                             text = "$timeLabel: ${medicine.timing}",
-                                                            color = Color(0xFF263943),
+                                                            color = TextDark,
                                                             fontSize = 12.sp
                                                         )
                                                     }
@@ -2780,7 +2746,7 @@ fun PrescriptionScannerScreen(
                                                     if (medicine.mealTiming.isNotBlank()) {
                                                         Text(
                                                             text = "$foodLabel: ${medicine.mealTiming}",
-                                                            color = Color(0xFF263943),
+                                                            color = TextDark,
                                                             fontSize = 12.sp
                                                         )
                                                     }
@@ -2788,7 +2754,7 @@ fun PrescriptionScannerScreen(
                                                     if (medicine.duration.isNotBlank()) {
                                                         Text(
                                                             text = "$durationLabel: ${medicine.duration}",
-                                                            color = Color(0xFF263943),
+                                                            color = TextDark,
                                                             fontSize = 12.sp
                                                         )
                                                     }
@@ -2796,14 +2762,14 @@ fun PrescriptionScannerScreen(
                                                     if (medicine.howToTake.isNotBlank()) {
                                                         Text(
                                                             text = "$howToTakeLabel: ${medicine.howToTake}",
-                                                            color = Color(0xFF263943),
+                                                            color = TextDark,
                                                             fontSize = 12.sp,
                                                             lineHeight = 16.sp
                                                         )
                                                     } else if (medicine.instructions.isNotBlank()) {
                                                         Text(
                                                             text = "$instructionsLabel: ${medicine.instructions}",
-                                                            color = Color(0xFF263943),
+                                                            color = TextDark,
                                                             fontSize = 12.sp,
                                                             lineHeight = 16.sp
                                                         )
@@ -2816,24 +2782,27 @@ fun PrescriptionScannerScreen(
 
                                     Text(
                                         text = verifyText,
-                                        color = gray,
+                                        color = TextMuted,
                                         fontSize = 11.sp,
                                         lineHeight = 17.sp
                                     )
 
-                                    Spacer(modifier = Modifier.height(12.dp))
+                                    Spacer(modifier = Modifier.height(14.dp))
 
                                     Button(
                                         onClick = { sharePrescription() },
-                                        modifier = Modifier.fillMaxWidth(),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .height(50.dp),
                                         shape = RoundedCornerShape(14.dp),
                                         colors = ButtonDefaults.buttonColors(
-                                            containerColor = darkBlue
+                                            containerColor = DarkTeal,
+                                            contentColor = PureWhite
                                         )
                                     ) {
                                         Text(
                                             text = sharePrescriptionText,
-                                            fontSize = 13.sp,
+                                            fontSize = 14.sp,
                                             fontWeight = FontWeight.Bold
                                         )
                                     }
@@ -2845,36 +2814,26 @@ fun PrescriptionScannerScreen(
                         // =================================================
 
                         Card(
-                            modifier =
-                                Modifier.fillMaxWidth(),
-                            shape =
-                                RoundedCornerShape(16.dp),
-                            colors =
-                                CardDefaults.cardColors(
-                                    containerColor =
-                                        primary.copy(
-                                            alpha = 0.08f
-                                        )
-                                )
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 10.dp),
+                            shape = RoundedCornerShape(16.dp),
+                            colors = CardDefaults.cardColors(
+                                containerColor = SoftMint
+                            ),
+                            border = BorderStroke(1.dp, Mint)
                         ) {
-
                             Text(
-                                text =
-                                    when (selectedLanguage) {
-
-                                        "मराठी" ->
-                                            "ℹ️ OCR ने मिळालेला मजकूर फक्त reference साठी आहे. औषधाचे नाव, strength आणि dosage स्वतः बदलू नका."
-
-                                        "हिन्दी" ->
-                                            "ℹ️ OCR से निकाला गया टेक्स्ट केवल reference के लिए है। दवा का नाम, strength और dosage स्वयं न बदलें."
-
-                                        else ->
-                                            "ℹ️ OCR extracted text is for reference only. Do not change medicine name, strength or dosage yourself."
-                                    },
-                                modifier =
-                                    Modifier.padding(14.dp),
-                                color =
-                                    darkBlue,
+                                text = when (selectedLanguage) {
+                                    "मराठी" ->
+                                        "ℹ️ OCR ने मिळालेला मजकूर फक्त reference साठी आहे. औषधाचे नाव, strength आणि dosage स्वतः बदलू नका."
+                                    "हिन्दी" ->
+                                        "ℹ️ OCR से निकाला गया टेक्स्ट केवल reference के लिए है। दवा का नाम, strength और dosage स्वयं न बदलें."
+                                    else ->
+                                        "ℹ️ OCR extracted text is for reference only. Do not change medicine name, strength or dosage yourself."
+                                },
+                                modifier = Modifier.padding(14.dp),
+                                color = DarkTeal,
                                 fontSize = 11.sp,
                                 lineHeight = 17.sp
                             )
@@ -2911,7 +2870,7 @@ private fun SummaryLine(
         )
         Text(
             text = value,
-            color = Color(0xFF263943),
+            color = TextDark,
             fontSize = 12.sp,
             lineHeight = 17.sp,
             modifier = Modifier.weight(1f)

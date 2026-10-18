@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -28,6 +29,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -49,14 +52,36 @@ import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButtonDefaults
 import com.example.ai_based_medical_chatbot.LocalAppLanguageController
 import com.example.ai_based_medical_chatbot.appText
+import com.example.ai_based_medical_chatbot.ui.theme.DarkTeal
+import com.example.ai_based_medical_chatbot.ui.theme.DeepTeal
+import com.example.ai_based_medical_chatbot.ui.theme.Ivory
+import com.example.ai_based_medical_chatbot.ui.theme.Mint
+import com.example.ai_based_medical_chatbot.ui.theme.PureWhite
+import com.example.ai_based_medical_chatbot.ui.theme.SageGreen
+import com.example.ai_based_medical_chatbot.ui.theme.SoftMint
+import com.example.ai_based_medical_chatbot.ui.theme.StatusError
+import com.example.ai_based_medical_chatbot.ui.theme.StatusSuccess
+import com.example.ai_based_medical_chatbot.ui.theme.TextDark
+import com.example.ai_based_medical_chatbot.ui.theme.TextMuted
 
 @Composable
 fun SymptomsCheckerScreen(
@@ -66,16 +91,16 @@ fun SymptomsCheckerScreen(
 
     val appLanguageController = LocalAppLanguageController.current
     val selectedLanguage = appLanguageController.selectedLanguage
+    val keyboardController = LocalSoftwareKeyboardController.current
 
     fun t(key: String): String = appText(key, selectedLanguage)
 
-
-    val primary = Color(0xFF087EA4)
-    val darkBlue = Color(0xFF123A56)
-    val gray = Color(0xFF71818C)
-    val backgroundTop = Color(0xFFEAF8FC)
-    val backgroundBottom = Color(0xFFD8F0F6)
-    val softBlue = Color(0xFFE8F7FB)
+    val primary = DeepTeal
+    val darkBlue = DarkTeal
+    val gray = TextMuted
+    val backgroundTop = Ivory
+    val backgroundBottom = SoftMint
+    val softBlue = SoftMint
 
     var allSymptoms by remember { mutableStateOf<List<String>>(emptyList()) }
     var searchQuery by remember { mutableStateOf("") }
@@ -122,7 +147,8 @@ fun SymptomsCheckerScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
-                .navigationBarsPadding(),
+                .navigationBarsPadding()
+                .imePadding(),
             contentPadding = PaddingValues(
                 start = 18.dp,
                 top = 12.dp,
@@ -137,34 +163,40 @@ fun SymptomsCheckerScreen(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    IconButton(onClick = onBackClick) {
-                        Box(
-                            modifier = Modifier
-                                .size(46.dp)
-                                .background(Color.White, CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "‹",
-                                color = darkBlue,
-                                fontSize = 36.sp,
-                                fontWeight = FontWeight.Light
-                            )
-                        }
+                    IconButton(
+                        onClick = onBackClick,
+                        modifier = Modifier
+                            .size(44.dp)
+                            .background(PureWhite, RoundedCornerShape(12.dp))
+                            .border(BorderStroke(1.dp, Mint), RoundedCornerShape(12.dp)),
+                        colors = IconButtonDefaults.iconButtonColors(
+                            containerColor = PureWhite,
+                            contentColor = DarkTeal
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = DarkTeal,
+                            modifier = Modifier.size(24.dp)
+                        )
                     }
 
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(12.dp))
 
-                    Column {
+                    Column(
+                        modifier = Modifier.weight(1f)
+                    ) {
                         Text(
                             text = t("symptoms_checker"),
-                            color = darkBlue,
-                            fontSize = 25.sp,
+                            color = DarkTeal,
+                            fontSize = 22.sp,
                             fontWeight = FontWeight.Bold
                         )
+                        Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = t("symptoms_subtitle"),
-                            color = gray,
+                            color = TextMuted,
                             fontSize = 12.sp
                         )
                     }
@@ -174,9 +206,10 @@ fun SymptomsCheckerScreen(
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(24.dp),
-                    colors = CardDefaults.cardColors(containerColor = primary),
-                    elevation = CardDefaults.cardElevation(7.dp)
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = DarkTeal),
+                    border = BorderStroke(1.dp, Mint.copy(alpha = 0.35f)),
+                    elevation = CardDefaults.cardElevation(2.dp)
                 ) {
                     Row(
                         modifier = Modifier
@@ -188,16 +221,16 @@ fun SymptomsCheckerScreen(
                             modifier = Modifier
                                 .size(56.dp)
                                 .background(
-                                    Color.White.copy(alpha = 0.18f),
-                                    RoundedCornerShape(17.dp)
+                                    PureWhite.copy(alpha = 0.15f),
+                                    RoundedCornerShape(16.dp)
                                 ),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(
-                                text = "+",
-                                color = Color.White,
-                                fontSize = 34.sp,
-                                fontWeight = FontWeight.Light
+                            Icon(
+                                imageVector = StethoscopeVectorIcon,
+                                contentDescription = null,
+                                tint = PureWhite,
+                                modifier = Modifier.size(28.dp)
                             )
                         }
 
@@ -206,14 +239,14 @@ fun SymptomsCheckerScreen(
                         Column {
                             Text(
                                 text = t("symptoms_how_feeling"),
-                                color = Color.White,
+                                color = PureWhite,
                                 fontSize = 18.sp,
                                 fontWeight = FontWeight.Bold
                             )
                             Spacer(modifier = Modifier.height(4.dp))
                             Text(
                                 text = t("symptoms_search_help"),
-                                color = Color.White.copy(alpha = 0.84f),
+                                color = PureWhite.copy(alpha = 0.85f),
                                 fontSize = 12.sp
                             )
                         }
@@ -230,18 +263,27 @@ fun SymptomsCheckerScreen(
                     },
                     modifier = Modifier.fillMaxWidth(),
                     singleLine = true,
+                    keyboardOptions = KeyboardOptions(
+                        imeAction = ImeAction.Search
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onSearch = {
+                            keyboardController?.hide()
+                        }
+                    ),
                     placeholder = {
                         Text(
-                            t("symptoms_search_placeholder"),
-                            color = gray
+                            text = t("symptoms_search_placeholder"),
+                            color = TextMuted,
+                            fontSize = 14.sp
                         )
                     },
                     leadingIcon = {
-                        Text(
-                            text = "⌕",
-                            color = primary,
-                            fontSize = 24.sp,
-                            fontWeight = FontWeight.Bold
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = "Search",
+                            tint = DeepTeal,
+                            modifier = Modifier.size(22.dp)
                         )
                     },
                     trailingIcon = {
@@ -249,23 +291,24 @@ fun SymptomsCheckerScreen(
                             IconButton(
                                 onClick = { searchQuery = "" }
                             ) {
-                                Text(
-                                    text = "×",
-                                    color = gray,
-                                    fontSize = 22.sp
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "Clear",
+                                    tint = TextMuted,
+                                    modifier = Modifier.size(20.dp)
                                 )
                             }
                         }
                     },
-                    shape = RoundedCornerShape(17.dp),
+                    shape = RoundedCornerShape(16.dp),
                     colors = OutlinedTextFieldDefaults.colors(
-                        focusedContainerColor = Color.White,
-                        unfocusedContainerColor = Color.White,
-                        focusedBorderColor = primary,
-                        unfocusedBorderColor = Color(0xFFD7E7EC),
-                        focusedTextColor = darkBlue,
-                        unfocusedTextColor = darkBlue,
-                        cursorColor = primary
+                        focusedContainerColor = PureWhite,
+                        unfocusedContainerColor = PureWhite,
+                        focusedBorderColor = DeepTeal,
+                        unfocusedBorderColor = Mint,
+                        focusedTextColor = TextDark,
+                        unfocusedTextColor = TextDark,
+                        cursorColor = DeepTeal
                     )
                 )
             }
@@ -280,18 +323,31 @@ fun SymptomsCheckerScreen(
                             t("symptoms_all")
                         else
                             t("symptoms_matching"),
-                        color = darkBlue,
-                        fontSize = 19.sp,
+                        color = DarkTeal,
+                        fontSize = 18.sp,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.weight(1f)
                     )
 
-                    Text(
-                        text = "${filteredSymptoms.size} ${t("symptoms_available")}",
-                        color = primary,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold
-                    )
+                    Box(
+                        modifier = Modifier
+                            .background(
+                                SoftMint,
+                                RoundedCornerShape(12.dp)
+                            )
+                            .border(
+                                BorderStroke(1.dp, Mint),
+                                RoundedCornerShape(12.dp)
+                            )
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                    ) {
+                        Text(
+                            text = "${filteredSymptoms.size} ${t("symptoms_available")}",
+                            color = DeepTeal,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold
+                        )
+                    }
                 }
             }
 
@@ -299,8 +355,9 @@ fun SymptomsCheckerScreen(
                 item {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(20.dp),
-                        colors = CardDefaults.cardColors(Color.White)
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = PureWhite),
+                        border = BorderStroke(1.dp, Mint)
                     ) {
                         Column(
                             modifier = Modifier
@@ -310,14 +367,14 @@ fun SymptomsCheckerScreen(
                         ) {
                             Text(
                                 text = t("symptoms_loading"),
-                                color = darkBlue,
+                                color = DarkTeal,
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.SemiBold
                             )
                             Spacer(modifier = Modifier.height(6.dp))
                             Text(
                                 text = t("symptoms_loading_detail"),
-                                color = gray,
+                                color = TextMuted,
                                 fontSize = 11.sp
                             )
                         }
@@ -327,8 +384,9 @@ fun SymptomsCheckerScreen(
                 item {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(20.dp),
-                        colors = CardDefaults.cardColors(Color.White)
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = PureWhite),
+                        border = BorderStroke(1.dp, Mint)
                     ) {
                         Column(
                             modifier = Modifier
@@ -338,14 +396,14 @@ fun SymptomsCheckerScreen(
                         ) {
                             Text(
                                 text = t("symptoms_none"),
-                                color = darkBlue,
+                                color = DarkTeal,
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold
                             )
                             Spacer(modifier = Modifier.height(5.dp))
                             Text(
                                 text = t("symptoms_try_another"),
-                                color = gray,
+                                color = TextMuted,
                                 fontSize = 12.sp
                             )
                         }
@@ -360,19 +418,19 @@ fun SymptomsCheckerScreen(
                     val selected = selectedSymptoms.contains(symptom)
 
                     val containerColor by animateColorAsState(
-                        targetValue = if (selected) primary else Color.White,
+                        targetValue = if (selected) DeepTeal else PureWhite,
                         animationSpec = tween(220),
                         label = "symptom_color"
                     )
 
                     val cardElevation by animateDpAsState(
-                        targetValue = if (selected) 8.dp else 3.dp,
+                        targetValue = if (selected) 4.dp else 1.dp,
                         animationSpec = tween(220),
                         label = "symptom_elevation"
                     )
 
                     val indicatorScale by animateFloatAsState(
-                        targetValue = if (selected) 1.06f else 1f,
+                        targetValue = if (selected) 1.04f else 1f,
                         animationSpec = tween(220),
                         label = "indicator_scale"
                     )
@@ -388,9 +446,13 @@ fun SymptomsCheckerScreen(
                                 }
                                 showResult = false
                             },
-                        shape = RoundedCornerShape(18.dp),
+                        shape = RoundedCornerShape(16.dp),
                         colors = CardDefaults.cardColors(
                             containerColor = containerColor
+                        ),
+                        border = BorderStroke(
+                            1.dp,
+                            if (selected) DarkTeal else Mint
                         ),
                         elevation = CardDefaults.cardElevation(
                             defaultElevation = cardElevation
@@ -400,21 +462,21 @@ fun SymptomsCheckerScreen(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(
-                                    horizontal = 15.dp,
-                                    vertical = 13.dp
+                                    horizontal = 14.dp,
+                                    vertical = 12.dp
                                 ),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Box(
                                 modifier = Modifier
                                     .scale(indicatorScale)
-                                    .size(46.dp)
+                                    .size(42.dp)
                                     .background(
                                         if (selected)
-                                            Color.White.copy(alpha = 0.18f)
+                                            PureWhite.copy(alpha = 0.18f)
                                         else
-                                            softBlue,
-                                        RoundedCornerShape(14.dp)
+                                            SoftMint,
+                                        RoundedCornerShape(12.dp)
                                     ),
                                 contentAlignment = Alignment.Center
                             ) {
@@ -424,17 +486,17 @@ fun SymptomsCheckerScreen(
                                         .firstOrNull()
                                         ?.uppercase()
                                         ?: "+",
-                                    color = if (selected) Color.White else primary,
-                                    fontSize = 17.sp,
+                                    color = if (selected) PureWhite else DeepTeal,
+                                    fontSize = 16.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                             }
 
-                            Spacer(modifier = Modifier.width(13.dp))
+                            Spacer(modifier = Modifier.width(12.dp))
 
                             Text(
                                 text = symptom,
-                                color = if (selected) Color.White else darkBlue,
+                                color = if (selected) PureWhite else DarkTeal,
                                 fontSize = 14.sp,
                                 fontWeight = if (selected)
                                     FontWeight.SemiBold
@@ -452,15 +514,15 @@ fun SymptomsCheckerScreen(
                             ) {
                                 Box(
                                     modifier = Modifier
-                                        .size(28.dp)
-                                        .background(Color.White, CircleShape),
+                                        .size(26.dp)
+                                        .background(PureWhite, CircleShape),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    Text(
-                                        text = "✓",
-                                        color = primary,
-                                        fontSize = 17.sp,
-                                        fontWeight = FontWeight.Bold
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = "Selected",
+                                        tint = DeepTeal,
+                                        modifier = Modifier.size(16.dp)
                                     )
                                 }
                             }
@@ -477,11 +539,12 @@ fun SymptomsCheckerScreen(
                 ) {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(20.dp),
+                        shape = RoundedCornerShape(18.dp),
                         colors = CardDefaults.cardColors(
-                            containerColor = Color.White
+                            containerColor = PureWhite
                         ),
-                        elevation = CardDefaults.cardElevation(3.dp)
+                        border = BorderStroke(1.dp, Mint),
+                        elevation = CardDefaults.cardElevation(2.dp)
                     ) {
                         Column(
                             modifier = Modifier.padding(16.dp)
@@ -491,17 +554,24 @@ fun SymptomsCheckerScreen(
                             ) {
                                 Text(
                                     text = t("symptoms_selected"),
-                                    color = darkBlue,
-                                    fontSize = 16.sp,
+                                    color = DarkTeal,
+                                    fontSize = 15.sp,
                                     fontWeight = FontWeight.Bold,
                                     modifier = Modifier.weight(1f)
                                 )
-                                Text(
-                                    text = "${selectedSymptoms.size}",
-                                    color = primary,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Bold
-                                )
+                                Box(
+                                    modifier = Modifier
+                                        .background(SoftMint, RoundedCornerShape(10.dp))
+                                        .border(BorderStroke(1.dp, Mint), RoundedCornerShape(10.dp))
+                                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = "${selectedSymptoms.size}",
+                                        color = DeepTeal,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
                             }
 
                             Spacer(modifier = Modifier.height(10.dp))
@@ -511,41 +581,51 @@ fun SymptomsCheckerScreen(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(bottom = 6.dp),
-                                    shape = RoundedCornerShape(11.dp),
+                                    shape = RoundedCornerShape(12.dp),
                                     colors = CardDefaults.cardColors(
-                                        containerColor = softBlue
-                                    )
+                                        containerColor = SoftMint
+                                    ),
+                                    border = BorderStroke(1.dp, Mint)
                                 ) {
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .padding(
-                                                horizontal = 11.dp,
-                                                vertical = 9.dp
+                                                horizontal = 12.dp,
+                                                vertical = 8.dp
                                             ),
                                         verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text(
-                                            text = "✓",
-                                            color = primary,
-                                            fontWeight = FontWeight.Bold
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = null,
+                                            tint = DeepTeal,
+                                            modifier = Modifier.size(16.dp)
                                         )
                                         Spacer(modifier = Modifier.width(8.dp))
                                         Text(
                                             text = symptom,
-                                            color = darkBlue,
-                                            fontSize = 12.sp,
+                                            color = DarkTeal,
+                                            fontSize = 13.sp,
+                                            fontWeight = FontWeight.Medium,
                                             modifier = Modifier.weight(1f)
                                         )
-                                        Text(
-                                            text = "×",
-                                            color = gray,
-                                            fontSize = 18.sp,
-                                            modifier = Modifier.clickable {
-                                                selectedSymptoms.remove(symptom)
-                                                showResult = false
-                                            }
-                                        )
+                                        Box(
+                                            modifier = Modifier
+                                                .size(24.dp)
+                                                .clickable {
+                                                    selectedSymptoms.remove(symptom)
+                                                    showResult = false
+                                                },
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = "×",
+                                                color = TextMuted,
+                                                fontSize = 18.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -571,12 +651,14 @@ fun SymptomsCheckerScreen(
                     enabled = selectedSymptoms.isNotEmpty(),
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(56.dp)
+                        .height(52.dp)
                         .scale(resultButtonScale),
-                    shape = RoundedCornerShape(17.dp),
+                    shape = RoundedCornerShape(16.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = primary,
-                        disabledContainerColor = Color(0xFFB7CBD1)
+                        containerColor = DeepTeal,
+                        contentColor = PureWhite,
+                        disabledContainerColor = Mint.copy(alpha = 0.7f),
+                        disabledContentColor = TextMuted
                     )
                 ) {
                     Text(
@@ -584,7 +666,7 @@ fun SymptomsCheckerScreen(
                             t("symptoms_select_two")
                         else
                             t("symptoms_check"),
-                        fontSize = 14.sp,
+                        fontSize = 15.sp,
                         fontWeight = FontWeight.Bold
                     )
                 }
@@ -598,27 +680,28 @@ fun SymptomsCheckerScreen(
                     ) {
                         Card(
                             modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(22.dp),
+                            shape = RoundedCornerShape(20.dp),
                             colors = CardDefaults.cardColors(
-                                containerColor = Color.White
+                                containerColor = PureWhite
                             ),
-                            elevation = CardDefaults.cardElevation(5.dp)
+                            border = BorderStroke(1.dp, Mint),
+                            elevation = CardDefaults.cardElevation(2.dp)
                         ) {
                             Column(
-                                modifier = Modifier.padding(19.dp)
+                                modifier = Modifier.padding(18.dp)
                             ) {
                                 Text(
                                     text = t("symptoms_analysis"),
-                                    color = primary,
-                                    fontSize = 19.sp,
+                                    color = DarkTeal,
+                                    fontSize = 18.sp,
                                     fontWeight = FontWeight.Bold
                                 )
 
-                                Spacer(modifier = Modifier.height(7.dp))
+                                Spacer(modifier = Modifier.height(6.dp))
 
                                 Text(
                                     text = selectedSymptoms.joinToString(", "),
-                                    color = darkBlue,
+                                    color = TextMuted,
                                     fontSize = 12.sp,
                                     lineHeight = 18.sp
                                 )
@@ -628,14 +711,14 @@ fun SymptomsCheckerScreen(
                                 if (selectedSymptoms.size < 2) {
                                     Text(
                                         text = t("symptoms_need_two"),
-                                        color = gray,
+                                        color = TextMuted,
                                         fontSize = 12.sp,
                                         lineHeight = 18.sp
                                     )
                                 } else if (predictions.isEmpty()) {
                                     Text(
                                         text = t("symptoms_no_prediction"),
-                                        color = gray,
+                                        color = TextMuted,
                                         fontSize = 12.sp,
                                         lineHeight = 18.sp
                                     )
@@ -645,12 +728,16 @@ fun SymptomsCheckerScreen(
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .padding(bottom = 8.dp),
-                                            shape = RoundedCornerShape(15.dp),
+                                            shape = RoundedCornerShape(14.dp),
                                             colors = CardDefaults.cardColors(
                                                 containerColor = if (index == 0)
-                                                    softBlue
+                                                    SoftMint
                                                 else
-                                                    Color(0xFFF7FAFB)
+                                                    Ivory
+                                            ),
+                                            border = BorderStroke(
+                                                1.dp,
+                                                if (index == 0) DeepTeal.copy(alpha = 0.35f) else Mint
                                             )
                                         ) {
                                             Column(
@@ -661,28 +748,37 @@ fun SymptomsCheckerScreen(
                                                 ) {
                                                     Text(
                                                         text = "${index + 1}. ${prediction.condition}",
-                                                        color = darkBlue,
+                                                        color = DarkTeal,
                                                         fontSize = 14.sp,
                                                         fontWeight = FontWeight.Bold,
                                                         modifier = Modifier.weight(1f)
                                                     )
-                                                    Text(
-                                                        text = "${prediction.score}%",
-                                                        color = primary,
-                                                        fontSize = 13.sp,
-                                                        fontWeight = FontWeight.Bold
-                                                    )
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .background(
+                                                                if (index == 0) DeepTeal else Mint,
+                                                                RoundedCornerShape(8.dp)
+                                                            )
+                                                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                                                    ) {
+                                                        Text(
+                                                            text = "${prediction.score}%",
+                                                            color = if (index == 0) PureWhite else DarkTeal,
+                                                            fontSize = 12.sp,
+                                                            fontWeight = FontWeight.Bold
+                                                        )
+                                                    }
                                                 }
 
                                                 if (prediction.matchedSymptoms.isNotEmpty()) {
-                                                    Spacer(modifier = Modifier.height(5.dp))
+                                                    Spacer(modifier = Modifier.height(6.dp))
                                                     Text(
                                                         text = "${t("symptoms_matched")}: ${
                                                             prediction.matchedSymptoms.joinToString(
                                                                 ", "
                                                             )
                                                         }",
-                                                        color = gray,
+                                                        color = TextMuted,
                                                         fontSize = 11.sp,
                                                         lineHeight = 16.sp
                                                     )
@@ -691,9 +787,11 @@ fun SymptomsCheckerScreen(
                                         }
                                     }
 
+                                    Spacer(modifier = Modifier.height(4.dp))
+
                                     Text(
                                         text = t("symptoms_ai_disclaimer"),
-                                        color = gray,
+                                        color = TextMuted,
                                         fontSize = 10.sp,
                                         lineHeight = 15.sp
                                     )
@@ -707,15 +805,16 @@ fun SymptomsCheckerScreen(
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(18.dp),
+                    shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(
-                        containerColor = Color.White.copy(alpha = 0.9f)
-                    )
+                        containerColor = SoftMint
+                    ),
+                    border = BorderStroke(1.dp, Mint)
                 ) {
                     Text(
                         text = t("symptoms_medical_disclaimer"),
-                        modifier = Modifier.padding(16.dp),
-                        color = gray,
+                        modifier = Modifier.padding(14.dp),
+                        color = TextMuted,
                         fontSize = 11.sp,
                         lineHeight = 17.sp
                     )

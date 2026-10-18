@@ -84,6 +84,7 @@ object RetrofitClient {
     fun initialize(context: android.content.Context) {
         val app = context.applicationContext ?: context
         appContext = app
+
         val saved = app.getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE)
             .getString(KEY_SERVER_URL, null)?.trim()
         if (!saved.isNullOrBlank()) {

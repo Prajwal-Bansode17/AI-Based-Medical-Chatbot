@@ -1,14 +1,34 @@
 import http.client
 import json
+import logging
 import os
 import re
 import sqlite3
+import sys
 import threading
 import time
 import uuid
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
+
+# Reconfigure console streams to UTF-8 on Windows to safely handle Devanagari (Hindi/Marathi)
+if hasattr(sys.stdout, "reconfigure"):
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="backslashreplace")
+    except Exception:
+        pass
+if hasattr(sys.stderr, "reconfigure"):
+    try:
+        sys.stderr.reconfigure(encoding="utf-8", errors="backslashreplace")
+    except Exception:
+        pass
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+)
+logger = logging.getLogger("medassist_api")
 
 import joblib
 import numpy as np
@@ -530,7 +550,7 @@ def _env_bool(name, default):
 # ---------------------------- Gemini (fallback) ----------------------------
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
 gemini_client = None
 
 if GEMINI_API_KEY:
@@ -558,7 +578,9 @@ OLLAMA_BASE_URL = _normalize_ollama_base_url(
 )
 OLLAMA_MODEL = (os.getenv("OLLAMA_MODEL", "gemma3:latest") or "").strip() or "gemma3:latest"
 OLLAMA_CONNECT_TIMEOUT = _env_float("OLLAMA_CONNECT_TIMEOUT", 3.0)
-OLLAMA_READ_TIMEOUT = _env_float("OLLAMA_READ_TIMEOUT", 45.0)
+# Read timeout tuned to 25s to fit well within Android OkHttpClient's read timeout (90s)
+# while allowing fast failover to Gemini (and offline retrieval) if Ollama is unresponsive.
+OLLAMA_READ_TIMEOUT = _env_float("OLLAMA_READ_TIMEOUT", 25.0)
 OLLAMA_TEMPERATURE = _env_float("OLLAMA_TEMPERATURE", 0.3)
 OLLAMA_NUM_CTX = _env_int("OLLAMA_NUM_CTX", 2048)
 OLLAMA_NUM_PREDICT = _env_int("OLLAMA_NUM_PREDICT", 512)
@@ -606,6 +628,8 @@ def _ollama_request(method, path, payload=None, read_timeout=None):
         response = conn.getresponse()
         status = response.status
         raw = response.read()
+    except TimeoutError as e:
+        raise OllamaError(f"Ollama request timed out after {effective_read_timeout:.1f}s at {OLLAMA_BASE_URL}: {e}") from e
     except (OSError, http.client.HTTPException) as e:
         raise OllamaError(f"cannot reach Ollama at {OLLAMA_BASE_URL}: {e}") from e
     finally:
@@ -672,15 +696,15 @@ def ollama_chat(system_prompt, user_prompt, temperature=None, messages=None):
         data = _ollama_request("POST", "/api/chat", payload)
     except OllamaError as e:
         _ollama_mark_down(str(e))
-        print(f"Ollama error (skipping Ollama for {OLLAMA_RETRY_COOLDOWN:.0f}s):", e)
+        logger.warning("Ollama error (skipping Ollama for %.0fs): %s", OLLAMA_RETRY_COOLDOWN, e)
         if e.status == 404:
-            print(f"Ollama hint: is the model installed? Run: ollama pull {OLLAMA_MODEL}")
+            logger.info("Ollama hint: is the model installed? Run: ollama pull %s", OLLAMA_MODEL)
         return None
 
     message = data.get("message")
     content = message.get("content") if isinstance(message, dict) else None
     if not isinstance(content, str) or not content.strip():
-        print("Ollama returned an empty answer; falling back.")
+        logger.info("Ollama returned an empty answer; falling back.")
         return None
 
     _ollama_mark_up()
@@ -1434,6 +1458,48 @@ SYMPTOM_ALIASES = {
 }
 
 
+_CLAUSE_BREAK_PATTERN = re.compile(
+    r"\b(?:but|par|parantu|pan|pun|pn|lekin|kintu|mag|mg|and|aur|aani|ani|also)\b|[.,;!?|]",
+    re.IGNORECASE,
+)
+
+
+def _is_match_negated(text, start, end):
+    """
+    Checks if a matched symptom keyword or alias in `text` (occurring between
+    indices `start` and `end`) is preceded or followed by a negation qualifier
+    in English, Roman Hindi/Marathi, or Devanagari within the same clause.
+    """
+    prefix = text[:start].strip()
+    prefix_clauses = _CLAUSE_BREAK_PATTERN.split(prefix)
+    immediate_pre = prefix_clauses[-1].strip() if prefix_clauses else ""
+    preceding = " ".join(immediate_pre.split()[-3:]) if immediate_pre else ""
+
+    neg_pre = [
+        r"\b(?:no|not|neither|nor|without|never|don'?t\s+have|do\s+not\s+have|didn'?t\s+have|did\s+not\s+have|haven'?t|have\s+no|has\s+no)\b",
+        r"\b(?:nahi|nahin|nako|nahiye|naslyas)\b",
+        r"(?:\u0928\u093e\u0939\u0940|\u0928\u0939\u0940\u0902|\u0928\u093e|\u0928\u0915\u094b)\b",
+    ]
+    for pat in neg_pre:
+        if re.search(pat, preceding, re.IGNORECASE):
+            return True
+
+    suffix = text[end:].strip()
+    suffix_clauses = _CLAUSE_BREAK_PATTERN.split(suffix)
+    immediate_post = suffix_clauses[0].strip() if suffix_clauses else ""
+    succeeding = " ".join(immediate_post.split()[:3]) if immediate_post else ""
+
+    neg_post = [
+        r"\b(?:nahi|nahin|nahiye|nako|hot\s+nahi|aahe\s+ka\s+nahi)\b",
+        r"(?:\u0928\u093e\u0939\u0940|\u0928\u0939\u0940\u0902|\u0928\u093e|\u0928\u0915\u094b)\b",
+    ]
+    for pat in neg_post:
+        if re.search(pat, succeeding, re.IGNORECASE):
+            return True
+
+    return False
+
+
 def extract_symptoms(text):
     normalized = normalize_text(text)
 
@@ -1451,7 +1517,8 @@ def extract_symptoms(text):
     }
 
     for phrase, canonical in roman_marathi_normalized.items():
-        if re.search(r"(?<!\w)" + re.escape(phrase) + r"(?!\w)", normalized):
+        m = re.search(r"(?<!\w)" + re.escape(phrase) + r"(?!\w)", normalized)
+        if m and not _is_match_negated(normalized, m.start(), m.end()):
             normalized += " " + canonical
 
     detected = []
@@ -1465,7 +1532,13 @@ def extract_symptoms(text):
                 continue
 
             pattern = r"(?<!\w)" + re.escape(alias_normalized) + r"(?!\w)"
-            if re.search(pattern, normalized):
+            has_affirmative_match = False
+            for m in re.finditer(pattern, normalized):
+                if not _is_match_negated(normalized, m.start(), m.end()):
+                    has_affirmative_match = True
+                    break
+
+            if has_affirmative_match:
                 if symptom not in detected:
                     detected.append(symptom)
                 break
@@ -1703,10 +1776,11 @@ def build_multi_symptom_response(symptoms, question_type):
 
 
 DURATION_PATTERNS = [
-    (r"(\d+)\s*(day|days)", "day", "days"),
-    (r"(\d+)\s*(hour|hours)", "hour", "hours"),
-    (r"(\d+)\s*(week|weeks)", "week", "weeks"),
-    (r"(\d+)\s*(month|months)", "month", "months"),
+    (r"(\d+)\s*(?:day|days|din|divas|divasapasun|dina|roj|दिन|दिवस)", "day", "days"),
+    (r"(\d+)\s*(?:hour|hours|ghante|tas|taas|घंटे|तास)", "hour", "hours"),
+    (r"(\d+)\s*(?:week|weeks|hafte|athavda|athavde|हफ्ते|आठवडा|आठवडे)", "week", "weeks"),
+    (r"(\d+)\s*(?:month|months|mahine|mahina|महीने|महिना)", "month", "months"),
+    (r"(?:since|from)\s*(\d+)\s*(?:day|days|din|divas|divasapasun)", "day", "days"),
 ]
 
 
@@ -1714,15 +1788,39 @@ _WORD_NUMBERS = {
     "one": "1", "two": "2", "three": "3", "four": "4", "five": "5",
     "six": "6", "seven": "7", "eight": "8", "nine": "9", "ten": "10",
     "couple of": "2", "a couple of": "2", "few": "3", "a few": "3",
-    "ek": "1", "don": "2", "teen": "3", "char": "4", "do": "2",
+    "ek": "1", "don": "2", "do": "2", "teen": "3", "tin": "3", "char": "4",
+    "chaar": "4", "panch": "5", "paanch": "5",
+    "एक": "1", "दो": "2", "दोन": "2", "तीन": "3", "चार": "4", "पाच": "5",
+}
+
+_DEVANAGARI_DIGITS = {
+    "०": "0", "१": "1", "२": "2", "३": "3", "४": "4",
+    "५": "5", "६": "6", "७": "7", "८": "8", "९": "9",
 }
 
 
 def extract_duration(text):
-    query = normalize_text(text).lower()
+    if not text:
+        return None
+
+    query = str(text).lower()
+    for d, a in _DEVANAGARI_DIGITS.items():
+        query = query.replace(d, a)
 
     for word, num in _WORD_NUMBERS.items():
-        query = re.sub(r"\b" + re.escape(word) + r"\b", num, query)
+        query = re.sub(r"(?<!\w)" + re.escape(word) + r"(?!\w)", num, query)
+
+    # Relative day and morning expressions in English, Hindi, and Marathi
+    if re.search(
+        r"\b(?:yesterday|last\s+night|kal\s+se|kalpasun|kal\s+pasun)\b|कल\s*से|कालपासून|काल\s*पासून",
+        query,
+    ):
+        return "1 day"
+    if re.search(
+        r"\b(?:since|from)?\s*(?:this\s+)?morning\b|आज\s*सकाळपासून|सुबह\s*से|aaj\s*sakali|sakali\s*pasun|subah\s*se",
+        query,
+    ):
+        return "since morning"
 
     for pattern, singular, plural in DURATION_PATTERNS:
         match = re.search(pattern, query)
@@ -1730,11 +1828,6 @@ def extract_duration(text):
             number = match.group(1)
             unit = singular if number == "1" else plural
             return f"{number} {unit}"
-
-    if re.search(r"\b(yesterday|last night)\b", query):
-        return "1 day"
-    if re.search(r"\bsince (this )?morning\b", query):
-        return "since morning"
 
     return None
 
@@ -1954,14 +2047,18 @@ def _find_requested_memory_name(query):
     for symptom, aliases in SYMPTOM_ALIASES.items():
         for alias in [symptom] + aliases:
             alias_normalized = normalize_text(alias)
-            if alias_normalized and alias_normalized in query:
-                return symptom
+            if alias_normalized:
+                pattern = r"(?<!\w)" + re.escape(alias_normalized) + r"(?!\w)"
+                if re.search(pattern, query):
+                    return symptom
 
     for name, aliases in MEASUREMENT_ALIASES.items():
         for alias in aliases:
             alias_normalized = normalize_text(alias)
-            if alias_normalized and alias_normalized in query:
-                return name
+            if alias_normalized:
+                pattern = r"(?<!\w)" + re.escape(alias_normalized) + r"(?!\w)"
+                if re.search(pattern, query):
+                    return name
 
     return None
 
@@ -2213,20 +2310,26 @@ def health():
 
 @app.get("/history/<session_id>")
 def history(session_id):
+    sid = str(session_id or "").strip()
+    if not sid:
+        return jsonify({"status": "error", "message": "session_id is required"}), 400
     return jsonify({
         "status": "success",
-        "session_id": session_id,
-        "history": get_chat_history(session_id, limit=50),
+        "session_id": sid,
+        "history": get_chat_history(sid, limit=50),
     })
 
 
 @app.delete("/history/<session_id>")
 def delete_history(session_id):
-    clear_chat_history(session_id)
+    sid = str(session_id or "").strip()
+    if not sid:
+        return jsonify({"status": "error", "message": "session_id is required"}), 400
+    clear_chat_history(sid)
     return jsonify({
         "status": "success",
         "message": "Chat history cleared",
-        "session_id": session_id,
+        "session_id": sid,
     })
 
 
@@ -2265,20 +2368,26 @@ def chat_history_delete():
 
 @app.get("/memory/<session_id>")
 def memory(session_id):
+    sid = str(session_id or "").strip()
+    if not sid:
+        return jsonify({"status": "error", "message": "session_id is required"}), 400
     return jsonify({
         "status": "success",
-        "session_id": session_id,
-        "memory": get_medical_memory(session_id, limit=100),
+        "session_id": sid,
+        "memory": get_medical_memory(sid, limit=100),
     })
 
 
 @app.delete("/memory/<session_id>")
 def delete_memory(session_id):
-    clear_medical_memory(session_id)
+    sid = str(session_id or "").strip()
+    if not sid:
+        return jsonify({"status": "error", "message": "session_id is required"}), 400
+    clear_medical_memory(sid)
     return jsonify({
         "status": "success",
         "message": "Structured medical memory cleared",
-        "session_id": session_id,
+        "session_id": sid,
     })
 
 

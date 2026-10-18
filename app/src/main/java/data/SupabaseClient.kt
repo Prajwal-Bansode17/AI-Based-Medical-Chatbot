@@ -617,6 +617,249 @@ object SupabaseClient {
     }
 
     /*
+     * Send password reset recovery email via Supabase Auth REST endpoint.
+     */
+    suspend fun sendPasswordResetEmail(
+        email: String,
+        redirectTo: String = "medassist://reset-password"
+    ): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            val cleanEmail = email.trim()
+
+            if (cleanEmail.isBlank()) {
+                return@withContext Result.failure(
+                    Exception("Please enter your email address.")
+                )
+            }
+
+            try {
+                val body = JSONObject().apply {
+                    put("email", cleanEmail)
+                }
+
+                val encodedRedirect = java.net.URLEncoder.encode(redirectTo, "UTF-8")
+                val requestUrl = "$SUPABASE_URL/auth/v1/recover?redirect_to=$encodedRedirect"
+
+                val request = Request.Builder()
+                    .url(requestUrl)
+                    .post(
+                        body.toString().toRequestBody(jsonMediaType)
+                    )
+                    .header("apikey", SUPABASE_KEY)
+                    .header("Authorization", "Bearer $SUPABASE_KEY")
+                    .header("Content-Type", "application/json")
+                    .header("Accept", "application/json")
+                    .build()
+
+                httpClient.newCall(request).execute().use { response ->
+                    val responseText = response.body?.string().orEmpty()
+
+                    if (!response.isSuccessful) {
+                        return@withContext Result.failure(
+                            Exception(
+                                extractAuthError(
+                                    responseText,
+                                    true
+                                )
+                            )
+                        )
+                    }
+
+                    Result.success(Unit)
+                }
+            } catch (e: java.net.SocketTimeoutException) {
+                Result.failure(
+                    Exception("Supabase request timed out. Please check your connection and try again.")
+                )
+            } catch (e: IOException) {
+                Result.failure(
+                    Exception("Unable to connect to Supabase. Please check your internet connection.")
+                )
+            } catch (e: Exception) {
+                Result.failure(
+                    Exception(
+                        e.message?.takeIf { it.isNotBlank() }
+                            ?: "Failed to send password reset email. Please try again."
+                    )
+                )
+            }
+        }
+
+    /*
+     * Fetch user profile using a recovery / access token.
+     */
+    suspend fun getUserWithToken(
+        accessToken: String
+    ): Result<SupabaseUser> =
+        withContext(Dispatchers.IO) {
+            val cleanToken = accessToken.trim()
+            if (cleanToken.isBlank()) {
+                return@withContext Result.failure(
+                    Exception("Invalid or missing session token.")
+                )
+            }
+
+            try {
+                val request = Request.Builder()
+                    .url("$SUPABASE_URL/auth/v1/user")
+                    .get()
+                    .header("apikey", SUPABASE_KEY)
+                    .header("Authorization", "Bearer $cleanToken")
+                    .header("Accept", "application/json")
+                    .build()
+
+                httpClient.newCall(request).execute().use { response ->
+                    val responseText = response.body?.string().orEmpty()
+
+                    if (!response.isSuccessful) {
+                        return@withContext Result.failure(
+                            Exception(
+                                extractAuthError(
+                                    responseText,
+                                    true
+                                )
+                            )
+                        )
+                    }
+
+                    val user = JSONObject(responseText)
+                    val userId = user.optString("id")
+                    if (userId.isBlank()) {
+                        return@withContext Result.failure(
+                            Exception("Unable to retrieve user information from recovery token.")
+                        )
+                    }
+
+                    val userEmail = user.optString("email", "")
+                    val metadata = user.optJSONObject("user_metadata")
+                    val fullName = metadata?.optString("full_name", "") ?: ""
+
+                    Result.success(
+                        SupabaseUser(
+                            id = userId,
+                            email = userEmail,
+                            fullName = fullName
+                        )
+                    )
+                }
+            } catch (e: java.net.SocketTimeoutException) {
+                Result.failure(
+                    Exception("Request timed out. Please check your connection and try again.")
+                )
+            } catch (e: IOException) {
+                Result.failure(
+                    Exception("Unable to connect to Supabase. Please check your internet connection.")
+                )
+            } catch (e: Exception) {
+                Result.failure(
+                    Exception(
+                        e.message?.takeIf { it.isNotBlank() }
+                            ?: "Failed to verify recovery token. The link may have expired."
+                    )
+                )
+            }
+        }
+
+    /*
+     * Reset password using a valid recovery access token (from email link).
+     * Does NOT require the old password.
+     */
+    suspend fun resetPasswordWithToken(
+        accessToken: String,
+        newPassword: String,
+        context: Context? = null
+    ): Result<Unit> =
+        withContext(Dispatchers.IO) {
+            val cleanToken = accessToken.trim()
+
+            if (cleanToken.isBlank()) {
+                return@withContext Result.failure(
+                    Exception("Your recovery token is missing or invalid. Please request a new recovery link.")
+                )
+            }
+
+            if (newPassword.length < 6) {
+                return@withContext Result.failure(
+                    Exception("New password must contain at least 6 characters.")
+                )
+            }
+
+            try {
+                val body = JSONObject().apply {
+                    put("password", newPassword)
+                }
+
+                val request = Request.Builder()
+                    .url("$SUPABASE_URL/auth/v1/user")
+                    .put(
+                        body.toString().toRequestBody(jsonMediaType)
+                    )
+                    .header("apikey", SUPABASE_KEY)
+                    .header("Authorization", "Bearer $cleanToken")
+                    .header("Content-Type", "application/json")
+                    .header("Accept", "application/json")
+                    .build()
+
+                httpClient.newCall(request).execute().use { response ->
+                    val responseText = response.body?.string().orEmpty()
+
+                    if (!response.isSuccessful) {
+                        return@withContext Result.failure(
+                            Exception(
+                                extractAuthError(
+                                    responseText,
+                                    true
+                                )
+                            )
+                        )
+                    }
+
+                    // If context is supplied, also update/save the user profile and session
+                    if (context != null) {
+                        try {
+                            val userJson = JSONObject(responseText)
+                            val userId = userJson.optString("id")
+                            val userEmail = userJson.optString("email")
+                            val metadata = userJson.optJSONObject("user_metadata")
+                            val fullName = metadata?.optString("full_name", "") ?: ""
+
+                            if (userId.isNotBlank()) {
+                                saveUser(
+                                    context = context,
+                                    user = SupabaseUser(
+                                        id = userId,
+                                        email = userEmail,
+                                        fullName = fullName
+                                    ),
+                                    accessToken = cleanToken
+                                )
+                            }
+                        } catch (_: Exception) {
+                            // Non-critical: password was updated successfully regardless
+                        }
+                    }
+
+                    Result.success(Unit)
+                }
+            } catch (e: java.net.SocketTimeoutException) {
+                Result.failure(
+                    Exception("Supabase request timed out. Please check your connection and try again.")
+                )
+            } catch (e: IOException) {
+                Result.failure(
+                    Exception("Unable to connect to Supabase. Please check your internet connection.")
+                )
+            } catch (e: Exception) {
+                Result.failure(
+                    Exception(
+                        e.message?.takeIf { it.isNotBlank() }
+                            ?: "Failed to reset password. Please try again or request a new reset link."
+                    )
+                )
+            }
+        }
+
+    /*
      * Load the authenticated user's profile.
      */
     suspend fun getHealthProfile(

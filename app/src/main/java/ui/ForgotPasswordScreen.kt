@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -29,6 +30,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Email
@@ -53,11 +56,34 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ai_based_medical_chatbot.LocalAppLanguageController
+import com.example.ai_based_medical_chatbot.appText
+import com.example.ai_based_medical_chatbot.ui.theme.DarkTeal
+import com.example.ai_based_medical_chatbot.ui.theme.DeepTeal
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Warning
+import androidx.compose.runtime.rememberCoroutineScope
+import com.example.ai_based_medical_chatbot.data.SupabaseClient
+import com.example.ai_based_medical_chatbot.ui.theme.Ivory
+import com.example.ai_based_medical_chatbot.ui.theme.Mint
+import com.example.ai_based_medical_chatbot.ui.theme.PureWhite
+import com.example.ai_based_medical_chatbot.ui.theme.SageGreen
+import com.example.ai_based_medical_chatbot.ui.theme.SoftMint
+import com.example.ai_based_medical_chatbot.ui.theme.StatusError
+import com.example.ai_based_medical_chatbot.ui.theme.StatusErrorBackground
+import com.example.ai_based_medical_chatbot.ui.theme.StatusErrorBorder
+import com.example.ai_based_medical_chatbot.ui.theme.StatusSuccess
+import com.example.ai_based_medical_chatbot.ui.theme.TextDark
+import com.example.ai_based_medical_chatbot.ui.theme.TextMuted
+import kotlinx.coroutines.launch
 
 @Composable
 fun ForgotPasswordScreen(
@@ -65,11 +91,59 @@ fun ForgotPasswordScreen(
 ) {
     val appLanguageController = LocalAppLanguageController.current
     val selectedLanguage = appLanguageController.selectedLanguage
+    val keyboardController = LocalSoftwareKeyboardController.current
 
     fun t(key: String): String = appText(key, selectedLanguage)
 
+    val scope = rememberCoroutineScope()
+
     var email by remember {
         mutableStateOf("")
+    }
+
+    var isLoading by remember {
+        mutableStateOf(false)
+    }
+
+    var errorMessage by remember {
+        mutableStateOf("")
+    }
+
+    var successMessage by remember {
+        mutableStateOf("")
+    }
+
+    fun performResetPassword() {
+        val cleanEmail = email.trim()
+        if (isLoading) return
+
+        keyboardController?.hide()
+        errorMessage = ""
+        successMessage = ""
+
+        if (cleanEmail.isBlank()) {
+            errorMessage = "Please enter your email address."
+            return
+        }
+
+        if (!android.util.Patterns.EMAIL_ADDRESS.matcher(cleanEmail).matches()) {
+            errorMessage = "Please enter a valid email address (e.g. name@example.com)."
+            return
+        }
+
+        isLoading = true
+        scope.launch {
+            val result = SupabaseClient.sendPasswordResetEmail(cleanEmail)
+            isLoading = false
+            result.onSuccess {
+                successMessage = "A password recovery email has been sent to $cleanEmail. Please check your inbox and spam folder."
+                errorMessage = ""
+            }.onFailure { ex ->
+                errorMessage = ex.message?.takeIf { it.isNotBlank() }
+                    ?: "Failed to send reset email. Please try again."
+                successMessage = ""
+            }
+        }
     }
 
     var showContent by remember {
@@ -83,17 +157,6 @@ fun ForgotPasswordScreen(
     // ============================================================
     // MEDASSIST AI THEME
     // ============================================================
-
-    val backgroundTop = Color(0xFFF7FCFF)
-    val backgroundBottom = Color(0xFFE8F7FA)
-
-    val primaryBlue = Color(0xFF1976D2)
-    val primaryBlueDark = Color(0xFF123A56)
-
-    val teal = Color(0xFF009688)
-
-    val textGray = Color(0xFF71818C)
-    val borderColor = Color(0xFFDDECEF)
 
     val infiniteTransition = rememberInfiniteTransition(
         label = "ForgotPasswordAnimation"
@@ -131,8 +194,9 @@ fun ForgotPasswordScreen(
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        backgroundTop,
-                        backgroundBottom
+                        Ivory,
+                        SoftMint.copy(alpha = 0.5f),
+                        Ivory
                     )
                 )
             )
@@ -151,7 +215,7 @@ fun ForgotPasswordScreen(
                 .scale(glowScale)
                 .clip(CircleShape)
                 .background(
-                    primaryBlue.copy(alpha = 0.055f)
+                    Mint.copy(alpha = 0.35f)
                 )
         )
 
@@ -162,7 +226,7 @@ fun ForgotPasswordScreen(
                 .scale(glowScale)
                 .clip(CircleShape)
                 .background(
-                    teal.copy(alpha = 0.05f)
+                    SoftMint.copy(alpha = 0.60f)
                 )
         )
 
@@ -172,6 +236,7 @@ fun ForgotPasswordScreen(
                 .verticalScroll(
                     rememberScrollState()
                 )
+                .imePadding()
                 .padding(
                     horizontal = 18.dp,
                     vertical = 12.dp
@@ -194,7 +259,7 @@ fun ForgotPasswordScreen(
                 Text(
                     text = t("forgot_back_login"),
                     modifier = Modifier.fillMaxWidth(),
-                    color = primaryBlue,
+                    color = DeepTeal,
                     fontSize = 13.sp,
                     fontWeight = FontWeight.Bold
                 )
@@ -223,14 +288,14 @@ fun ForgotPasswordScreen(
                         .fillMaxWidth()
                         .height(225.dp)
                         .clip(
-                            RoundedCornerShape(30.dp)
+                            RoundedCornerShape(26.dp)
                         )
                         .background(
                             Brush.linearGradient(
                                 colors = listOf(
-                                    primaryBlue,
-                                    Color(0xFF1976B8),
-                                    teal
+                                    DarkTeal,
+                                    DeepTeal,
+                                    SageGreen
                                 )
                             )
                         )
@@ -244,8 +309,8 @@ fun ForgotPasswordScreen(
                             .align(Alignment.TopEnd)
                             .clip(CircleShape)
                             .background(
-                                Color.White.copy(
-                                    alpha = 0.07f
+                                PureWhite.copy(
+                                    alpha = 0.08f
                                 )
                             )
                     )
@@ -256,7 +321,7 @@ fun ForgotPasswordScreen(
                             .align(Alignment.BottomStart)
                             .clip(CircleShape)
                             .background(
-                                Color.White.copy(
+                                PureWhite.copy(
                                     alpha = 0.06f
                                 )
                             )
@@ -285,13 +350,13 @@ fun ForgotPasswordScreen(
                                     .size(36.dp)
                                     .clip(CircleShape)
                                     .background(
-                                        Color.White.copy(
-                                            alpha = 0.15f
+                                        PureWhite.copy(
+                                            alpha = 0.16f
                                         )
                                     )
                                     .border(
                                         width = 1.dp,
-                                        color = Color.White.copy(
+                                        color = PureWhite.copy(
                                             alpha = 0.25f
                                         ),
                                         shape = CircleShape
@@ -302,7 +367,7 @@ fun ForgotPasswordScreen(
 
                                 Text(
                                     text = "✚",
-                                    color = Color.White,
+                                    color = PureWhite,
                                     fontSize = 19.sp,
                                     fontWeight =
                                         FontWeight.Bold
@@ -317,7 +382,7 @@ fun ForgotPasswordScreen(
 
                                 Text(
                                     text = "MEDASSIST",
-                                    color = Color.White,
+                                    color = PureWhite,
                                     fontSize = 19.sp,
                                     fontWeight =
                                         FontWeight.ExtraBold
@@ -325,7 +390,7 @@ fun ForgotPasswordScreen(
 
                                 Text(
                                     text = t("forgot_health_assistant"),
-                                    color = Color(0xFFB9FFF5),
+                                    color = Mint,
                                     fontSize = 7.sp,
                                     fontWeight =
                                         FontWeight.Bold,
@@ -340,7 +405,7 @@ fun ForgotPasswordScreen(
 
                         Text(
                             text = t("forgot_title"),
-                            color = Color.White,
+                            color = PureWhite,
                             fontSize = 14.sp,
                             fontWeight =
                                 FontWeight.Bold
@@ -353,7 +418,7 @@ fun ForgotPasswordScreen(
                         Text(
                             text =
                                 t("forgot_hero_message"),
-                            color = Color.White.copy(
+                            color = PureWhite.copy(
                                 alpha = 0.90f
                             ),
                             fontSize = 11.sp,
@@ -418,19 +483,16 @@ fun ForgotPasswordScreen(
 
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(27.dp),
+                    shape = RoundedCornerShape(20.dp),
                     colors = CardDefaults.cardColors(
-                        containerColor =
-                            Color.White.copy(
-                                alpha = 0.97f
-                            )
+                        containerColor = PureWhite
                     ),
                     elevation = CardDefaults.cardElevation(
-                        defaultElevation = 5.dp
+                        defaultElevation = 2.dp
                     ),
                     border = androidx.compose.foundation.BorderStroke(
                         width = 1.dp,
-                        color = borderColor
+                        color = Mint
                     )
                 ) {
 
@@ -443,10 +505,10 @@ fun ForgotPasswordScreen(
 
                         Text(
                             text = t("forgot_reset_password"),
-                            color = primaryBlueDark,
-                            fontSize = 25.sp,
+                            color = DarkTeal,
+                            fontSize = 22.sp,
                             fontWeight =
-                                FontWeight.ExtraBold
+                                FontWeight.Bold
                         )
 
                         Spacer(
@@ -456,7 +518,7 @@ fun ForgotPasswordScreen(
                         Text(
                             text =
                                 t("forgot_reset_description"),
-                            color = textGray,
+                            color = TextMuted,
                             fontSize = 12.sp,
                             lineHeight = 18.sp
                         )
@@ -473,8 +535,19 @@ fun ForgotPasswordScreen(
                             value = email,
                             onValueChange = {
                                 email = it
+                                if (errorMessage.isNotBlank()) errorMessage = ""
+                                if (successMessage.isNotBlank()) successMessage = ""
                             },
                             modifier = Modifier.fillMaxWidth(),
+                            keyboardOptions = KeyboardOptions(
+                                keyboardType = KeyboardType.Email,
+                                imeAction = ImeAction.Done
+                            ),
+                            keyboardActions = KeyboardActions(
+                                onDone = {
+                                    performResetPassword()
+                                }
+                            ),
                             label = {
                                 Text(
                                     t("forgot_email_label")
@@ -492,7 +565,7 @@ fun ForgotPasswordScreen(
                                     contentDescription =
                                         t("forgot_email_content"),
                                     tint =
-                                        primaryBlue
+                                        DeepTeal
                                 )
                             },
                             singleLine = true,
@@ -501,15 +574,85 @@ fun ForgotPasswordScreen(
                             colors =
                                 OutlinedTextFieldDefaults.colors(
                                     focusedBorderColor =
-                                        primaryBlue,
+                                        DeepTeal,
                                     unfocusedBorderColor =
-                                        borderColor,
+                                        Mint,
                                     focusedLabelColor =
-                                        primaryBlue,
+                                        DeepTeal,
+                                    unfocusedLabelColor =
+                                        TextMuted,
+                                    focusedTextColor =
+                                        TextDark,
+                                    unfocusedTextColor =
+                                        TextDark,
                                     cursorColor =
-                                        primaryBlue
+                                        DeepTeal
                                 )
                         )
+
+                        // Error message banner
+                        if (errorMessage.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = StatusErrorBackground
+                                ),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, StatusErrorBorder)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Warning,
+                                        contentDescription = null,
+                                        tint = StatusError,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = errorMessage,
+                                        color = StatusError,
+                                        fontSize = 12.sp,
+                                        lineHeight = 16.sp
+                                    )
+                                }
+                            }
+                        }
+
+                        // Success message banner
+                        if (successMessage.isNotBlank()) {
+                            Spacer(modifier = Modifier.height(10.dp))
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(12.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = SoftMint
+                                ),
+                                border = androidx.compose.foundation.BorderStroke(1.dp, Mint)
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.CheckCircle,
+                                        contentDescription = null,
+                                        tint = StatusSuccess,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    Text(
+                                        text = successMessage,
+                                        color = DarkTeal,
+                                        fontSize = 12.sp,
+                                        lineHeight = 16.sp
+                                    )
+                                }
+                            }
+                        }
 
                         Spacer(
                             modifier = Modifier.height(17.dp)
@@ -521,47 +664,62 @@ fun ForgotPasswordScreen(
 
                         Button(
                             onClick = {
-                                // Keep existing
-                                // reset-password flow here.
+                                performResetPassword()
                             },
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(54.dp),
-                            enabled = email.isNotBlank(),
+                                .height(52.dp),
+                            enabled = email.isNotBlank() && !isLoading,
                             shape =
                                 RoundedCornerShape(16.dp),
                             colors =
                                 ButtonDefaults.buttonColors(
                                     containerColor =
-                                        primaryBlue,
+                                        DeepTeal,
                                     disabledContainerColor =
-                                        primaryBlue.copy(
+                                        DeepTeal.copy(
                                             alpha = 0.40f
                                         )
                                 )
                         ) {
+                            if (isLoading) {
+                                CircularProgressIndicator(
+                                    color = PureWhite,
+                                    modifier = Modifier.size(22.dp),
+                                    strokeWidth = 2.dp
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "Sending...",
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = PureWhite
+                                )
+                            } else {
+                                Icon(
+                                    imageVector =
+                                        Icons.Default.Lock,
+                                    contentDescription =
+                                        null,
+                                    modifier =
+                                        Modifier.size(18.dp),
+                                    tint = PureWhite
+                                )
 
-                            Icon(
-                                imageVector =
-                                    Icons.Default.Lock,
-                                contentDescription =
-                                    null,
-                                modifier =
-                                    Modifier.size(18.dp)
-                            )
+                                Spacer(
+                                    modifier =
+                                        Modifier.width(8.dp)
+                                )
 
-                            Spacer(
-                                modifier =
-                                    Modifier.width(8.dp)
-                            )
-
-                            Text(
-                                text =
-                                    t("forgot_send_reset"),
-                                fontSize = 15.sp,
-                                fontWeight =
-                                    FontWeight.Bold
-                            )
+                                Text(
+                                    text =
+                                        t("forgot_send_reset"),
+                                    fontSize = 15.sp,
+                                    fontWeight =
+                                        FontWeight.Bold,
+                                    color = PureWhite
+                                )
+                            }
                         }
 
                         Spacer(
@@ -571,8 +729,8 @@ fun ForgotPasswordScreen(
                         Text(
                             text =
                                 t("forgot_reset_note"),
-                            color = textGray,
-                            fontSize = 10.sp,
+                            color = TextMuted,
+                            fontSize = 11.sp,
                             textAlign =
                                 TextAlign.Center,
                             modifier =
@@ -600,16 +758,14 @@ fun ForgotPasswordScreen(
 
                 Box(
                     modifier = Modifier
-                        .size(30.dp)
+                        .size(28.dp)
                         .clip(CircleShape)
                         .background(
-                            Color.White.copy(
-                                alpha = 0.85f
-                            )
+                            SoftMint
                         )
                         .border(
                             1.dp,
-                            borderColor,
+                            Mint,
                             CircleShape
                         ),
                     contentAlignment =
@@ -621,7 +777,7 @@ fun ForgotPasswordScreen(
                             Icons.Default.Lock,
                         contentDescription =
                             t("forgot_secure"),
-                        tint = primaryBlue,
+                        tint = DeepTeal,
                         modifier =
                             Modifier.size(14.dp)
                     )
@@ -634,7 +790,7 @@ fun ForgotPasswordScreen(
                 Text(
                     text =
                         t("forgot_security"),
-                    color = textGray,
+                    color = TextMuted,
                     fontSize = 10.sp
                 )
             }
@@ -670,7 +826,7 @@ private fun ForgotPasswordBot(
                 .background(
                     Brush.radialGradient(
                         colors = listOf(
-                            Color.White.copy(
+                            PureWhite.copy(
                                 alpha = 0.17f
                             ),
                             Color.Transparent
@@ -691,7 +847,7 @@ private fun ForgotPasswordBot(
                     .width(3.dp)
                     .height(12.dp)
                     .background(
-                        Color.White.copy(
+                        PureWhite.copy(
                             alpha = 0.9f
                         )
                     )
@@ -702,7 +858,7 @@ private fun ForgotPasswordBot(
                     .size(8.dp)
                     .clip(CircleShape)
                     .background(
-                        Color(0xFF9CFFF0)
+                        Mint
                     )
             )
 
@@ -724,14 +880,14 @@ private fun ForgotPasswordBot(
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(
-                                Color.White,
-                                Color(0xFFDCEFF8)
+                                PureWhite,
+                                SoftMint
                             )
                         )
                     )
                     .border(
                         width = 2.dp,
-                        color = Color.White.copy(
+                        color = PureWhite.copy(
                             alpha = 0.8f
                         ),
                         shape =
@@ -756,7 +912,7 @@ private fun ForgotPasswordBot(
                                 .size(11.dp)
                                 .clip(CircleShape)
                                 .background(
-                                    Color(0xFF1976D2)
+                                    DarkTeal
                                 )
                         )
 
@@ -765,7 +921,7 @@ private fun ForgotPasswordBot(
                                 .size(11.dp)
                                 .clip(CircleShape)
                                 .background(
-                                    Color(0xFF1976D2)
+                                    DarkTeal
                                 )
                         )
                     }
@@ -782,7 +938,7 @@ private fun ForgotPasswordBot(
                                 RoundedCornerShape(50)
                             )
                             .background(
-                                Color(0xFF009688)
+                                DeepTeal
                             )
                     )
                 }
@@ -796,7 +952,7 @@ private fun ForgotPasswordBot(
                         .size(19.dp)
                         .clip(CircleShape)
                         .background(
-                            Color(0xFF009688)
+                            DeepTeal
                         ),
                     contentAlignment =
                         Alignment.Center
@@ -804,7 +960,7 @@ private fun ForgotPasswordBot(
 
                     Text(
                         text = "+",
-                        color = Color.White,
+                        color = PureWhite,
                         fontSize = 13.sp,
                         fontWeight =
                             FontWeight.Bold
@@ -833,7 +989,7 @@ private fun ForgotPasswordBot(
                         )
                     )
                     .background(
-                        Color.White.copy(
+                        PureWhite.copy(
                             alpha = 0.93f
                         )
                     )
@@ -848,7 +1004,7 @@ private fun ForgotPasswordBot(
                             RoundedCornerShape(50)
                         )
                         .background(
-                            Color(0xFF1976D2)
+                            DarkTeal
                         )
                 )
             }
@@ -872,13 +1028,13 @@ private fun HeroBadge(
                 RoundedCornerShape(50)
             )
             .background(
-                Color.White.copy(
+                PureWhite.copy(
                     alpha = 0.12f
                 )
             )
             .border(
                 width = 1.dp,
-                color = Color.White.copy(
+                color = PureWhite.copy(
                     alpha = 0.18f
                 ),
                 shape =
@@ -892,7 +1048,7 @@ private fun HeroBadge(
 
         Text(
             text = text,
-            color = Color.White.copy(
+            color = PureWhite.copy(
                 alpha = 0.92f
             ),
             fontSize = 7.sp,

@@ -2,6 +2,7 @@ package ui
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -24,7 +25,6 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -49,15 +49,28 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import com.example.ai_based_medical_chatbot.data.SupabaseClient
 import com.example.ai_based_medical_chatbot.data.api.ChatHistoryMessage
 import com.example.ai_based_medical_chatbot.data.api.RetrofitClient
+import com.example.ai_based_medical_chatbot.ui.theme.DarkTeal
+import com.example.ai_based_medical_chatbot.ui.theme.DeepTeal
+import com.example.ai_based_medical_chatbot.ui.theme.Ivory
+import com.example.ai_based_medical_chatbot.ui.theme.Mint
+import com.example.ai_based_medical_chatbot.ui.theme.PureWhite
+import com.example.ai_based_medical_chatbot.ui.theme.SageGreen
+import com.example.ai_based_medical_chatbot.ui.theme.SoftMint
+import com.example.ai_based_medical_chatbot.ui.theme.StatusError
+import com.example.ai_based_medical_chatbot.ui.theme.StatusErrorBackground
+import com.example.ai_based_medical_chatbot.ui.theme.StatusErrorBorder
+import com.example.ai_based_medical_chatbot.ui.theme.TextDark
+import com.example.ai_based_medical_chatbot.ui.theme.TextMuted
 import kotlinx.coroutines.launch
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -103,9 +116,7 @@ fun ChatHistoryScreen(
     // =========================================================
 
     suspend fun loadHistory(sessionToLoad: String = currentTargetSessionId) {
-
         try {
-
             isLoading = true
             errorMessage = ""
 
@@ -124,19 +135,28 @@ fun ChatHistoryScreen(
                 return
             }
 
-            try {
-                val response =
-                    RetrofitClient.apiService.getChatHistory(
-                        resolvedId
+            // Immediately load from local cache if available so UI never hangs in an endless spinner
+            val initialLocal = ChatHistoryRepository.getChats(context)
+                .firstOrNull { it.id == resolvedId }
+            if (initialLocal != null && initialLocal.messages.isNotEmpty()) {
+                history = initialLocal.messages.map { m ->
+                    ChatHistoryMessage(
+                        role = if (m.isUser) "user" else "assistant",
+                        message = m.text
                     )
+                }
+            }
+
+            try {
+                val response = RetrofitClient.apiService.getChatHistory(resolvedId)
 
                 if (response.isSuccessful) {
                     val body = response.body()
                     val remoteHistory = body?.history ?: emptyList()
                     if (remoteHistory.isNotEmpty()) {
                         history = remoteHistory
-                    } else {
-                        // Check local fallback
+                    } else if (history.isEmpty()) {
+                        // Check local fallback if not already loaded
                         val local = ChatHistoryRepository.getChats(context)
                             .firstOrNull { it.id == resolvedId }
                         history = local?.messages?.map { m ->
@@ -146,7 +166,7 @@ fun ChatHistoryScreen(
                             )
                         } ?: emptyList()
                     }
-                } else {
+                } else if (history.isEmpty()) {
                     val local = ChatHistoryRepository.getChats(context)
                         .firstOrNull { it.id == resolvedId }
                     if (local != null && local.messages.isNotEmpty()) {
@@ -157,43 +177,33 @@ fun ChatHistoryScreen(
                             )
                         }
                     } else {
-                        errorMessage =
-                            "Unable to load chat history.\n" +
-                                    "Server error: ${response.code()}"
+                        errorMessage = "Unable to load chat history.\nServer error: ${response.code()}"
                     }
                 }
             } catch (netEx: Exception) {
-                // Offline fallback to local repository
-                val local = ChatHistoryRepository.getChats(context)
-                    .firstOrNull { it.id == resolvedId }
-                if (local != null && local.messages.isNotEmpty()) {
-                    history = local.messages.map { m ->
-                        ChatHistoryMessage(
-                            role = if (m.isUser) "user" else "assistant",
-                            message = m.text
-                        )
+                // If local cache already provided messages, do not display a blocking error
+                if (history.isEmpty()) {
+                    val local = ChatHistoryRepository.getChats(context)
+                        .firstOrNull { it.id == resolvedId }
+                    if (local != null && local.messages.isNotEmpty()) {
+                        history = local.messages.map { m ->
+                            ChatHistoryMessage(
+                                role = if (m.isUser) "user" else "assistant",
+                                message = m.text
+                            )
+                        }
+                    } else {
+                        errorMessage = netEx.message ?: "Unable to load chat history."
                     }
-                } else {
-                    errorMessage =
-                        netEx.message ?: "Unable to load chat history."
                 }
             }
 
         } catch (e: Exception) {
-
-            errorMessage =
-                e.message
-                    ?: "Unable to load chat history."
-
+            errorMessage = e.message ?: "Unable to load chat history."
         } finally {
-
             isLoading = false
         }
     }
-
-    // =========================================================
-    // INITIAL LOAD
-    // =========================================================
 
     LaunchedEffect(Unit) {
         loadHistory()
@@ -204,108 +214,81 @@ fun ChatHistoryScreen(
     // =========================================================
 
     Scaffold(
-
         topBar = {
-
             TopAppBar(
-
                 title = {
-                    Text(
-                        text = "Chat History",
-                        fontWeight = FontWeight.Bold,
-                        color = Color.White
-                    )
-                },
-
-                navigationIcon = {
-
-                    IconButton(
-                        onClick = onBackClick
-                    ) {
-
-                        Icon(
-                            imageVector =
-                                Icons.AutoMirrored.Filled.ArrowBack,
-
-                            contentDescription =
-                                "Back",
-                            tint = Color.White
+                    Column {
+                        Text(
+                            text = "Chat History",
+                            fontWeight = FontWeight.Bold,
+                            color = PureWhite,
+                            fontSize = 18.sp
+                        )
+                        Text(
+                            text = "Consultation transcript",
+                            color = PureWhite.copy(alpha = 0.8f),
+                            fontSize = 11.sp
                         )
                     }
                 },
-
+                navigationIcon = {
+                    IconButton(onClick = onBackClick) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = PureWhite
+                        )
+                    }
+                },
                 actions = {
-
                     if (history.isNotEmpty()) {
-
-                        IconButton(
-
-                            onClick = {
-                                showDeleteDialog = true
-                            }
-
-                        ) {
-
+                        IconButton(onClick = { showDeleteDialog = true }) {
                             Icon(
-                                imageVector =
-                                    Icons.Default.Delete,
-
-                                contentDescription =
-                                    "Clear chat history",
-                                tint = Color.White
+                                imageVector = Icons.Default.Delete,
+                                contentDescription = "Clear chat history",
+                                tint = PureWhite
                             )
                         }
                     }
                 },
-
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = Color(0xFF00897B)
+                    containerColor = DarkTeal
                 )
             )
         }
-
     ) { paddingValues ->
-
         Box(
-
-            modifier =
-                Modifier
-                    .fillMaxSize()
-                    .padding(paddingValues)
-                    .background(Color(0xFFF7FBFB))
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(paddingValues)
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(Ivory, SoftMint)
+                    )
+                )
         ) {
-
             // =================================================
             // LOADING
             // =================================================
-
             if (isLoading) {
-
                 CircularProgressIndicator(
-
-                    modifier =
-                        Modifier.align(
-                            Alignment.Center
-                        ),
-                    color = Color(0xFF00897B)
+                    modifier = Modifier.align(Alignment.Center),
+                    color = DeepTeal
                 )
             }
-
             // =================================================
             // ERROR
             // =================================================
-
             else if (errorMessage.isNotBlank()) {
-
                 Card(
-                    modifier =
-                        Modifier
-                            .align(Alignment.Center)
-                            .padding(horizontal = 24.dp)
-                            .fillMaxWidth(),
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .padding(horizontal = 24.dp)
+                        .fillMaxWidth(),
                     shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFF8F8)),
-                    border = BorderStroke(1.dp, Color(0xFFFFCDD2))
+                    colors = CardDefaults.cardColors(containerColor = PureWhite),
+                    border = BorderStroke(1.dp, StatusErrorBorder),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                 ) {
                     Column(
                         modifier = Modifier
@@ -317,13 +300,14 @@ fun ChatHistoryScreen(
                             modifier = Modifier
                                 .size(56.dp)
                                 .clip(CircleShape)
-                                .background(Color(0xFFFFEBEE)),
+                                .background(StatusErrorBackground)
+                                .border(1.dp, StatusErrorBorder, CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Warning,
                                 contentDescription = null,
-                                tint = Color(0xFFD32F2F),
+                                tint = StatusError,
                                 modifier = Modifier.size(28.dp)
                             )
                         }
@@ -334,7 +318,7 @@ fun ChatHistoryScreen(
                             text = "Connection Issue",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFFB71C1C)
+                            color = TextDark
                         )
 
                         Spacer(modifier = Modifier.height(6.dp))
@@ -342,7 +326,7 @@ fun ChatHistoryScreen(
                         Text(
                             text = errorMessage,
                             style = MaterialTheme.typography.bodyMedium,
-                            color = Color(0xFF5A626A),
+                            color = TextMuted,
                             textAlign = TextAlign.Center
                         )
 
@@ -354,36 +338,34 @@ fun ChatHistoryScreen(
                                     loadHistory()
                                 }
                             },
-                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF00897B)),
+                            colors = ButtonDefaults.buttonColors(containerColor = DeepTeal),
                             shape = RoundedCornerShape(12.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Refresh,
                                 contentDescription = null,
+                                tint = PureWhite,
                                 modifier = Modifier.size(18.dp)
                             )
                             Spacer(modifier = Modifier.width(6.dp))
-                            Text("Retry", fontWeight = FontWeight.SemiBold)
+                            Text("Retry", color = PureWhite, fontWeight = FontWeight.SemiBold)
                         }
                     }
                 }
             }
-
             // =================================================
             // EMPTY
             // =================================================
-
             else if (history.isEmpty()) {
-
                 Card(
-                    modifier =
-                        Modifier
-                            .align(Alignment.Center)
-                            .padding(horizontal = 24.dp)
-                            .fillMaxWidth(),
+                    modifier = Modifier
+                        .align(Alignment.Center)
+                        .padding(horizontal = 24.dp)
+                        .fillMaxWidth(),
                     shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
-                    border = BorderStroke(1.dp, Color(0xFFE0F2F1))
+                    colors = CardDefaults.cardColors(containerColor = PureWhite),
+                    border = BorderStroke(1.dp, Mint),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
                 ) {
                     Column(
                         modifier = Modifier
@@ -395,14 +377,15 @@ fun ChatHistoryScreen(
                             modifier = Modifier
                                 .size(64.dp)
                                 .clip(CircleShape)
-                                .background(Color(0xFFE0F2F1)),
+                                .background(SoftMint)
+                                .border(1.dp, Mint, CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Info,
                                 contentDescription = null,
-                                tint = Color(0xFF00897B),
-                                modifier = Modifier.size(32.dp)
+                                tint = DeepTeal,
+                                modifier = Modifier.size(30.dp)
                             )
                         }
 
@@ -412,7 +395,7 @@ fun ChatHistoryScreen(
                             text = "No Chat History",
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = Color(0xFF1F2937)
+                            color = DarkTeal
                         )
 
                         Spacer(modifier = Modifier.height(8.dp))
@@ -420,38 +403,23 @@ fun ChatHistoryScreen(
                         Text(
                             text = "Your consultations and advice with MedAssist AI will appear here.",
                             style = MaterialTheme.typography.bodyMedium,
-                            color = Color(0xFF6B7280),
+                            color = TextMuted,
                             textAlign = TextAlign.Center
                         )
                     }
                 }
             }
-
             // =================================================
             // HISTORY LIST
             // =================================================
-
             else {
-
                 LazyColumn(
-
-                    modifier =
-                        Modifier.fillMaxSize(),
-
-                    contentPadding =
-                        PaddingValues(16.dp),
-
-                    verticalArrangement =
-                        Arrangement.spacedBy(12.dp)
+                    modifier = Modifier.fillMaxSize(),
+                    contentPadding = PaddingValues(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-
-                    items(
-                        items = history
-                    ) { message ->
-
-                        ChatHistoryItem(
-                            message = message
-                        )
+                    items(items = history) { message ->
+                        ChatHistoryItem(message = message)
                     }
                 }
             }
@@ -459,102 +427,134 @@ fun ChatHistoryScreen(
     }
 
     // =========================================================
-    // DELETE DIALOG
+    // BRANDED DELETE DIALOG
     // =========================================================
-
     if (showDeleteDialog) {
+        Dialog(
+            onDismissRequest = { showDeleteDialog = false }
+        ) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = PureWhite),
+                border = BorderStroke(1.dp, Mint),
+                elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(48.dp)
+                            .background(StatusErrorBackground, CircleShape)
+                            .border(1.dp, StatusErrorBorder, CircleShape),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Delete,
+                            contentDescription = null,
+                            tint = StatusError,
+                            modifier = Modifier.size(24.dp)
+                        )
+                    }
 
-        AlertDialog(
+                    Spacer(modifier = Modifier.height(14.dp))
 
-            onDismissRequest = {
+                    Text(
+                        text = "Clear Chat History?",
+                        color = TextDark,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        textAlign = TextAlign.Center
+                    )
 
-                showDeleteDialog = false
-            },
+                    Spacer(modifier = Modifier.height(6.dp))
 
-            title = {
+                    Text(
+                        text = "Are you sure you want to permanently delete this chat history?",
+                        color = TextMuted,
+                        fontSize = 12.sp,
+                        textAlign = TextAlign.Center
+                    )
 
-                Text(
-                    "Clear Chat History?"
-                )
-            },
+                    Spacer(modifier = Modifier.height(18.dp))
 
-            text = {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Button(
+                            onClick = { showDeleteDialog = false },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = SoftMint),
+                            border = BorderStroke(1.dp, Mint)
+                        ) {
+                            Text(
+                                text = "Cancel",
+                                color = TextDark,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
 
-                Text(
-                    "Are you sure you want to delete your chat history?"
-                )
-            },
+                        Button(
+                            onClick = {
+                                showDeleteDialog = false
 
-            confirmButton = {
-
-                TextButton(
-
-                    onClick = {
-
-                        showDeleteDialog = false
-
-                        scope.launch {
-
-                            try {
-
-                                val sessionToDelete = currentTargetSessionId
-                                if (sessionToDelete.isNotBlank()) {
+                                scope.launch {
                                     try {
-                                        RetrofitClient.apiService.deleteChatHistory(
-                                            sessionToDelete
-                                        )
-                                    } catch (_: Exception) {
-                                        // Ignore remote deletion errors when offline
+                                        val sessionToDelete = currentTargetSessionId
+                                        if (sessionToDelete.isNotBlank()) {
+                                            try {
+                                                RetrofitClient.apiService.deleteChatHistory(sessionToDelete)
+                                            } catch (_: Exception) {
+                                                // Ignore remote deletion errors when offline
+                                            }
+
+                                            ChatHistoryRepository.deleteChat(context, sessionToDelete)
+                                        }
+
+                                        val remainingChats = ChatHistoryRepository.getChats(context)
+                                        val nextSessionId = remainingChats.firstOrNull()?.id ?: ""
+                                        currentTargetSessionId = nextSessionId
+
+                                        if (nextSessionId.isNotBlank()) {
+                                            loadHistory(nextSessionId)
+                                        } else {
+                                            history = emptyList()
+                                            errorMessage = ""
+                                        }
+
+                                    } catch (e: Exception) {
+                                        errorMessage = e.message ?: "Unable to delete chat history."
                                     }
-
-                                    ChatHistoryRepository.deleteChat(
-                                        context,
-                                        sessionToDelete
-                                    )
                                 }
-
-                                val remainingChats = ChatHistoryRepository.getChats(context)
-                                val nextSessionId = remainingChats.firstOrNull()?.id ?: ""
-                                currentTargetSessionId = nextSessionId
-
-                                if (nextSessionId.isNotBlank()) {
-                                    loadHistory(nextSessionId)
-                                } else {
-                                    history = emptyList()
-                                    errorMessage = ""
-                                }
-
-                            } catch (e: Exception) {
-
-                                errorMessage =
-                                    e.message
-                                        ?: "Unable to delete chat history."
-                            }
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(44.dp),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = StatusError)
+                        ) {
+                            Text(
+                                text = "Delete",
+                                color = PureWhite,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
-
-                ) {
-
-                    Text("Delete")
-                }
-            },
-
-            dismissButton = {
-
-                TextButton(
-
-                    onClick = {
-
-                        showDeleteDialog =
-                            false
-                    }
-
-                ) {
-
-                    Text("Cancel")
                 }
             }
-        )
+        }
     }
 }
 
@@ -572,11 +572,11 @@ private fun ChatHistoryItem(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(
-            containerColor = if (isUser) Color(0xFFE0F2F1) else Color.White
+            containerColor = if (isUser) SoftMint else PureWhite
         ),
         border = BorderStroke(
             1.dp,
-            if (isUser) Color(0xFFB2DFDB) else Color(0xFFE5E7EB)
+            if (isUser) Mint else Mint.copy(alpha = 0.6f)
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
     ) {
@@ -590,14 +590,14 @@ private fun ChatHistoryItem(
                     modifier = Modifier
                         .size(8.dp)
                         .clip(CircleShape)
-                        .background(if (isUser) Color(0xFF00796B) else Color(0xFF0288D1))
+                        .background(if (isUser) SageGreen else DeepTeal)
                 )
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     text = if (isUser) "You" else "MEDASSIST AI",
                     fontWeight = FontWeight.Bold,
                     fontSize = 12.sp,
-                    color = if (isUser) Color(0xFF004D40) else Color(0xFF01579B)
+                    color = if (isUser) DarkTeal else DeepTeal
                 )
             }
 
@@ -606,7 +606,7 @@ private fun ChatHistoryItem(
             Text(
                 text = message.message,
                 style = MaterialTheme.typography.bodyMedium,
-                color = Color(0xFF1F2937),
+                color = TextDark,
                 fontSize = 14.sp,
                 lineHeight = 20.sp
             )
@@ -616,7 +616,7 @@ private fun ChatHistoryItem(
                 Text(
                     text = message.createdAt ?: "",
                     fontSize = 11.sp,
-                    color = Color(0xFF9CA3AF)
+                    color = TextMuted
                 )
             }
         }

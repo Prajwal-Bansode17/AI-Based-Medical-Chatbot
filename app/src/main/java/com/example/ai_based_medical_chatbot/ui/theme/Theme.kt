@@ -2,64 +2,46 @@ package com.example.ai_based_medical_chatbot.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 
-private val LightColorScheme = lightColorScheme(
-    primary = MedicalBlue,
+// ============================================================
+// MEDASSIST AI - Material 3 Light Healthcare Theme
+// Approved Palette: Deep Teal + Sage Green + Ivory + Mint + Coral
+// ============================================================
+
+val MedAssistColorScheme = lightColorScheme(
+    primary = DeepTeal,
     onPrimary = PureWhite,
 
-    primaryContainer = MedicalBlueLight,
-    onPrimaryContainer = MedicalTextPrimary,
+    primaryContainer = SoftMint,
+    onPrimaryContainer = DarkTeal,
 
-    secondary = MedicalTeal,
+    secondary = DarkTeal,
     onSecondary = PureWhite,
 
-    secondaryContainer = MedicalTealLight,
-    onSecondaryContainer = MedicalTextPrimary,
+    secondaryContainer = Mint,
+    onSecondaryContainer = DarkTeal,
 
-    background = MedicalBackground,
-    onBackground = MedicalTextPrimary,
+    tertiary = SageGreen,
+    onTertiary = PureWhite,
 
-    surface = MedicalSurface,
-    onSurface = MedicalTextPrimary,
+    background = Ivory,
+    onBackground = TextDark,
 
-    surfaceVariant = MedicalSurfaceVariant,
-    onSurfaceVariant = MedicalTextSecondary,
+    surface = PureWhite,
+    onSurface = TextDark,
 
-    outline = MedicalBorder,
+    surfaceVariant = SoftMint,
+    onSurfaceVariant = TextMuted,
 
-    error = MedicalError,
-    onError = PureWhite
-)
+    outline = Mint,
+    outlineVariant = BorderSubtle,
 
-private val DarkColorScheme = darkColorScheme(
-    primary = MedicalBlueLight,
-    onPrimary = MedicalTextPrimary,
-
-    primaryContainer = MedicalBlueDark,
-    onPrimaryContainer = PureWhite,
-
-    secondary = MedicalTealLight,
-    onSecondary = MedicalTextPrimary,
-
-    secondaryContainer = MedicalTealDark,
-    onSecondaryContainer = PureWhite,
-
-    background = DarkBackground,
-    onBackground = DarkTextPrimary,
-
-    surface = DarkSurface,
-    onSurface = DarkTextPrimary,
-
-    surfaceVariant = DarkSurfaceVariant,
-    onSurfaceVariant = DarkTextSecondary,
-
-    outline = MedicalTextSecondary,
-
-    error = MedicalError,
-    onError = PureWhite
+    error = StatusError,
+    onError = PureWhite,
+    errorContainer = StatusErrorBackground,
+    onErrorContainer = StatusError
 )
 
 @Composable
@@ -68,15 +50,11 @@ fun AIBasedMedicalChatbotTheme(
     dynamicColor: Boolean = false,
     content: @Composable () -> Unit
 ) {
-    val colorScheme = if (darkTheme) {
-        DarkColorScheme
-    } else {
-        LightColorScheme
-    }
-
+    // Consistent bright, clean healthcare experience across all systems
     MaterialTheme(
-        colorScheme = colorScheme,
+        colorScheme = MedAssistColorScheme,
         typography = Typography,
+        shapes = Shapes,
         content = content
     )
 }

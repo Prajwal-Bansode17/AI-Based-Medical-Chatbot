@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -21,6 +22,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.OutlinedTextField
@@ -38,14 +41,43 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ai_based_medical_chatbot.R
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
+import com.example.ai_based_medical_chatbot.ui.theme.DeepTeal
+import com.example.ai_based_medical_chatbot.ui.theme.DarkTeal
+import com.example.ai_based_medical_chatbot.ui.theme.SageGreen
+import com.example.ai_based_medical_chatbot.ui.theme.Ivory
+import com.example.ai_based_medical_chatbot.ui.theme.Mint
+import com.example.ai_based_medical_chatbot.ui.theme.SoftMint
+import com.example.ai_based_medical_chatbot.ui.theme.CoralAccent
+import com.example.ai_based_medical_chatbot.ui.theme.AppBackground
+import com.example.ai_based_medical_chatbot.ui.theme.AppSurface
+import com.example.ai_based_medical_chatbot.ui.theme.LightGreenBorder
+import com.example.ai_based_medical_chatbot.ui.theme.LightGreenSoft
+import com.example.ai_based_medical_chatbot.ui.theme.LightGreenSurface
+import com.example.ai_based_medical_chatbot.ui.theme.PrimaryTeal
+import com.example.ai_based_medical_chatbot.ui.theme.PrimaryTealDark
+import com.example.ai_based_medical_chatbot.ui.theme.PureWhite
+import com.example.ai_based_medical_chatbot.ui.theme.TextDark
+import com.example.ai_based_medical_chatbot.ui.theme.TextMuted
 import com.example.ai_based_medical_chatbot.LocalAppLanguageController
 import com.example.ai_based_medical_chatbot.appText
 
@@ -146,6 +178,7 @@ fun MedicineInfoScreen(
 
     val appLanguageController = LocalAppLanguageController.current
     val selectedLanguage = appLanguageController.selectedLanguage
+    val keyboardController = LocalSoftwareKeyboardController.current
 
     fun t(key: String): String = appText(key, selectedLanguage)
 
@@ -191,9 +224,9 @@ fun MedicineInfoScreen(
         }
     }
 
-    val primary = Color(0xFF087EA4)
-    val darkBlue = Color(0xFF123A56)
-    val gray = Color(0xFF71818C)
+    val primary = DeepTeal
+    val darkBlue = DarkTeal
+    val gray = TextMuted
 
     Box(
         modifier = Modifier
@@ -201,8 +234,8 @@ fun MedicineInfoScreen(
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        Color(0xFFEAF8FC),
-                        Color(0xFFD8F0F6)
+                        Ivory,
+                        SoftMint
                     )
                 )
             )
@@ -212,7 +245,8 @@ fun MedicineInfoScreen(
             modifier = Modifier
                 .fillMaxSize()
                 .statusBarsPadding()
-                .navigationBarsPadding(),
+                .navigationBarsPadding()
+                .imePadding(),
 
             contentPadding = PaddingValues(
                 start = 20.dp,
@@ -222,7 +256,7 @@ fun MedicineInfoScreen(
             ),
 
             verticalArrangement =
-                Arrangement.spacedBy(12.dp)
+                Arrangement.spacedBy(14.dp)
         ) {
 
             // =====================================================
@@ -237,27 +271,21 @@ fun MedicineInfoScreen(
                         Alignment.CenterVertically
                 ) {
 
-                    Box(
+                    IconButton(
+                        onClick = onBackClick,
                         modifier = Modifier
-                            .size(45.dp)
-                            .background(
-                                Color.White,
-                                CircleShape
-                            )
-                            .clickable {
-                                onBackClick()
-                            },
-
-                        contentAlignment =
-                            Alignment.Center
+                            .size(44.dp)
+                            .background(PureWhite, RoundedCornerShape(12.dp))
+                            .border(BorderStroke(1.dp, Mint), RoundedCornerShape(12.dp)),
+                        colors = IconButtonDefaults.iconButtonColors(
+                            containerColor = PureWhite,
+                            contentColor = DarkTeal
+                        )
                     ) {
-
-                        Text(
-                            text = "‹",
-                            color = darkBlue,
-                            fontSize = 36.sp,
-                            fontWeight =
-                                FontWeight.Light
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "Back",
+                            tint = DarkTeal
                         )
                     }
 
@@ -273,7 +301,7 @@ fun MedicineInfoScreen(
                                 "Medicine Information",
 
                             color =
-                                darkBlue,
+                                DarkTeal,
 
                             fontSize =
                                 22.sp,
@@ -292,7 +320,7 @@ fun MedicineInfoScreen(
                                 t("medicine_info_subtitle"),
 
                             color =
-                                gray,
+                                TextMuted,
 
                             fontSize =
                                 12.sp
@@ -312,17 +340,19 @@ fun MedicineInfoScreen(
                         Modifier.fillMaxWidth(),
 
                     shape =
-                        RoundedCornerShape(22.dp),
+                        RoundedCornerShape(18.dp),
 
                     colors =
                         CardDefaults.cardColors(
                             containerColor =
-                                Color.White
+                                PureWhite
                         ),
+
+                    border = BorderStroke(1.dp, Mint),
 
                     elevation =
                         CardDefaults.cardElevation(
-                            defaultElevation = 5.dp
+                            defaultElevation = 2.dp
                         )
                 ) {
 
@@ -338,55 +368,88 @@ fun MedicineInfoScreen(
                         modifier =
                             Modifier
                                 .fillMaxWidth()
-                                .padding(7.dp),
+                                .padding(6.dp),
 
                         singleLine = true,
+
+                        keyboardOptions =
+                            KeyboardOptions(
+                                imeAction =
+                                    ImeAction.Search
+                            ),
+
+                        keyboardActions =
+                            KeyboardActions(
+                                onSearch = {
+                                    keyboardController?.hide()
+                                }
+                            ),
 
                         placeholder = {
 
                             Text(
                                 text =
-                                    t("medicine_search_placeholder")
+                                    t("medicine_search_placeholder"),
+                                color = TextMuted
                             )
                         },
 
                         leadingIcon = {
 
-                            Text(
-                                text = "⌕",
-                                color =
-                                    primary,
-                                fontSize =
-                                    27.sp
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = "Search",
+                                tint = DeepTeal
                             )
                         },
 
+                        trailingIcon = {
+                            if (searchQuery.isNotBlank()) {
+                                IconButton(
+                                    onClick = { searchQuery = "" }
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Clear",
+                                        tint = TextMuted,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+                        },
+
                         shape =
-                            RoundedCornerShape(17.dp),
+                            RoundedCornerShape(14.dp),
 
                         colors =
                             OutlinedTextFieldDefaults.colors(
 
                                 focusedTextColor =
-                                    darkBlue,
+                                    TextDark,
 
                                 unfocusedTextColor =
-                                    darkBlue,
+                                    TextDark,
 
                                 focusedPlaceholderColor =
-                                    gray,
+                                    TextMuted,
 
                                 unfocusedPlaceholderColor =
-                                    gray,
+                                    TextMuted,
 
                                 focusedBorderColor =
-                                    primary,
+                                    DeepTeal,
 
                                 unfocusedBorderColor =
-                                    Color(0xFFD8E5E9),
+                                    Mint,
 
                                 cursorColor =
-                                    primary
+                                    DeepTeal,
+
+                                focusedContainerColor =
+                                    PureWhite,
+
+                                unfocusedContainerColor =
+                                    SoftMint.copy(alpha = 0.25f)
                             )
                     )
                 }
@@ -403,23 +466,25 @@ fun MedicineInfoScreen(
                         Modifier.fillMaxWidth(),
 
                     shape =
-                        RoundedCornerShape(25.dp),
+                        RoundedCornerShape(20.dp),
 
                     colors =
                         CardDefaults.cardColors(
                             containerColor =
-                                primary
+                                DarkTeal
                         ),
+
+                    border = BorderStroke(1.dp, Mint.copy(alpha = 0.4f)),
 
                     elevation =
                         CardDefaults.cardElevation(
-                            defaultElevation = 8.dp
+                            defaultElevation = 2.dp
                         )
                 ) {
 
                     Row(
                         modifier =
-                            Modifier.padding(20.dp),
+                            Modifier.padding(18.dp),
 
                         verticalAlignment =
                             Alignment.CenterVertically
@@ -428,12 +493,12 @@ fun MedicineInfoScreen(
                         Box(
                             modifier =
                                 Modifier
-                                    .size(57.dp)
+                                    .size(54.dp)
                                     .background(
-                                        Color.White.copy(
-                                            alpha = 0.18f
+                                        PureWhite.copy(
+                                            alpha = 0.16f
                                         ),
-                                        RoundedCornerShape(17.dp)
+                                        RoundedCornerShape(16.dp)
                                     ),
 
                             contentAlignment =
@@ -451,7 +516,7 @@ fun MedicineInfoScreen(
                                     "MEDASSIST AI",
 
                                 modifier =
-                                    Modifier.size(42.dp),
+                                    Modifier.size(40.dp),
 
                                 contentScale =
                                     ContentScale.Fit
@@ -470,10 +535,10 @@ fun MedicineInfoScreen(
                                     t("medicine_universal_search"),
 
                                 color =
-                                    Color.White,
+                                    PureWhite,
 
                                 fontSize =
-                                    19.sp,
+                                    18.sp,
 
                                 fontWeight =
                                     FontWeight.Bold
@@ -489,12 +554,15 @@ fun MedicineInfoScreen(
                                     t("medicine_search_database"),
 
                                 color =
-                                    Color.White.copy(
-                                        alpha = 0.82f
+                                    PureWhite.copy(
+                                        alpha = 0.85f
                                     ),
 
                                 fontSize =
-                                    12.sp
+                                    12.sp,
+
+                                lineHeight =
+                                    17.sp
                             )
                         }
                     }
@@ -511,7 +579,7 @@ fun MedicineInfoScreen(
                     modifier =
                         Modifier
                             .fillMaxWidth()
-                            .padding(top = 3.dp)
+                            .padding(top = 2.dp)
                 ) {
 
                     Text(
@@ -523,7 +591,7 @@ fun MedicineInfoScreen(
                             },
 
                         color =
-                            darkBlue,
+                            DarkTeal,
 
                         fontSize =
                             19.sp,
@@ -559,7 +627,7 @@ fun MedicineInfoScreen(
 
                     Text(
                         text = resultText,
-                        color = gray,
+                        color = TextMuted,
                         fontSize = 12.sp
                     )
                 }
@@ -578,13 +646,15 @@ fun MedicineInfoScreen(
                             Modifier.fillMaxWidth(),
 
                         shape =
-                            RoundedCornerShape(20.dp),
+                            RoundedCornerShape(18.dp),
 
                         colors =
                             CardDefaults.cardColors(
                                 containerColor =
-                                    Color.White
-                            )
+                                    PureWhite
+                            ),
+
+                        border = BorderStroke(1.dp, Mint)
                     ) {
 
                         Column(
@@ -602,7 +672,7 @@ fun MedicineInfoScreen(
                                     t("medicine_searching_short"),
 
                                 color =
-                                    primary,
+                                    DeepTeal,
 
                                 fontSize =
                                     15.sp,
@@ -621,7 +691,7 @@ fun MedicineInfoScreen(
                                     t("medicine_finding"),
 
                                 color =
-                                    gray,
+                                    TextMuted,
 
                                 fontSize =
                                     12.sp
@@ -643,13 +713,15 @@ fun MedicineInfoScreen(
                             Modifier.fillMaxWidth(),
 
                         shape =
-                            RoundedCornerShape(20.dp),
+                            RoundedCornerShape(18.dp),
 
                         colors =
                             CardDefaults.cardColors(
                                 containerColor =
-                                    Color.White
-                            )
+                                    PureWhite
+                            ),
+
+                        border = BorderStroke(1.dp, Mint)
                     ) {
 
                         Column(
@@ -666,7 +738,7 @@ fun MedicineInfoScreen(
                                 text = "⌕",
 
                                 color =
-                                    primary,
+                                    DeepTeal,
 
                                 fontSize =
                                     35.sp
@@ -682,7 +754,7 @@ fun MedicineInfoScreen(
                                     t("medicine_none"),
 
                                 color =
-                                    darkBlue,
+                                    DarkTeal,
 
                                 fontSize =
                                     16.sp,
@@ -701,7 +773,7 @@ fun MedicineInfoScreen(
                                     t("medicine_try_another"),
 
                                 color =
-                                    gray,
+                                    TextMuted,
 
                                 fontSize =
                                     12.sp
@@ -741,15 +813,15 @@ fun MedicineInfoScreen(
                         Modifier.fillMaxWidth(),
 
                     shape =
-                        RoundedCornerShape(18.dp),
+                        RoundedCornerShape(16.dp),
 
                     colors =
                         CardDefaults.cardColors(
                             containerColor =
-                                Color.White.copy(
-                                    alpha = 0.88f
-                                )
-                        )
+                                SoftMint
+                        ),
+
+                    border = BorderStroke(1.dp, Mint)
                 ) {
 
                     Text(
@@ -757,10 +829,10 @@ fun MedicineInfoScreen(
                             t("medicine_disclaimer"),
 
                         modifier =
-                            Modifier.padding(16.dp),
+                            Modifier.padding(14.dp),
 
                         color =
-                            gray,
+                            DarkTeal,
 
                         fontSize =
                             11.sp,
@@ -784,15 +856,6 @@ private fun MedicineCard(
     onClick: () -> Unit
 ) {
 
-    val primary =
-        Color(0xFF087EA4)
-
-    val darkBlue =
-        Color(0xFF123A56)
-
-    val gray =
-        Color(0xFF71818C)
-
     Card(
         modifier =
             Modifier
@@ -802,17 +865,19 @@ private fun MedicineCard(
                 },
 
         shape =
-            RoundedCornerShape(20.dp),
+            RoundedCornerShape(18.dp),
 
         colors =
             CardDefaults.cardColors(
                 containerColor =
-                    Color.White
+                    PureWhite
             ),
+
+        border = BorderStroke(1.dp, Mint),
 
         elevation =
             CardDefaults.cardElevation(
-                defaultElevation = 5.dp
+                defaultElevation = 2.dp
             )
     ) {
 
@@ -820,7 +885,7 @@ private fun MedicineCard(
             modifier =
                 Modifier
                     .fillMaxWidth()
-                    .padding(17.dp),
+                    .padding(15.dp),
 
             verticalAlignment =
                 Alignment.CenterVertically
@@ -829,33 +894,27 @@ private fun MedicineCard(
             Box(
                 modifier =
                     Modifier
-                        .size(52.dp)
+                        .size(46.dp)
                         .background(
-                            Color(0xFFE8F7FB),
-                            RoundedCornerShape(16.dp)
-                        ),
+                            SoftMint,
+                            RoundedCornerShape(14.dp)
+                        )
+                        .border(BorderStroke(1.dp, Mint), RoundedCornerShape(14.dp)),
 
                 contentAlignment =
                     Alignment.Center
             ) {
-
-                Text(
-                    text = "✚",
-
-                    color =
-                        primary,
-
-                    fontSize =
-                        22.sp,
-
-                    fontWeight =
-                        FontWeight.Bold
+                Icon(
+                    imageVector = PillVectorIcon,
+                    contentDescription = "Medicine",
+                    tint = DeepTeal,
+                    modifier = Modifier.size(22.dp)
                 )
             }
 
             Spacer(
                 modifier =
-                    Modifier.width(14.dp)
+                    Modifier.width(13.dp)
             )
 
             Column(
@@ -868,10 +927,10 @@ private fun MedicineCard(
                         medicine.name,
 
                     color =
-                        darkBlue,
+                        DarkTeal,
 
                     fontSize =
-                        16.sp,
+                        15.sp,
 
                     fontWeight =
                         FontWeight.Bold,
@@ -881,7 +940,7 @@ private fun MedicineCard(
 
                 Spacer(
                     modifier =
-                        Modifier.height(4.dp)
+                        Modifier.height(3.dp)
                 )
 
                 Text(
@@ -889,7 +948,7 @@ private fun MedicineCard(
                         medicine.category,
 
                     color =
-                        gray,
+                        TextMuted,
 
                     fontSize =
                         12.sp,
@@ -898,14 +957,11 @@ private fun MedicineCard(
                 )
             }
 
-            Text(
-                text = "›",
-
-                color =
-                    primary,
-
-                fontSize =
-                    30.sp
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = DeepTeal,
+                modifier = Modifier.size(24.dp)
             )
         }
     }

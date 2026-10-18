@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -17,6 +18,8 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -40,26 +43,37 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.compose.foundation.text.KeyboardOptions
-import com.example.ai_based_medical_chatbot.ui.theme.MedicalBackground
-import com.example.ai_based_medical_chatbot.ui.theme.MedicalBlue
-import com.example.ai_based_medical_chatbot.ui.theme.MedicalBlueDark
-import com.example.ai_based_medical_chatbot.ui.theme.MedicalSurface
-import com.example.ai_based_medical_chatbot.ui.theme.MedicalSurfaceVariant
-import com.example.ai_based_medical_chatbot.ui.theme.MedicalTeal
-import com.example.ai_based_medical_chatbot.ui.theme.MedicalTextPrimary
-import com.example.ai_based_medical_chatbot.ui.theme.MedicalTextSecondary
-import com.example.ai_based_medical_chatbot.ui.theme.PureWhite
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
+import androidx.compose.material3.IconButtonDefaults
+import androidx.compose.material3.RadioButtonDefaults
 import com.example.ai_based_medical_chatbot.LocalAppLanguageController
 import com.example.ai_based_medical_chatbot.appText
+import com.example.ai_based_medical_chatbot.ui.theme.DarkTeal
+import com.example.ai_based_medical_chatbot.ui.theme.DeepTeal
+import com.example.ai_based_medical_chatbot.ui.theme.Ivory
+import com.example.ai_based_medical_chatbot.ui.theme.Mint
+import com.example.ai_based_medical_chatbot.ui.theme.PureWhite
+import com.example.ai_based_medical_chatbot.ui.theme.SageGreen
+import com.example.ai_based_medical_chatbot.ui.theme.SoftMint
+import com.example.ai_based_medical_chatbot.ui.theme.StatusError
+import com.example.ai_based_medical_chatbot.ui.theme.StatusErrorBackground
+import com.example.ai_based_medical_chatbot.ui.theme.StatusErrorBorder
+import com.example.ai_based_medical_chatbot.ui.theme.StatusSuccess
+import com.example.ai_based_medical_chatbot.ui.theme.StatusWarning
+import com.example.ai_based_medical_chatbot.ui.theme.TextDark
+import com.example.ai_based_medical_chatbot.ui.theme.TextMuted
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Locale
@@ -115,6 +129,37 @@ fun BMICheckerScreen(
             ""
         }
 
+    val weightFocusRequester = remember {
+        FocusRequester()
+    }
+
+    val calculateAndUpdateBmi: () -> Unit = {
+        val finalHeight = height.toFloatOrNull()
+        val finalWeight = weight.toFloatOrNull()
+
+        validationMessage = when {
+            dateOfBirth.length != 10 -> t("bmi_validation_dob")
+            parseDateOfBirth(dateOfBirth) == null -> t("bmi_validation_dob_invalid")
+            calculatedAge <= 0 -> t("bmi_validation_dob_invalid")
+            calculatedAge > 120 -> t("bmi_validation_age")
+            gender.isBlank() -> t("bmi_validation_gender")
+            finalHeight == null || finalHeight !in 50f..250f -> t("bmi_validation_height")
+            finalWeight == null || finalWeight !in 2f..300f -> t("bmi_validation_weight")
+            else -> ""
+        }
+
+        if (validationMessage.isBlank() && finalHeight != null && finalWeight != null) {
+            BMIRepository.saveBMIData(
+                context = context,
+                heightCm = finalHeight,
+                weightKg = finalWeight,
+                dateOfBirth = dateOfBirth,
+                gender = gender
+            )
+            saved = true
+        }
+    }
+
     // =========================================================
     // BMI
     // =========================================================
@@ -169,19 +214,19 @@ fun BMICheckerScreen(
         when {
 
             liveBmi <= 0f ->
-                MedicalTextSecondary
+                TextMuted
 
             liveBmi < 18.5f ->
-                Color(0xFF1976D2)
+                SageGreen
 
             liveBmi < 25f ->
-                Color(0xFF16805C)
+                StatusSuccess
 
             liveBmi < 30f ->
-                Color(0xFFE28A00)
+                StatusWarning
 
             else ->
-                Color(0xFFD64545)
+                StatusError
         }
 
     // =========================================================
@@ -252,9 +297,8 @@ fun BMICheckerScreen(
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        Color(0xFFF8FCFF),
-                        MedicalBackground,
-                        Color(0xFFF1FAFC)
+                        Ivory,
+                        SoftMint
                     )
                 )
             )
@@ -268,9 +312,10 @@ fun BMICheckerScreen(
                 .verticalScroll(
                     rememberScrollState()
                 )
+                .imePadding()
                 .padding(
                     horizontal = 20.dp,
-                    vertical = 12.dp
+                    vertical = 14.dp
                 )
         ) {
 
@@ -284,20 +329,28 @@ fun BMICheckerScreen(
             ) {
 
                 IconButton(
-                    onClick = onBackClick
+                    onClick = onBackClick,
+                    modifier = Modifier
+                        .size(44.dp)
+                        .background(PureWhite, RoundedCornerShape(12.dp))
+                        .border(BorderStroke(1.dp, Mint), RoundedCornerShape(12.dp)),
+                    colors = IconButtonDefaults.iconButtonColors(
+                        containerColor = PureWhite,
+                        contentColor = DarkTeal
+                    )
                 ) {
 
                     Icon(
                         imageVector =
                             Icons.AutoMirrored.Filled.ArrowBack,
                         contentDescription = t("bmi_back"),
-                        tint = MedicalBlueDark,
-                        modifier = Modifier.size(27.dp)
+                        tint = DarkTeal,
+                        modifier = Modifier.size(24.dp)
                     )
                 }
 
                 Spacer(
-                    modifier = Modifier.width(5.dp)
+                    modifier = Modifier.width(12.dp)
                 )
 
                 Column(
@@ -306,8 +359,8 @@ fun BMICheckerScreen(
 
                     Text(
                         text = t("bmi_checker"),
-                        color = MedicalBlueDark,
-                        fontSize = 23.sp,
+                        color = DarkTeal,
+                        fontSize = 22.sp,
                         fontWeight = FontWeight.Bold
                     )
 
@@ -317,14 +370,14 @@ fun BMICheckerScreen(
 
                     Text(
                         text = t("bmi_subtitle"),
-                        color = MedicalTextSecondary,
+                        color = TextMuted,
                         fontSize = 12.sp
                     )
                 }
             }
 
             Spacer(
-                modifier = Modifier.height(20.dp)
+                modifier = Modifier.height(18.dp)
             )
 
             // =====================================================
@@ -333,12 +386,13 @@ fun BMICheckerScreen(
 
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(28.dp),
+                shape = RoundedCornerShape(20.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = MedicalBlueDark
+                    containerColor = DarkTeal
                 ),
+                border = BorderStroke(1.dp, Mint.copy(alpha = 0.35f)),
                 elevation = CardDefaults.cardElevation(
-                    defaultElevation = 7.dp
+                    defaultElevation = 2.dp
                 )
             ) {
 
@@ -352,26 +406,27 @@ fun BMICheckerScreen(
 
                     Box(
                         modifier = Modifier
-                            .size(62.dp)
+                            .size(56.dp)
                             .background(
                                 PureWhite.copy(
-                                    alpha = 0.13f
+                                    alpha = 0.15f
                                 ),
-                                RoundedCornerShape(19.dp)
+                                RoundedCornerShape(16.dp)
                             ),
                         contentAlignment =
                             Alignment.Center
                     ) {
 
-                        Text(
-                            text = "⚖",
-                            color = PureWhite,
-                            fontSize = 31.sp
+                        Icon(
+                            imageVector = ScaleVectorIcon,
+                            contentDescription = null,
+                            tint = PureWhite,
+                            modifier = Modifier.size(28.dp)
                         )
                     }
 
                     Spacer(
-                        modifier = Modifier.width(15.dp)
+                        modifier = Modifier.width(14.dp)
                     )
 
                     Column {
@@ -379,7 +434,7 @@ fun BMICheckerScreen(
                         Text(
                             text = t("bmi_know"),
                             color = PureWhite,
-                            fontSize = 20.sp,
+                            fontSize = 18.sp,
                             fontWeight = FontWeight.Bold
                         )
 
@@ -390,7 +445,7 @@ fun BMICheckerScreen(
                         Text(
                             text = t("bmi_enter_details"),
                             color =
-                                PureWhite.copy(alpha = 0.82f),
+                                PureWhite.copy(alpha = 0.85f),
                             fontSize = 12.sp
                         )
                     }
@@ -398,7 +453,7 @@ fun BMICheckerScreen(
             }
 
             Spacer(
-                modifier = Modifier.height(25.dp)
+                modifier = Modifier.height(24.dp)
             )
 
             // =====================================================
@@ -407,8 +462,8 @@ fun BMICheckerScreen(
 
             Text(
                 text = t("bmi_personal_info"),
-                color = MedicalTextPrimary,
-                fontSize = 20.sp,
+                color = DarkTeal,
+                fontSize = 18.sp,
                 fontWeight = FontWeight.Bold
             )
 
@@ -479,9 +534,9 @@ fun BMICheckerScreen(
                             imageVector =
                                 Icons.Default.DateRange,
                             contentDescription = t("bmi_select_date"),
-                            tint = MedicalBlue,
+                            tint = DeepTeal,
                             modifier =
-                                Modifier.size(25.dp)
+                                Modifier.size(24.dp)
                         )
                     }
                 },
@@ -496,7 +551,7 @@ fun BMICheckerScreen(
                     bmiFieldColors(),
 
                 shape =
-                    RoundedCornerShape(21.dp)
+                    RoundedCornerShape(16.dp)
             )
 
             // Date error
@@ -509,7 +564,7 @@ fun BMICheckerScreen(
                 Text(
                     text = t("bmi_invalid_date"),
                     color =
-                        Color(0xFFD64545),
+                        StatusError,
                     fontSize = 11.sp,
                     modifier =
                         Modifier.padding(
@@ -520,7 +575,7 @@ fun BMICheckerScreen(
             }
 
             Spacer(
-                modifier = Modifier.height(13.dp)
+                modifier = Modifier.height(14.dp)
             )
 
             // =====================================================
@@ -562,7 +617,7 @@ fun BMICheckerScreen(
                         Text(
                             text = t("bmi_years"),
                             color =
-                                MedicalTextSecondary,
+                                TextMuted,
                             fontSize = 13.sp
                         )
                     }
@@ -572,7 +627,7 @@ fun BMICheckerScreen(
                     bmiFieldColors(),
 
                 shape =
-                    RoundedCornerShape(21.dp)
+                    RoundedCornerShape(16.dp)
             )
 
             Spacer(
@@ -585,26 +640,27 @@ fun BMICheckerScreen(
 
             Card(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(21.dp),
+                shape = RoundedCornerShape(16.dp),
                 colors = CardDefaults.cardColors(
-                    containerColor = MedicalSurface
+                    containerColor = PureWhite
                 ),
+                border = BorderStroke(1.dp, Mint),
                 elevation = CardDefaults.cardElevation(
-                    defaultElevation = 2.dp
+                    defaultElevation = 1.dp
                 )
             ) {
 
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(17.dp)
+                        .padding(16.dp)
                 ) {
 
                     Text(
                         text = t("bmi_gender"),
-                        color = MedicalTextPrimary,
-                        fontSize = 15.sp,
-                        fontWeight = FontWeight.Bold
+                        color = DarkTeal,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold
                     )
 
                     Spacer(
@@ -656,7 +712,7 @@ fun BMICheckerScreen(
             }
 
             Spacer(
-                modifier = Modifier.height(25.dp)
+                modifier = Modifier.height(24.dp)
             )
 
             // =====================================================
@@ -665,8 +721,8 @@ fun BMICheckerScreen(
 
             Text(
                 text = t("bmi_body_measurements"),
-                color = MedicalTextPrimary,
-                fontSize = 20.sp,
+                color = DarkTeal,
+                fontSize = 18.sp,
                 fontWeight = FontWeight.Bold
             )
 
@@ -709,8 +765,8 @@ fun BMICheckerScreen(
 
                     Text(
                         text = "↕",
-                        color = MedicalBlue,
-                        fontSize = 22.sp,
+                        color = DeepTeal,
+                        fontSize = 20.sp,
                         fontWeight = FontWeight.Bold
                     )
                 },
@@ -720,7 +776,7 @@ fun BMICheckerScreen(
                     Text(
                         text = t("bmi_cm"),
                         color =
-                            MedicalTextSecondary,
+                            TextMuted,
                         fontSize = 13.sp
                     )
                 },
@@ -728,18 +784,27 @@ fun BMICheckerScreen(
                 keyboardOptions =
                     KeyboardOptions(
                         keyboardType =
-                            KeyboardType.Decimal
+                            KeyboardType.Decimal,
+                        imeAction =
+                            ImeAction.Next
+                    ),
+
+                keyboardActions =
+                    KeyboardActions(
+                        onNext = {
+                            weightFocusRequester.requestFocus()
+                        }
                     ),
 
                 colors =
                     bmiFieldColors(),
 
                 shape =
-                    RoundedCornerShape(21.dp)
+                    RoundedCornerShape(16.dp)
             )
 
             Spacer(
-                modifier = Modifier.height(13.dp)
+                modifier = Modifier.height(14.dp)
             )
 
             // =====================================================
@@ -761,7 +826,9 @@ fun BMICheckerScreen(
                     saved = false
                 },
 
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(weightFocusRequester),
 
                 singleLine = true,
 
@@ -774,11 +841,11 @@ fun BMICheckerScreen(
                 },
 
                 leadingIcon = {
-
-                    Text(
-                        text = "⚖",
-                        color = MedicalTeal,
-                        fontSize = 20.sp
+                    Icon(
+                        imageVector = ScaleVectorIcon,
+                        contentDescription = null,
+                        tint = DeepTeal,
+                        modifier = Modifier.size(20.dp)
                     )
                 },
 
@@ -787,7 +854,7 @@ fun BMICheckerScreen(
                     Text(
                         text = t("bmi_kg"),
                         color =
-                            MedicalTextSecondary,
+                            TextMuted,
                         fontSize = 13.sp
                     )
                 },
@@ -795,18 +862,27 @@ fun BMICheckerScreen(
                 keyboardOptions =
                     KeyboardOptions(
                         keyboardType =
-                            KeyboardType.Decimal
+                            KeyboardType.Decimal,
+                        imeAction =
+                            ImeAction.Done
+                    ),
+
+                keyboardActions =
+                    KeyboardActions(
+                        onDone = {
+                            calculateAndUpdateBmi()
+                        }
                     ),
 
                 colors =
                     bmiFieldColors(),
 
                 shape =
-                    RoundedCornerShape(21.dp)
+                    RoundedCornerShape(16.dp)
             )
 
             Spacer(
-                modifier = Modifier.height(21.dp)
+                modifier = Modifier.height(22.dp)
             )
 
             // =====================================================
@@ -820,13 +896,15 @@ fun BMICheckerScreen(
                         Modifier.fillMaxWidth(),
 
                     shape =
-                        RoundedCornerShape(15.dp),
+                        RoundedCornerShape(14.dp),
 
                     colors =
                         CardDefaults.cardColors(
                             containerColor =
-                                Color(0xFFFFF2F2)
-                        )
+                                StatusErrorBackground
+                        ),
+                    border =
+                        BorderStroke(1.dp, StatusErrorBorder)
                 ) {
 
                     Text(
@@ -835,7 +913,7 @@ fun BMICheckerScreen(
                         modifier =
                             Modifier.padding(13.dp),
                         color =
-                            Color(0xFFD64545),
+                            StatusError,
                         fontSize = 12.sp,
                         fontWeight =
                             FontWeight.Medium
@@ -853,80 +931,20 @@ fun BMICheckerScreen(
             // =====================================================
 
             Button(
-                onClick = {
-
-                    val finalHeight =
-                        height.toFloatOrNull()
-
-                    val finalWeight =
-                        weight.toFloatOrNull()
-
-                    validationMessage =
-                        when {
-
-                            dateOfBirth.length != 10 ->
-                                t("bmi_validation_dob")
-
-                            parseDateOfBirth(
-                                dateOfBirth
-                            ) == null ->
-                                t("bmi_validation_dob_invalid")
-
-                            calculatedAge <= 0 ->
-                                t("bmi_validation_dob_invalid")
-
-                            calculatedAge > 120 ->
-                                t("bmi_validation_age")
-
-                            gender.isBlank() ->
-                                t("bmi_validation_gender")
-
-                            finalHeight == null ||
-                                    finalHeight !in 50f..250f ->
-                                t("bmi_validation_height")
-
-                            finalWeight == null ||
-                                    finalWeight !in 2f..300f ->
-                                t("bmi_validation_weight")
-
-                            else ->
-                                ""
-                        }
-
-                    if (
-                        validationMessage.isBlank()
-                    ) {
-
-                        BMIRepository.saveBMIData(
-                            context =
-                                context,
-                            heightCm =
-                                finalHeight!!,
-                            weightKg =
-                                finalWeight!!,
-                            dateOfBirth =
-                                dateOfBirth,
-                            gender =
-                                gender
-                        )
-
-                        saved = true
-                    }
-
-                },
+                onClick = calculateAndUpdateBmi,
 
                 modifier =
                     Modifier
                         .fillMaxWidth()
-                        .height(58.dp),
+                        .height(54.dp),
 
                 shape =
-                    RoundedCornerShape(20.dp),
+                    RoundedCornerShape(16.dp),
 
                 colors =
                     ButtonDefaults.buttonColors(
                         containerColor =
-                            MedicalBlue,
+                            DeepTeal,
                         contentColor =
                             PureWhite
                     )
@@ -944,7 +962,7 @@ fun BMICheckerScreen(
 
                 Spacer(
                     modifier =
-                        Modifier.height(9.dp)
+                        Modifier.height(10.dp)
                 )
 
                 Text(
@@ -952,10 +970,10 @@ fun BMICheckerScreen(
                     modifier =
                         Modifier.fillMaxWidth(),
                     color =
-                        Color(0xFF16805C),
-                    fontSize = 12.sp,
+                        StatusSuccess,
+                    fontSize = 13.sp,
                     fontWeight =
-                        FontWeight.Medium,
+                        FontWeight.SemiBold,
                     textAlign =
                         TextAlign.Center
                 )
@@ -963,7 +981,7 @@ fun BMICheckerScreen(
 
             Spacer(
                 modifier =
-                    Modifier.height(22.dp)
+                    Modifier.height(20.dp)
             )
 
             // =====================================================
@@ -975,17 +993,20 @@ fun BMICheckerScreen(
                     Modifier.fillMaxWidth(),
 
                 shape =
-                    RoundedCornerShape(26.dp),
+                    RoundedCornerShape(20.dp),
 
                 colors =
                     CardDefaults.cardColors(
                         containerColor =
-                            MedicalSurface
+                            PureWhite
                     ),
+
+                border =
+                    BorderStroke(1.dp, Mint),
 
                 elevation =
                     CardDefaults.cardElevation(
-                        defaultElevation = 4.dp
+                        defaultElevation = 2.dp
                     )
             ) {
 
@@ -1002,8 +1023,10 @@ fun BMICheckerScreen(
                     Text(
                         text = t("bmi_your_bmi"),
                         color =
-                            MedicalTextSecondary,
-                        fontSize = 14.sp
+                            TextMuted,
+                        fontSize = 13.sp,
+                        fontWeight =
+                            FontWeight.Medium
                     )
 
                     Spacer(
@@ -1014,8 +1037,8 @@ fun BMICheckerScreen(
                     Text(
                         text = bmiText,
                         color =
-                            MedicalBlueDark,
-                        fontSize = 50.sp,
+                            DarkTeal,
+                        fontSize = 48.sp,
                         fontWeight =
                             FontWeight.Bold
                     )
@@ -1030,13 +1053,17 @@ fun BMICheckerScreen(
                             Modifier
                                 .background(
                                     bmiStatusColor.copy(
-                                        alpha = 0.10f
+                                        alpha = 0.12f
                                     ),
-                                    RoundedCornerShape(30.dp)
+                                    RoundedCornerShape(24.dp)
+                                )
+                                .border(
+                                    BorderStroke(1.dp, bmiStatusColor.copy(alpha = 0.35f)),
+                                    RoundedCornerShape(24.dp)
                                 )
                                 .padding(
-                                    horizontal = 20.dp,
-                                    vertical = 9.dp
+                                    horizontal = 18.dp,
+                                    vertical = 8.dp
                                 )
                     ) {
 
@@ -1052,13 +1079,13 @@ fun BMICheckerScreen(
 
                     Spacer(
                         modifier =
-                            Modifier.height(16.dp)
+                            Modifier.height(18.dp)
                     )
 
                     Text(
                         text = t("bmi_categories"),
                         color =
-                            MedicalTextPrimary,
+                            DarkTeal,
                         fontSize = 12.sp,
                         fontWeight =
                             FontWeight.SemiBold
@@ -1066,7 +1093,7 @@ fun BMICheckerScreen(
 
                     Spacer(
                         modifier =
-                            Modifier.height(8.dp)
+                            Modifier.height(6.dp)
                     )
 
                     Text(
@@ -1074,16 +1101,16 @@ fun BMICheckerScreen(
                         modifier =
                             Modifier.fillMaxWidth(),
                         color =
-                            MedicalTextSecondary,
-                        fontSize = 10.sp,
-                        lineHeight = 15.sp,
+                            TextMuted,
+                        fontSize = 11.sp,
+                        lineHeight = 16.sp,
                         textAlign =
                             TextAlign.Center
                     )
 
                     Spacer(
                         modifier =
-                            Modifier.height(14.dp)
+                            Modifier.height(16.dp)
                     )
 
                     Row(
@@ -1091,8 +1118,12 @@ fun BMICheckerScreen(
                             Modifier
                                 .fillMaxWidth()
                                 .background(
-                                    MedicalSurfaceVariant,
-                                    RoundedCornerShape(15.dp)
+                                    SoftMint,
+                                    RoundedCornerShape(14.dp)
+                                )
+                                .border(
+                                    BorderStroke(1.dp, Mint),
+                                    RoundedCornerShape(14.dp)
                                 )
                                 .padding(12.dp),
 
@@ -1105,22 +1136,22 @@ fun BMICheckerScreen(
                                 Icons.Default.Info,
                             contentDescription = t("bmi_information"),
                             tint =
-                                MedicalBlue,
+                                DeepTeal,
                             modifier =
-                                Modifier.size(19.dp)
+                                Modifier.size(20.dp)
                         )
 
                         Spacer(
                             modifier =
-                                Modifier.width(8.dp)
+                                Modifier.width(10.dp)
                         )
 
                         Text(
                             text = t("bmi_disclaimer"),
                             color =
-                                MedicalTextSecondary,
-                            fontSize = 10.sp,
-                            lineHeight = 15.sp
+                                TextMuted,
+                            fontSize = 11.sp,
+                            lineHeight = 16.sp
                         )
                     }
                 }
@@ -1136,8 +1167,8 @@ fun BMICheckerScreen(
                 modifier =
                     Modifier.fillMaxWidth(),
                 color =
-                    MedicalTextSecondary,
-                fontSize = 9.sp,
+                    TextMuted,
+                fontSize = 10.sp,
                 textAlign =
                     TextAlign.Center
             )
@@ -1339,49 +1370,49 @@ private fun bmiFieldColors() =
     OutlinedTextFieldDefaults.colors(
 
         focusedTextColor =
-            MedicalTextPrimary,
+            TextDark,
 
         unfocusedTextColor =
-            MedicalTextPrimary,
+            TextDark,
 
         focusedBorderColor =
-            MedicalBlue,
+            DeepTeal,
 
         unfocusedBorderColor =
-            Color(0xFF9AAAB8),
+            Mint,
 
         focusedLabelColor =
-            MedicalBlue,
+            DeepTeal,
 
         unfocusedLabelColor =
-            MedicalTextSecondary,
+            TextMuted,
 
         focusedPlaceholderColor =
-            MedicalTextSecondary,
+            TextMuted,
 
         unfocusedPlaceholderColor =
-            MedicalTextSecondary,
+            TextMuted,
 
         focusedLeadingIconColor =
-            MedicalBlue,
+            DeepTeal,
 
         unfocusedLeadingIconColor =
-            MedicalBlue,
+            DeepTeal,
 
         focusedTrailingIconColor =
-            MedicalBlue,
+            DeepTeal,
 
         unfocusedTrailingIconColor =
-            MedicalBlue,
+            TextMuted,
 
         cursorColor =
-            MedicalBlue,
+            DeepTeal,
 
         focusedContainerColor =
-            Color.Transparent,
+            PureWhite,
 
         unfocusedContainerColor =
-            Color.Transparent
+            PureWhite
     )
 
 // =============================================================
@@ -1402,7 +1433,11 @@ private fun GenderOption(
 
         RadioButton(
             selected = selected,
-            onClick = onClick
+            onClick = onClick,
+            colors = RadioButtonDefaults.colors(
+                selectedColor = DeepTeal,
+                unselectedColor = Mint
+            )
         )
 
         Spacer(
@@ -1413,7 +1448,7 @@ private fun GenderOption(
         Text(
             text = text,
             color =
-                MedicalTextPrimary,
+                TextDark,
             fontSize = 13.sp,
             fontWeight =
                 FontWeight.Medium

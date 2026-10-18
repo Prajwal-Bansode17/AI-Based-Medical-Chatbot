@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -29,6 +30,8 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Email
@@ -56,9 +59,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
@@ -68,6 +75,18 @@ import kotlinx.coroutines.delay
 
 import com.example.ai_based_medical_chatbot.LocalAppLanguageController
 import com.example.ai_based_medical_chatbot.appText
+import com.example.ai_based_medical_chatbot.ui.theme.DarkTeal
+import com.example.ai_based_medical_chatbot.ui.theme.DeepTeal
+import com.example.ai_based_medical_chatbot.ui.theme.Ivory
+import com.example.ai_based_medical_chatbot.ui.theme.Mint
+import com.example.ai_based_medical_chatbot.ui.theme.PureWhite
+import com.example.ai_based_medical_chatbot.ui.theme.SageGreen
+import com.example.ai_based_medical_chatbot.ui.theme.SoftMint
+import com.example.ai_based_medical_chatbot.ui.theme.StatusError
+import com.example.ai_based_medical_chatbot.ui.theme.StatusErrorBackground
+import com.example.ai_based_medical_chatbot.ui.theme.StatusErrorBorder
+import com.example.ai_based_medical_chatbot.ui.theme.TextDark
+import com.example.ai_based_medical_chatbot.ui.theme.TextMuted
 
 @Composable
 fun LoginScreen(
@@ -110,24 +129,15 @@ fun LoginScreen(
         label = "botScale"
     )
 
-    val background = MaterialTheme.colorScheme.background
-    val surface = MaterialTheme.colorScheme.surface
-    val primary = MaterialTheme.colorScheme.primary
-    val secondary = MaterialTheme.colorScheme.secondary
-    val primaryContainer = MaterialTheme.colorScheme.primaryContainer
-    val textPrimary = MaterialTheme.colorScheme.onSurface
-    val textSecondary = MaterialTheme.colorScheme.onSurfaceVariant
-    val border = MaterialTheme.colorScheme.outline
-
     Box(
         modifier = Modifier
             .fillMaxSize()
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        primaryContainer.copy(alpha = 0.22f),
-                        background,
-                        secondary.copy(alpha = 0.04f)
+                        Ivory,
+                        SoftMint.copy(alpha = 0.5f),
+                        Ivory
                     )
                 )
             )
@@ -135,42 +145,29 @@ fun LoginScreen(
             .navigationBarsPadding()
     ) {
 
-        // Top ambient glow
+        // Top ambient accent
         Box(
             modifier = Modifier
-                .size(210.dp)
+                .size(220.dp)
                 .align(Alignment.TopEnd)
                 .clip(CircleShape)
-                .background(
-                    Brush.radialGradient(
-                        colors = listOf(
-                            secondary.copy(alpha = 0.10f),
-                            Color.Transparent
-                        )
-                    )
-                )
+                .background(Mint.copy(alpha = 0.35f))
         )
 
-        // Bottom ambient glow
+        // Bottom ambient accent
         Box(
             modifier = Modifier
                 .size(180.dp)
                 .align(Alignment.BottomStart)
                 .clip(CircleShape)
-                .background(
-                    Brush.radialGradient(
-                        colors = listOf(
-                            primary.copy(alpha = 0.08f),
-                            Color.Transparent
-                        )
-                    )
-                )
+                .background(SoftMint.copy(alpha = 0.60f))
         )
 
         Column(
             modifier = Modifier
                 .fillMaxSize()
                 .verticalScroll(rememberScrollState())
+                .imePadding()
                 .padding(
                     horizontal = 18.dp,
                     vertical = 12.dp
@@ -258,8 +255,8 @@ fun LoginScreen(
 
             if (!biometricMode) {
                 SecurityFooter(
-                    primary = primary,
-                    textSecondary = textSecondary,
+                    primary = DeepTeal,
+                    textSecondary = TextMuted,
                     selectedLanguage = selectedLanguage
                 )
             }
@@ -280,10 +277,6 @@ private fun AIDoctorHero(
     botScale: Float,
     selectedLanguage: String
 ) {
-    val primary = MaterialTheme.colorScheme.primary
-    val secondary = MaterialTheme.colorScheme.secondary
-    val primaryContainer = MaterialTheme.colorScheme.primaryContainer
-
     Box(
         modifier = Modifier
             .fillMaxWidth()
@@ -294,13 +287,13 @@ private fun AIDoctorHero(
                     225.dp
                 }
             )
-            .clip(RoundedCornerShape(30.dp))
+            .clip(RoundedCornerShape(26.dp))
             .background(
                 Brush.linearGradient(
                     colors = listOf(
-                        primary,
-                        Color(0xFF1976D2),
-                        secondary
+                        DarkTeal,
+                        DeepTeal,
+                        SageGreen
                     )
                 )
             )
@@ -313,7 +306,7 @@ private fun AIDoctorHero(
                 .align(Alignment.TopEnd)
                 .clip(CircleShape)
                 .background(
-                    Color.White.copy(alpha = 0.08f)
+                    PureWhite.copy(alpha = 0.08f)
                 )
         )
 
@@ -323,7 +316,7 @@ private fun AIDoctorHero(
                 .align(Alignment.BottomStart)
                 .clip(CircleShape)
                 .background(
-                    Color.White.copy(alpha = 0.06f)
+                    PureWhite.copy(alpha = 0.06f)
                 )
         )
 
@@ -346,11 +339,11 @@ private fun AIDoctorHero(
                         .size(37.dp)
                         .clip(CircleShape)
                         .background(
-                            Color.White.copy(alpha = 0.16f)
+                            PureWhite.copy(alpha = 0.16f)
                         )
                         .border(
                             1.dp,
-                            Color.White.copy(alpha = 0.25f),
+                            PureWhite.copy(alpha = 0.25f),
                             CircleShape
                         ),
                     contentAlignment = Alignment.Center
@@ -358,7 +351,7 @@ private fun AIDoctorHero(
 
                     Text(
                         text = "✚",
-                        color = Color.White,
+                        color = PureWhite,
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -373,7 +366,7 @@ private fun AIDoctorHero(
                     // Keep the complete brand name on one line.
                     Text(
                         text = "MEDASSIST AI",
-                        color = Color.White,
+                        color = PureWhite,
                         fontSize = 16.sp,
                         fontWeight = FontWeight.ExtraBold,
                         letterSpacing = 0.2.sp,
@@ -383,7 +376,7 @@ private fun AIDoctorHero(
 
                     Text(
                         text = "AI HEALTH ASSISTANT",
-                        color = Color(0xFFB9FFF5),
+                        color = Mint,
                         fontSize = 7.sp,
                         fontWeight = FontWeight.Bold,
                         letterSpacing = 0.8.sp,
@@ -401,7 +394,7 @@ private fun AIDoctorHero(
                 } else {
                     appText("login_hero_companion", selectedLanguage)
                 },
-                color = Color.White,
+                color = PureWhite,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.SemiBold,
                 lineHeight = 20.sp
@@ -453,7 +446,7 @@ private fun AIDoctorBot(
                 .background(
                     Brush.radialGradient(
                         colors = listOf(
-                            Color.White.copy(alpha = 0.18f),
+                            PureWhite.copy(alpha = 0.18f),
                             Color.Transparent
                         )
                     )
@@ -470,7 +463,7 @@ private fun AIDoctorBot(
                     .width(3.dp)
                     .height(13.dp)
                     .background(
-                        Color.White.copy(alpha = 0.9f)
+                        PureWhite.copy(alpha = 0.9f)
                     )
             )
 
@@ -478,7 +471,7 @@ private fun AIDoctorBot(
                 modifier = Modifier
                     .size(9.dp)
                     .clip(CircleShape)
-                    .background(Color(0xFF9CFFF0))
+                    .background(Mint)
             )
 
             Spacer(modifier = Modifier.height(3.dp))
@@ -491,14 +484,14 @@ private fun AIDoctorBot(
                     .background(
                         Brush.verticalGradient(
                             colors = listOf(
-                                Color.White,
-                                Color(0xFFDCEFF8)
+                                PureWhite,
+                                SoftMint
                             )
                         )
                     )
                     .border(
                         width = 2.dp,
-                        color = Color.White.copy(alpha = 0.8f),
+                        color = PureWhite.copy(alpha = 0.8f),
                         shape = RoundedCornerShape(23.dp)
                     ),
                 contentAlignment = Alignment.Center
@@ -517,7 +510,7 @@ private fun AIDoctorBot(
                                 .size(12.dp)
                                 .clip(CircleShape)
                                 .background(
-                                    Color(0xFF1976D2)
+                                    DarkTeal
                                 )
                         )
 
@@ -526,7 +519,7 @@ private fun AIDoctorBot(
                                 .size(12.dp)
                                 .clip(CircleShape)
                                 .background(
-                                    Color(0xFF1976D2)
+                                    DarkTeal
                                 )
                         )
                     }
@@ -539,7 +532,7 @@ private fun AIDoctorBot(
                             .height(4.dp)
                             .clip(RoundedCornerShape(50))
                             .background(
-                                Color(0xFF009688)
+                                DeepTeal
                             )
                     )
                 }
@@ -552,14 +545,14 @@ private fun AIDoctorBot(
                         .size(20.dp)
                         .clip(CircleShape)
                         .background(
-                            Color(0xFF009688)
+                            DeepTeal
                         ),
                     contentAlignment = Alignment.Center
                 ) {
 
                     Text(
                         text = "+",
-                        color = Color.White,
+                        color = PureWhite,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -581,7 +574,7 @@ private fun AIDoctorBot(
                         )
                     )
                     .background(
-                        Color.White.copy(alpha = 0.92f)
+                        PureWhite.copy(alpha = 0.92f)
                     )
             ) {
 
@@ -592,7 +585,7 @@ private fun AIDoctorBot(
                         .height(3.dp)
                         .clip(RoundedCornerShape(50))
                         .background(
-                            Color(0xFF1976D2)
+                            DeepTeal
                         )
                 )
             }
@@ -613,11 +606,11 @@ private fun SmallHeroBadge(
         modifier = Modifier
             .clip(RoundedCornerShape(50))
             .background(
-                Color.White.copy(alpha = 0.12f)
+                PureWhite.copy(alpha = 0.14f)
             )
             .border(
                 width = 1.dp,
-                color = Color.White.copy(alpha = 0.18f),
+                color = PureWhite.copy(alpha = 0.22f),
                 shape = RoundedCornerShape(50)
             )
             .padding(
@@ -628,7 +621,7 @@ private fun SmallHeroBadge(
 
         Text(
             text = text,
-            color = Color.White.copy(alpha = 0.92f),
+            color = PureWhite.copy(alpha = 0.95f),
             fontSize = 7.sp,
             fontWeight = FontWeight.Bold,
             letterSpacing = 0.5.sp
@@ -656,47 +649,41 @@ private fun LoginFormCard(
     loginError: String,
     selectedLanguage: String
 ) {
-    val primary = MaterialTheme.colorScheme.primary
-    val secondary = MaterialTheme.colorScheme.secondary
-    val surface = MaterialTheme.colorScheme.surface
-    val textPrimary = MaterialTheme.colorScheme.onSurface
-    val textSecondary = MaterialTheme.colorScheme.onSurfaceVariant
-    val border = MaterialTheme.colorScheme.outline
-
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(27.dp),
+        shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
-            containerColor = surface
+            containerColor = PureWhite
         ),
         elevation = CardDefaults.cardElevation(
-            defaultElevation = 4.dp
+            defaultElevation = 2.dp
         ),
         border = BorderStroke(
             width = 1.dp,
-            color = border.copy(alpha = 0.45f)
+            color = Mint
         )
     ) {
 
         Column(
             modifier = Modifier.padding(
                 horizontal = 20.dp,
-                vertical = 21.dp
+                vertical = 22.dp
             )
         ) {
+            val passwordFocusRequester = remember { FocusRequester() }
 
             Text(
                 text = appText("login_welcome_back", selectedLanguage),
-                color = textPrimary,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.ExtraBold
+                color = DarkTeal,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold
             )
 
             Spacer(modifier = Modifier.height(4.dp))
 
             Text(
                 text = appText("login_sign_in_subtitle", selectedLanguage),
-                color = textSecondary,
+                color = TextMuted,
                 fontSize = 12.sp,
                 lineHeight = 18.sp
             )
@@ -707,6 +694,13 @@ private fun LoginFormCard(
                 value = email,
                 onValueChange = onEmailChange,
                 modifier = Modifier.fillMaxWidth(),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Email,
+                    imeAction = ImeAction.Next
+                ),
+                keyboardActions = KeyboardActions(
+                    onNext = { passwordFocusRequester.requestFocus() }
+                ),
                 label = {
                     Text(appText("login_email_label", selectedLanguage))
                 },
@@ -717,16 +711,19 @@ private fun LoginFormCard(
                     Icon(
                         imageVector = Icons.Default.Email,
                         contentDescription = appText("login_email_label", selectedLanguage),
-                        tint = primary
+                        tint = DeepTeal
                     )
                 },
                 singleLine = true,
                 shape = RoundedCornerShape(16.dp),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = primary,
-                    unfocusedBorderColor = border,
-                    focusedLabelColor = primary,
-                    cursorColor = primary
+                    focusedBorderColor = DeepTeal,
+                    unfocusedBorderColor = Mint,
+                    focusedLabelColor = DeepTeal,
+                    unfocusedLabelColor = TextMuted,
+                    focusedTextColor = TextDark,
+                    unfocusedTextColor = TextDark,
+                    cursorColor = DeepTeal
                 )
             )
 
@@ -735,7 +732,20 @@ private fun LoginFormCard(
             OutlinedTextField(
                 value = password,
                 onValueChange = onPasswordChange,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(passwordFocusRequester),
+                keyboardOptions = KeyboardOptions(
+                    keyboardType = KeyboardType.Password,
+                    imeAction = ImeAction.Done
+                ),
+                keyboardActions = KeyboardActions(
+                    onDone = {
+                        if (!isLoading && email.isNotBlank() && password.isNotBlank()) {
+                            onLoginClick()
+                        }
+                    }
+                ),
                 label = {
                     Text(appText("login_password_label", selectedLanguage))
                 },
@@ -746,7 +756,7 @@ private fun LoginFormCard(
                     Icon(
                         imageVector = Icons.Default.Lock,
                         contentDescription = appText("login_password_label", selectedLanguage),
-                        tint = primary
+                        tint = DeepTeal
                     )
                 },
                 trailingIcon = {
@@ -764,8 +774,8 @@ private fun LoginFormCard(
                             } else {
                                 appText("login_show", selectedLanguage)
                             },
-                            color = primary,
-                            fontSize = 10.sp,
+                            color = DeepTeal,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Bold
                         )
                     }
@@ -779,10 +789,13 @@ private fun LoginFormCard(
                 singleLine = true,
                 shape = RoundedCornerShape(16.dp),
                 colors = OutlinedTextFieldDefaults.colors(
-                    focusedBorderColor = primary,
-                    unfocusedBorderColor = border,
-                    focusedLabelColor = primary,
-                    cursorColor = primary
+                    focusedBorderColor = DeepTeal,
+                    unfocusedBorderColor = Mint,
+                    focusedLabelColor = DeepTeal,
+                    unfocusedLabelColor = TextMuted,
+                    focusedTextColor = TextDark,
+                    unfocusedTextColor = TextDark,
+                    cursorColor = DeepTeal
                 )
             )
 
@@ -797,7 +810,7 @@ private fun LoginFormCard(
 
                     Text(
                         text = appText("login_forgot_password", selectedLanguage),
-                        color = secondary,
+                        color = DarkTeal,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.SemiBold
                     )
@@ -811,15 +824,11 @@ private fun LoginFormCard(
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(12.dp))
                         .background(
-                            MaterialTheme.colorScheme.error.copy(
-                                alpha = 0.07f
-                            )
+                            StatusErrorBackground
                         )
                         .border(
                             width = 1.dp,
-                            color = MaterialTheme.colorScheme.error.copy(
-                                alpha = 0.15f
-                            ),
+                            color = StatusErrorBorder,
                             shape = RoundedCornerShape(12.dp)
                         )
                         .padding(10.dp)
@@ -827,7 +836,7 @@ private fun LoginFormCard(
 
                     Text(
                         text = loginError,
-                        color = MaterialTheme.colorScheme.error,
+                        color = StatusError,
                         fontSize = 12.sp,
                         lineHeight = 17.sp
                     )
@@ -840,15 +849,15 @@ private fun LoginFormCard(
                 onClick = onLoginClick,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(54.dp),
+                    .height(52.dp),
                 enabled =
                     !isLoading &&
                             email.isNotBlank() &&
                             password.isNotBlank(),
                 shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = primary,
-                    disabledContainerColor = primary.copy(
+                    containerColor = DeepTeal,
+                    disabledContainerColor = DeepTeal.copy(
                         alpha = 0.40f
                     )
                 )
@@ -858,7 +867,7 @@ private fun LoginFormCard(
 
                     CircularProgressIndicator(
                         modifier = Modifier.size(21.dp),
-                        color = Color.White,
+                        color = PureWhite,
                         strokeWidth = 2.dp
                     )
 
@@ -866,8 +875,9 @@ private fun LoginFormCard(
 
                     Text(
                         text = appText("login_sign_in", selectedLanguage) + "  →",
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = PureWhite
                     )
                 }
             }
@@ -884,14 +894,14 @@ private fun LoginFormCard(
                         .weight(1f)
                         .height(1.dp)
                         .background(
-                            border.copy(alpha = 0.55f)
+                            Mint
                         )
                 )
 
                 Text(
                     text = "  ${appText("login_or", selectedLanguage)}  ",
-                    color = textSecondary,
-                    fontSize = 10.sp
+                    color = TextMuted,
+                    fontSize = 11.sp
                 )
 
                 Spacer(
@@ -899,7 +909,7 @@ private fun LoginFormCard(
                         .weight(1f)
                         .height(1.dp)
                         .background(
-                            border.copy(alpha = 0.55f)
+                            Mint
                         )
                 )
             }
@@ -910,14 +920,14 @@ private fun LoginFormCard(
                 onClick = onRegisterClick,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(51.dp),
-                shape = RoundedCornerShape(15.dp),
+                    .height(48.dp),
+                shape = RoundedCornerShape(16.dp),
                 border = BorderStroke(
                     width = 1.2.dp,
-                    color = secondary
+                    color = DeepTeal
                 ),
                 colors = ButtonDefaults.outlinedButtonColors(
-                    contentColor = secondary
+                    contentColor = DeepTeal
                 )
             ) {
 
@@ -938,7 +948,7 @@ private fun LoginFormCard(
 
                 Text(
                     text = appText("login_already_account", selectedLanguage),
-                    color = textSecondary,
+                    color = TextMuted,
                     fontSize = 11.sp
                 )
 
@@ -948,7 +958,7 @@ private fun LoginFormCard(
 
                     Text(
                         text = appText("login_register", selectedLanguage),
-                        color = primary,
+                        color = DeepTeal,
                         fontSize = 12.sp,
                         fontWeight = FontWeight.Bold
                     )
@@ -971,25 +981,18 @@ private fun SecureLoginCard(
     error: String,
     selectedLanguage: String
 ) {
-    val primary = MaterialTheme.colorScheme.primary
-    val secondary = MaterialTheme.colorScheme.secondary
-    val surface = MaterialTheme.colorScheme.surface
-    val textPrimary = MaterialTheme.colorScheme.onSurface
-    val textSecondary = MaterialTheme.colorScheme.onSurfaceVariant
-    val border = MaterialTheme.colorScheme.outline
-
     Card(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(27.dp),
+        shape = RoundedCornerShape(20.dp),
         colors = CardDefaults.cardColors(
-            containerColor = surface
+            containerColor = PureWhite
         ),
         elevation = CardDefaults.cardElevation(
-            defaultElevation = 5.dp
+            defaultElevation = 2.dp
         ),
         border = BorderStroke(
             width = 1.dp,
-            color = border.copy(alpha = 0.45f)
+            color = Mint
         )
     ) {
 
@@ -1003,13 +1006,13 @@ private fun SecureLoginCard(
 
             Box(
                 modifier = Modifier
-                    .size(88.dp)
+                    .size(80.dp)
                     .clip(CircleShape)
                     .background(
                         Brush.linearGradient(
                             colors = listOf(
-                                primary,
-                                secondary
+                                DarkTeal,
+                                DeepTeal
                             )
                         )
                     ),
@@ -1019,25 +1022,25 @@ private fun SecureLoginCard(
                 Icon(
                     imageVector = Icons.Default.Lock,
                     contentDescription = appText("login_secure_login", selectedLanguage),
-                    tint = Color.White,
-                    modifier = Modifier.size(42.dp)
+                    tint = PureWhite,
+                    modifier = Modifier.size(38.dp)
                 )
             }
 
-            Spacer(modifier = Modifier.height(17.dp))
+            Spacer(modifier = Modifier.height(15.dp))
 
             Text(
                 text = appText("login_secure_login", selectedLanguage),
-                color = textPrimary,
-                fontSize = 24.sp,
-                fontWeight = FontWeight.ExtraBold
+                color = DarkTeal,
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold
             )
 
             Spacer(modifier = Modifier.height(5.dp))
 
             Text(
                 text = appText("login_secure_welcome", selectedLanguage),
-                color = primary,
+                color = DeepTeal,
                 fontSize = 13.sp,
                 fontWeight = FontWeight.SemiBold
             )
@@ -1046,23 +1049,23 @@ private fun SecureLoginCard(
 
             Text(
                 text = appText("login_secure_methods", selectedLanguage),
-                color = textSecondary,
-                fontSize = 13.sp,
+                color = TextMuted,
+                fontSize = 12.sp,
                 textAlign = TextAlign.Center,
-                lineHeight = 19.sp
+                lineHeight = 18.sp
             )
 
-            Spacer(modifier = Modifier.height(20.dp))
+            Spacer(modifier = Modifier.height(18.dp))
 
             Button(
                 onClick = onBiometricClick,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(54.dp),
+                    .height(52.dp),
                 enabled = !isLoading,
                 shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = primary
+                    containerColor = DeepTeal
                 )
             ) {
 
@@ -1070,7 +1073,7 @@ private fun SecureLoginCard(
 
                     CircularProgressIndicator(
                         modifier = Modifier.size(21.dp),
-                        color = Color.White,
+                        color = PureWhite,
                         strokeWidth = 2.dp
                     )
 
@@ -1079,6 +1082,7 @@ private fun SecureLoginCard(
                     Icon(
                         imageVector = Icons.Default.Lock,
                         contentDescription = null,
+                        tint = PureWhite,
                         modifier = Modifier.size(20.dp)
                     )
 
@@ -1086,8 +1090,9 @@ private fun SecureLoginCard(
 
                     Text(
                         text = appText("login_unlock_securely", selectedLanguage),
-                        fontSize = 16.sp,
-                        fontWeight = FontWeight.Bold
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = PureWhite
                     )
                 }
             }
@@ -1098,25 +1103,25 @@ private fun SecureLoginCard(
                 onClick = onUsePasswordClick,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(51.dp),
-                shape = RoundedCornerShape(15.dp),
+                    .height(48.dp),
+                shape = RoundedCornerShape(16.dp),
                 border = BorderStroke(
                     width = 1.1.dp,
-                    color = border
+                    color = Mint
                 )
             ) {
 
                 Icon(
                     imageVector = Icons.Default.Lock,
                     contentDescription = null,
-                    tint = primary
+                    tint = DeepTeal
                 )
 
                 Spacer(modifier = Modifier.width(8.dp))
 
                 Text(
                     text = appText("login_use_password", selectedLanguage),
-                    color = textPrimary,
+                    color = DarkTeal,
                     fontWeight = FontWeight.SemiBold
                 )
             }
@@ -1130,16 +1135,19 @@ private fun SecureLoginCard(
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(12.dp))
                         .background(
-                            MaterialTheme.colorScheme.error.copy(
-                                alpha = 0.07f
-                            )
+                            StatusErrorBackground
+                        )
+                        .border(
+                            width = 1.dp,
+                            color = StatusErrorBorder,
+                            shape = RoundedCornerShape(12.dp)
                         )
                         .padding(10.dp)
                 ) {
 
                     Text(
                         text = error,
-                        color = MaterialTheme.colorScheme.error,
+                        color = StatusError,
                         fontSize = 12.sp,
                         textAlign = TextAlign.Center,
                         modifier = Modifier.fillMaxWidth()
@@ -1151,8 +1159,8 @@ private fun SecureLoginCard(
 
             Text(
                 text = appText("login_biometric_privacy", selectedLanguage),
-                color = textSecondary,
-                fontSize = 10.sp,
+                color = TextMuted,
+                fontSize = 11.sp,
                 textAlign = TextAlign.Center
             )
         }
