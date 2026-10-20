@@ -222,6 +222,7 @@ fun ProfileScreen(
     LaunchedEffect(Unit) {
         refreshPrescriptions()
         savedReminders = MedicineReminderRepository.getAll(context)
+        bmiData = BMIRepository.getBMIData(context)
     }
 
     // -------------------------------------------------------------

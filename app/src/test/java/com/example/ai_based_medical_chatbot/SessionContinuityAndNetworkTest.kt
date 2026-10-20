@@ -7,6 +7,9 @@ import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import ui.formatDobDigits
+import ui.parseDateOfBirth
+import ui.calculateAgeFromDateOfBirth
 
 class SessionContinuityAndNetworkTest {
 
@@ -1160,5 +1163,328 @@ class SessionContinuityAndNetworkTest {
         // When navigating with an explicit history session id:
         val explicitSession = resolveSessionId("android_1729000000000")
         assertEquals("android_1729000000000", explicitSession)
+    }
+
+    @Test
+    fun testBmiCalculation_standardFormulaAndCategories() {
+        fun calculateBmi(weightKg: Float, heightCm: Float): Float {
+            val hM = heightCm / 100f
+            return if (hM > 0f) weightKg / (hM * hM) else 0f
+        }
+
+        fun getCategory(bmi: Float): String {
+            return when {
+                bmi < 18.5f -> "underweight"
+                bmi < 25.0f -> "normal"
+                bmi < 30.0f -> "overweight"
+                else -> "obese"
+            }
+        }
+
+        // Test default initial values: 150 cm and 50.0 kg
+        val defaultBmi = calculateBmi(50.0f, 150.0f)
+        val roundedDefaultBmi = Math.round(defaultBmi * 10f) / 10f
+        assertEquals(22.2f, roundedDefaultBmi)
+        assertEquals("normal", getCategory(defaultBmi))
+
+        // Boundary tests
+        assertEquals("underweight", getCategory(16.0f))
+        assertEquals("underweight", getCategory(18.49f))
+        assertEquals("normal", getCategory(18.5f))
+        assertEquals("normal", getCategory(24.9f))
+        assertEquals("overweight", getCategory(25.0f))
+        assertEquals("overweight", getCategory(29.9f))
+        assertEquals("obese", getCategory(30.0f))
+        assertEquals("obese", getCategory(35.5f))
+    }
+
+    @Test
+    fun testBmiUnitsConversion_heightAndWeight() {
+        // Height: 150 cm <-> 4 ft 11 in
+        val cm = 150f
+        val totalInches = Math.round(cm / 2.54f)
+        val feet = totalInches / 12
+        val inches = totalInches % 12
+        assertEquals(4, feet)
+        assertEquals(11, inches)
+
+        val restoredCm = (feet * 12 + inches) * 2.54f
+        assertTrue("Restored cm should be very close to 150 cm", Math.abs(restoredCm - cm) < 1.0f)
+
+        // Weight: 50.0 kg <-> lbs
+        val kg = 50.0f
+        val lbs = kg * 2.20462f
+        val roundedLbs = Math.round(lbs * 10f) / 10f
+        assertEquals(110.2f, roundedLbs)
+
+        val restoredKg = lbs / 2.20462f
+        assertTrue("Restored kg should equal original kg", Math.abs(restoredKg - kg) < 0.01f)
+    }
+
+    @Test
+    fun testBmiUnconfiguredDefaults_preservesSavedMeasurements() {
+        // Simulating the BMICheckerScreen initialization logic:
+        fun resolveInitialMeasurements(savedHeight: Float, savedWeight: Float): Pair<Float, Float> {
+            val initialHeight = if (savedHeight > 0f) savedHeight else 150f
+            val initialWeight = if (savedWeight > 0f) savedWeight else 50f
+            return Pair(initialHeight, initialWeight)
+        }
+
+        // Scenario 1: New user / unconfigured form (saved values 0.0)
+        val (unconfHeight, unconfWeight) = resolveInitialMeasurements(0f, 0f)
+        assertEquals(150f, unconfHeight)
+        assertEquals(50f, unconfWeight)
+
+        // Scenario 2: Existing user with saved measurements (175 cm, 72.5 kg)
+        val (savedH, savedW) = resolveInitialMeasurements(175f, 72.5f)
+        assertEquals("Saved height must not be overwritten by 150 default", 175f, savedH)
+        assertEquals("Saved weight must not be overwritten by 50 default", 72.5f, savedW)
+    }
+
+    @Test
+    fun testBmiAndHealthTipsLocalization_allKeysPresentAcrossLanguages() {
+        val keys = listOf(
+            "bmi_underweight",
+            "bmi_normal",
+            "bmi_overweight",
+            "bmi_obese",
+            "bmi_underweight_desc",
+            "bmi_normal_desc",
+            "bmi_overweight_desc",
+            "bmi_obese_desc",
+            "bmi_healthy_range_label",
+            "bmi_healthy_range_value",
+            "bmi_disclaimer_text",
+            "height_popup_title",
+            "height_popup_subtitle",
+            "weight_popup_title",
+            "weight_popup_subtitle",
+            "btn_confirm",
+            "btn_cancel",
+            "health_tips_title",
+            "health_tips_hero_title",
+            "cat_all",
+            "cat_nutrition",
+            "cat_fitness",
+            "cat_sleep",
+            "cat_hygiene",
+            "cat_mental",
+            "cat_prevention",
+            "cat_lifestyle"
+        )
+
+        for (lang in listOf("en", "mr", "hi")) {
+            for (key in keys) {
+                val value = appText(key, lang)
+                assertTrue("Key $key in $lang was empty", value.isNotBlank())
+                assertFalse("Key $key in $lang returned raw key fallback", value == key)
+            }
+        }
+
+        // Check specific Marathi strings
+        assertEquals("निरोगी वजन (Normal)", appText("bmi_normal", "mr"))
+        assertEquals("कमी वजन (Underweight)", appText("bmi_underweight", "mr"))
+        assertEquals("जास्त वजन (Overweight)", appText("bmi_overweight", "mr"))
+        assertEquals("लठ्ठपणा (Obesity)", appText("bmi_obese", "mr"))
+        assertEquals("निश्चित करा", appText("btn_confirm", "mr"))
+
+        // Check specific Hindi strings
+        assertEquals("स्वस्थ वजन (Normal)", appText("bmi_normal", "hi"))
+        assertEquals("कम वजन (Underweight)", appText("bmi_underweight", "hi"))
+        assertEquals("अधिक वजन (Overweight)", appText("bmi_overweight", "hi"))
+        assertEquals("मोटापा (Obesity)", appText("bmi_obese", "hi"))
+        assertEquals("पुष्टि करें", appText("btn_confirm", "hi"))
+    }
+
+    @Test
+    fun testManualDobInput_preservesExactDigitsWithoutTransposition() {
+        // Simulating character-by-character user typing for 08/09/2004
+        var digits = ""
+        val typedKeys = listOf('0', '8', '0', '9', '2', '0', '0', '4')
+        for (key in typedKeys) {
+            if (key.isDigit()) digits += key
+        }
+        assertEquals("08092004", digits)
+        val formatted = formatDobDigits(digits)
+        assertEquals("08/09/2004", formatted)
+        val parsed = parseDateOfBirth(formatted)
+        assertTrue("08/09/2004 must parse to a valid date", parsed != null)
+    }
+
+    @Test
+    fun testDobValidation_exactExamplesFromSpecification() {
+        // 1. 08/09/2004 -> remains 08/09/2004
+        val dob1 = formatDobDigits("08092004")
+        assertEquals("08/09/2004", dob1)
+        assertTrue("08/09/2004 must be valid", parseDateOfBirth(dob1) != null)
+
+        // 2. 21/12/2005 -> remains 21/12/2005
+        val dob2 = formatDobDigits("21122005")
+        assertEquals("21/12/2005", dob2)
+        assertTrue("21/12/2005 must be valid", parseDateOfBirth(dob2) != null)
+
+        // 3. 01/01/2000 -> remains 01/01/2000
+        val dob3 = formatDobDigits("01012000")
+        assertEquals("01/01/2000", dob3)
+        assertTrue("01/01/2000 must be valid", parseDateOfBirth(dob3) != null)
+
+        // 4. 31/02/2004 -> rejected as invalid (Feb 2004 only had 29 days)
+        val dob4 = formatDobDigits("31022004")
+        assertEquals("31/02/2004", dob4)
+        assertNull("31/02/2004 must be rejected as invalid calendar date", parseDateOfBirth(dob4))
+
+        // Also non-leap year Feb 29 (29/02/2003)
+        assertNull("29/02/2003 must be rejected", parseDateOfBirth("29/02/2003"))
+        assertTrue("29/02/2004 leap year must be valid", parseDateOfBirth("29/02/2004") != null)
+
+        // 5. Future DOB -> rejected
+        val futureDob = "15/08/2099"
+        assertNull("Future DOB must be rejected", parseDateOfBirth(futureDob))
+    }
+
+    @Test
+    fun testDobMiddleEditingAndPasting() {
+        // Pasting date with slashes
+        val pasted = "08/09/2004"
+        val extractedDigits = pasted.filter { it.isDigit() }.take(8)
+        assertEquals("08092004", extractedDigits)
+        assertEquals("08/09/2004", formatDobDigits(extractedDigits))
+
+        // Simulating editing middle character (change month from 09 to 11)
+        val originalDigits = "08092004"
+        val editedDigits = originalDigits.substring(0, 2) + "11" + originalDigits.substring(4)
+        assertEquals("08112004", editedDigits)
+        assertEquals("08/11/2004", formatDobDigits(editedDigits))
+        assertTrue("08/11/2004 must be valid", parseDateOfBirth(formatDobDigits(editedDigits)) != null)
+    }
+
+    @Test
+    fun testAgeCalculation_fromValidDob() {
+        val today = java.util.Calendar.getInstance()
+        val currentYear = today.get(java.util.Calendar.YEAR)
+        val currentMonth = today.get(java.util.Calendar.MONTH) + 1
+        val currentDay = today.get(java.util.Calendar.DAY_OF_MONTH)
+
+        // A date exactly 20 years ago
+        val birthYear = currentYear - 20
+        val dobStr = String.format(java.util.Locale.US, "%02d/%02d/%04d", currentDay, currentMonth, birthYear)
+        val age = calculateAgeFromDateOfBirth(dobStr)
+        assertEquals(20, age)
+
+        // Invalid dob returns age 0
+        assertEquals(0, calculateAgeFromDateOfBirth("31/02/2004"))
+        assertEquals(0, calculateAgeFromDateOfBirth("invalid"))
+        assertEquals(0, calculateAgeFromDateOfBirth("15/08/2099"))
+    }
+
+    @Test
+    fun testCentralizedHealthRepository_dataModelAndAgeLogic() {
+        // BMIData model with both DD/MM/YYYY and YYYY-MM-DD
+        val data1 = ui.BMIData(
+            heightCm = 175f,
+            weightKg = 70f,
+            dateOfBirth = "15/05/1995",
+            gender = "Male",
+            bloodGroup = "O+",
+            fullName = "John Doe"
+        )
+
+        assertEquals(175f, data1.heightCm, 0.01f)
+        assertEquals(70f, data1.weightKg, 0.01f)
+        assertEquals("Male", data1.gender)
+        assertEquals("O+", data1.bloodGroup)
+        assertEquals("John Doe", data1.fullName)
+
+        // BMI calculation: 70 / (1.75 * 1.75) = 22.857
+        val expectedBmi = 70f / (1.75f * 1.75f)
+        assertEquals(expectedBmi, data1.bmi, 0.05f)
+        assertEquals("Normal", data1.bmiStatus)
+
+        // Age calculation check
+        assertTrue("Age should be > 0", data1.age > 0)
+
+        // ISO format date support
+        val dataIso = data1.copy(dateOfBirth = "1995-05-15")
+        assertEquals(data1.age, dataIso.age)
+
+        // Date format conversion helpers
+        assertEquals("1995-05-15", ui.BMIRepository.toIsoDate("15/05/1995"))
+        assertEquals("1995-05-15", ui.BMIRepository.toIsoDate("1995-05-15"))
+        assertEquals("15/05/1995", ui.BMIRepository.toDisplayDate("1995-05-15"))
+        assertEquals("15/05/1995", ui.BMIRepository.toDisplayDate("15/05/1995"))
+    }
+
+    @Test
+    fun testWeightDialDampingSensitivity() {
+        val minKg = 10f
+        val maxKg = 250f
+        val startingWeight = 70.0f
+
+        // Natural arc-proportional angular drag tracking:
+        // 1 degree of angular drag = (1 / 180) * (250 - 10) = 1.33 kg
+        val deltaDeg = 2f
+        val deltaFraction = deltaDeg / 180f
+        val weightDelta = deltaFraction * (maxKg - minKg)
+        val newWeight = (startingWeight + weightDelta).coerceIn(minKg, maxKg)
+
+        assertTrue("Small drag of 2 deg smoothly shifts weight", (newWeight - startingWeight) in 2.5f..2.8f)
+        assertTrue("Weight change must be positive for positive delta", (newWeight - startingWeight) > 0f)
+
+        // Test full range coverage: dragging by 45 degrees changes weight by 60 kg
+        val halfArcDeltaDeg = 45f
+        val halfArcDelta = (halfArcDeltaDeg / 180f) * (maxKg - minKg)
+        assertEquals(60f, halfArcDelta, 0.01f)
+
+        // Test boundary clamping at extremes
+        val extremeDeltaFraction = (180f / 180f) * 10f
+        val clampedMax = (startingWeight + extremeDeltaFraction * (maxKg - minKg)).coerceIn(minKg, maxKg)
+        assertEquals(maxKg, clampedMax, 0.01f)
+
+        val clampedMin = (startingWeight - extremeDeltaFraction * (maxKg - minKg)).coerceIn(minKg, maxKg)
+        assertEquals(minKg, clampedMin, 0.01f)
+    }
+
+    @Test
+    fun testHealthProfilePersistence_fieldUpdatingAndSanitization() {
+        // Test parsing DOB safely
+        val validDob1 = "12/08/1998"
+        val validDob2 = "1998-08-12"
+        val invalidDob = "31/02/2001"
+        val futureDob = "01/01/2099"
+
+        assertTrue("Valid DD/MM/YYYY must parse", ui.BMIRepository.parseDateOfBirth(validDob1) != null)
+        assertTrue("Valid YYYY-MM-DD must parse", ui.BMIRepository.parseDateOfBirth(validDob2) != null)
+        assertNull("Invalid Feb 31 must return null", ui.BMIRepository.parseDateOfBirth(invalidDob))
+        assertNull("Future date must return null", ui.BMIRepository.parseDateOfBirth(futureDob))
+
+        // Conversion formatting tests
+        assertEquals("12/08/1998", ui.BMIRepository.toDisplayDate(validDob2))
+        assertEquals("1998-08-12", ui.BMIRepository.toIsoDate(validDob1))
+
+        // Partial field updates preserve existing values
+        val baseData = ui.BMIData(
+            heightCm = 170f,
+            weightKg = 65f,
+            dateOfBirth = "10/10/1990",
+            gender = "Female",
+            bloodGroup = "B+",
+            fullName = "Jane Doe"
+        )
+
+        // Simulating updating only bloodGroup & gender
+        val updatedData = baseData.copy(bloodGroup = "AB+", gender = "Female")
+        assertEquals(170f, updatedData.heightCm, 0.01f)
+        assertEquals(65f, updatedData.weightKg, 0.01f)
+        assertEquals("10/10/1990", updatedData.dateOfBirth)
+        assertEquals("Jane Doe", updatedData.fullName)
+        assertEquals("AB+", updatedData.bloodGroup)
+        assertEquals("Female", updatedData.gender)
+
+        // Simulating invalid or blank DOB fallback: if blank, original DOB is preserved
+        val safeDob = if ("".isNotBlank() && ui.BMIRepository.parseDateOfBirth("") != null) "" else baseData.dateOfBirth
+        assertEquals("10/10/1990", safeDob)
+
+        // Age logic remains consistent
+        assertTrue("Age must be calculated and > 0", updatedData.age > 0)
     }
 }

@@ -1,6 +1,5 @@
 package ui
 
-import android.app.DatePickerDialog
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -79,8 +78,10 @@ import com.example.ai_based_medical_chatbot.ui.theme.StatusErrorBorder
 import com.example.ai_based_medical_chatbot.ui.theme.StatusSuccess
 import com.example.ai_based_medical_chatbot.ui.theme.TextDark
 import com.example.ai_based_medical_chatbot.ui.theme.TextMuted
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.util.Calendar
+import java.util.Date
 import java.util.Locale
 
 @Composable
@@ -90,6 +91,8 @@ fun HealthProfileScreen(
 ) {
     val appLanguageController = LocalAppLanguageController.current
     val selectedLanguage = appLanguageController.selectedLanguage
+
+    fun t(key: String): String = appText(key, selectedLanguage)
 
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
@@ -107,29 +110,104 @@ fun HealthProfileScreen(
     var height by remember { mutableStateOf("") }
     var weight by remember { mutableStateOf("") }
     var bmi by remember { mutableStateOf<Double?>(null) }
+    var showDatePickerDialog by remember { mutableStateOf(false) }
+
     val weightFocusRequester = remember { FocusRequester() }
 
     /*
-     * LOAD EXISTING PROFILE FROM SUPABASE
+     * LIVE BMI CALCULATION
+     */
+    fun recalculateBmi(hStr: String = height, wStr: String = weight) {
+        val h = hStr.toDoubleOrNull()
+        val w = wStr.toDoubleOrNull()
+        if (h != null && w != null && h > 0 && w > 0) {
+            val hMeters = h / 100.0
+            bmi = w / (hMeters * hMeters)
+        } else {
+            bmi = null
+        }
+    }
+
+    /*
+     * CLOUD SYNC HELPER (BACKGROUND FIRE-AND-FORGET)
+     */
+    fun syncToCloudInBackground() {
+        val user = SupabaseClient.getSavedUser(context) ?: return
+        val cleanHeight = height.toDoubleOrNull()?.takeIf { it > 0 }
+        val cleanWeight = weight.toDoubleOrNull()?.takeIf { it > 0 }
+        val cleanBmi = bmi?.takeIf { it > 0 }
+
+        scope.launch {
+            val profile = HealthProfile(
+                id = user.id,
+                name = name.trim().takeIf { it.isNotBlank() },
+                gender = gender.trim().takeIf { it.isNotBlank() },
+                dateOfBirth = BMIRepository.toIsoDate(dateOfBirth).takeIf { it.isNotBlank() },
+                bloodGroup = bloodGroup.trim().takeIf { it.isNotBlank() },
+                heightCm = cleanHeight,
+                weightKg = cleanWeight,
+                bmi = cleanBmi
+            )
+            SupabaseClient.saveHealthProfile(context = context, profile = profile)
+        }
+    }
+
+    /*
+     * LOAD EXISTING PROFILE FROM LOCAL CENTRAL REPOSITORY FIRST,
+     * THEN SUPPLEMENT FROM SUPABASE IF AVAILABLE
      */
     LaunchedEffect(Unit) {
-        val result = SupabaseClient.getHealthProfile(context)
+        // 1. Instantly populate from local central repository (ensures offline persistence)
+        val localData = BMIRepository.getBMIData(context)
+        if (localData.fullName.isNotBlank()) name = localData.fullName
+        if (localData.gender.isNotBlank()) gender = localData.gender
+        if (localData.dateOfBirth.isNotBlank()) {
+            dateOfBirth = BMIRepository.toDisplayDate(localData.dateOfBirth)
+        }
+        if (localData.bloodGroup.isNotBlank()) bloodGroup = localData.bloodGroup
+        if (localData.heightCm > 0f) {
+            height = if (localData.heightCm % 1f == 0f) localData.heightCm.toInt().toString() else localData.heightCm.toString()
+        }
+        if (localData.weightKg > 0f) {
+            weight = if (localData.weightKg % 1f == 0f) localData.weightKg.toInt().toString() else localData.weightKg.toString()
+        }
+        if (localData.bmi > 0f) {
+            bmi = localData.bmi.toDouble()
+        }
 
+        // 2. Fetch latest remote profile if user is authenticated with Supabase
+        val result = SupabaseClient.getHealthProfile(context)
         result.onSuccess { profile ->
             if (profile != null) {
-                name = profile.name.orEmpty()
-                gender = profile.gender.orEmpty()
-                dateOfBirth = profile.dateOfBirth.orEmpty()
-                bloodGroup = profile.bloodGroup.orEmpty()
-                height = profile.heightCm?.let {
-                    if (it % 1.0 == 0.0) it.toInt().toString() else it.toString()
-                }.orEmpty()
-                weight = profile.weightKg?.let {
-                    if (it % 1.0 == 0.0) it.toInt().toString() else it.toString()
-                }.orEmpty()
-                bmi = profile.bmi
+                if (profile.name?.isNotBlank() == true) name = profile.name
+                if (profile.gender?.isNotBlank() == true) gender = profile.gender
+                if (profile.dateOfBirth?.isNotBlank() == true) {
+                    dateOfBirth = BMIRepository.toDisplayDate(profile.dateOfBirth)
+                }
+                if (profile.bloodGroup?.isNotBlank() == true) bloodGroup = profile.bloodGroup
+                profile.heightCm?.let {
+                    if (it > 0) height = if (it % 1.0 == 0.0) it.toInt().toString() else it.toString()
+                }
+                profile.weightKg?.let {
+                    if (it > 0) weight = if (it % 1.0 == 0.0) it.toInt().toString() else it.toString()
+                }
+                if (profile.bmi != null && profile.bmi > 0) {
+                    bmi = profile.bmi
+                }
+
+                // Sync remote values back to local repository so offline use is always current
+                BMIRepository.saveBMIData(
+                    context = context,
+                    heightCm = height.toFloatOrNull() ?: localData.heightCm,
+                    weightKg = weight.toFloatOrNull() ?: localData.weightKg,
+                    dateOfBirth = dateOfBirth,
+                    gender = gender,
+                    bloodGroup = bloodGroup,
+                    fullName = name
+                )
             }
         }.onFailure {
+            // Offline or guest mode is fine; local central data is already displayed
             errorMessage = ""
         }
 
@@ -137,61 +215,75 @@ fun HealthProfileScreen(
     }
 
     /*
-     * DATE PICKER
+     * DEBOUNCED AUTO-SAVE FOR NAME (600ms)
      */
-    fun openDatePicker() {
-        val calendar = Calendar.getInstance()
+    LaunchedEffect(name) {
+        if (!isLoading && name.isNotBlank()) {
+            delay(600)
+            BMIRepository.updateFullName(context, name)
+            syncToCloudInBackground()
+        }
+    }
 
-        if (dateOfBirth.matches(Regex("\\d{4}-\\d{2}-\\d{2}"))) {
-            try {
-                val parts = dateOfBirth.split("-")
-                calendar.set(
-                    parts[0].toInt(),
-                    parts[1].toInt() - 1,
-                    parts[2].toInt()
-                )
-            } catch (_: Exception) {
+    /*
+     * DEBOUNCED AUTO-SAVE FOR HEIGHT (600ms)
+     */
+    LaunchedEffect(height) {
+        if (!isLoading) {
+            recalculateBmi()
+            val hVal = height.toFloatOrNull()
+            if (hVal != null && hVal in 30f..280f) {
+                delay(600)
+                BMIRepository.updateHeight(context, hVal)
+                syncToCloudInBackground()
             }
         }
+    }
 
-        DatePickerDialog(
-            context,
-            { _, year, month, dayOfMonth ->
-                dateOfBirth = String.format(
-                    Locale.US,
-                    "%04d-%02d-%02d",
-                    year,
-                    month + 1,
-                    dayOfMonth
-                )
+    /*
+     * DEBOUNCED AUTO-SAVE FOR WEIGHT (600ms)
+     */
+    LaunchedEffect(weight) {
+        if (!isLoading) {
+            recalculateBmi()
+            val wVal = weight.toFloatOrNull()
+            if (wVal != null && wVal in 2f..350f) {
+                delay(600)
+                BMIRepository.updateWeight(context, wVal)
+                syncToCloudInBackground()
+            }
+        }
+    }
+
+    /*
+     * DATE SELECTION HANDLER USING SHARED CALENDAR
+     */
+    if (showDatePickerDialog) {
+        val initialParsedDate: Date? = if (dateOfBirth.isNotBlank()) {
+            BMIRepository.parseDateOfBirth(dateOfBirth)
+        } else null
+
+        MedAssistDatePickerDialog(
+            initialDate = initialParsedDate,
+            title = "Select Date of Birth",
+            allowFutureDates = false,
+            onDateSelected = { day, month, year ->
+                val newDob = String.format(Locale.US, "%02d/%02d/%04d", day, month, year)
+                dateOfBirth = newDob
+                showDatePickerDialog = false
+                BMIRepository.updateDateOfBirth(context, newDob)
+                syncToCloudInBackground()
+                saveSuccessMessage = "Date of birth updated."
             },
-            calendar.get(Calendar.YEAR),
-            calendar.get(Calendar.MONTH),
-            calendar.get(Calendar.DAY_OF_MONTH)
-        ).apply {
-            datePicker.maxDate = System.currentTimeMillis()
-        }.show()
+            onDismiss = {
+                showDatePickerDialog = false
+            },
+            t = ::t
+        )
     }
 
     /*
-     * BMI CALCULATION
-     */
-    fun calculateBmi() {
-        val heightValue = height.toDoubleOrNull()
-        val weightValue = weight.toDoubleOrNull()
-
-        if (heightValue != null && weightValue != null && heightValue > 0 && weightValue > 0) {
-            val heightMeters = heightValue / 100.0
-            if (heightMeters > 0) {
-                bmi = weightValue / (heightMeters * heightMeters)
-            }
-        } else {
-            bmi = null
-        }
-    }
-
-    /*
-     * SAVE PROFILE TO SUPABASE
+     * EXPLICIT MANUAL SAVE/CONFIRM BUTTON
      */
     fun saveProfile(continueAfterSave: Boolean) {
         scope.launch {
@@ -199,37 +291,63 @@ fun HealthProfileScreen(
             errorMessage = ""
             saveSuccessMessage = ""
 
-            calculateBmi()
+            recalculateBmi()
 
             val cleanHeight = height.toDoubleOrNull()?.takeIf { it > 0 }
             val cleanWeight = weight.toDoubleOrNull()?.takeIf { it > 0 }
             val cleanBmi = bmi?.takeIf { it > 0 }
 
-            val profile = HealthProfile(
-                id = SupabaseClient.getSavedUser(context)?.id.orEmpty(),
-                name = name.trim().takeIf { it.isNotBlank() },
-                gender = gender.trim().takeIf { it.isNotBlank() },
-                dateOfBirth = dateOfBirth.trim().takeIf { it.isNotBlank() },
-                bloodGroup = bloodGroup.trim().takeIf { it.isNotBlank() },
-                heightCm = cleanHeight,
-                weightKg = cleanWeight,
-                bmi = cleanBmi
-            )
-
-            val result = SupabaseClient.saveHealthProfile(
+            // 1. Immediately persist locally to BMIRepository (Single source of truth)
+            BMIRepository.saveBMIData(
                 context = context,
-                profile = profile
+                heightCm = cleanHeight?.toFloat() ?: 0f,
+                weightKg = cleanWeight?.toFloat() ?: 0f,
+                dateOfBirth = dateOfBirth,
+                gender = gender,
+                bloodGroup = bloodGroup,
+                fullName = name
             )
 
-            result.onSuccess {
+            // 2. Persist to remote Supabase if logged in
+            val user = SupabaseClient.getSavedUser(context)
+            if (user != null) {
+                val profile = HealthProfile(
+                    id = user.id,
+                    name = name.trim().takeIf { it.isNotBlank() },
+                    gender = gender.trim().takeIf { it.isNotBlank() },
+                    dateOfBirth = BMIRepository.toIsoDate(dateOfBirth).takeIf { it.isNotBlank() },
+                    bloodGroup = bloodGroup.trim().takeIf { it.isNotBlank() },
+                    heightCm = cleanHeight,
+                    weightKg = cleanWeight,
+                    bmi = cleanBmi
+                )
+
+                val result = SupabaseClient.saveHealthProfile(
+                    context = context,
+                    profile = profile
+                )
+
+                result.onSuccess {
+                    isSaving = false
+                    saveSuccessMessage = "Health profile updated successfully."
+                    if (continueAfterSave) {
+                        onContinue()
+                    }
+                }.onFailure {
+                    // Even if network fails, local update is secured
+                    isSaving = false
+                    saveSuccessMessage = "Health profile saved locally."
+                    if (continueAfterSave) {
+                        onContinue()
+                    }
+                }
+            } else {
+                // Guest / Local mode
                 isSaving = false
                 saveSuccessMessage = "Health profile updated successfully."
                 if (continueAfterSave) {
                     onContinue()
                 }
-            }.onFailure {
-                isSaving = false
-                errorMessage = it.message ?: "Unable to save your health information."
             }
         }
     }
@@ -410,7 +528,11 @@ fun HealthProfileScreen(
                             GenderButton(
                                 text = item,
                                 selected = gender.equals(item, ignoreCase = true),
-                                onClick = { gender = item },
+                                onClick = {
+                                    gender = item
+                                    BMIRepository.updateGender(context, item)
+                                    syncToCloudInBackground()
+                                },
                                 modifier = Modifier.weight(1f)
                             )
                         }
@@ -423,7 +545,7 @@ fun HealthProfileScreen(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clickable(enabled = !isSaving) { openDatePicker() }
+                            .clickable(enabled = !isSaving) { showDatePickerDialog = true }
                     ) {
                         OutlinedTextField(
                             value = dateOfBirth,
@@ -431,7 +553,7 @@ fun HealthProfileScreen(
                             modifier = Modifier.fillMaxWidth(),
                             readOnly = true,
                             enabled = false,
-                            placeholder = { Text("YYYY-MM-DD", color = TextMuted) },
+                            placeholder = { Text("DD/MM/YYYY", color = TextMuted) },
                             trailingIcon = {
                                 Icon(
                                     imageVector = Icons.Default.DateRange,
@@ -469,7 +591,11 @@ fun HealthProfileScreen(
                                 GenderButton(
                                     text = group,
                                     selected = bloodGroup.equals(group, ignoreCase = true),
-                                    onClick = { bloodGroup = group },
+                                    onClick = {
+                                        bloodGroup = group
+                                        BMIRepository.updateBloodGroup(context, group)
+                                        syncToCloudInBackground()
+                                    },
                                     modifier = Modifier.weight(1f)
                                 )
                             }
@@ -483,7 +609,11 @@ fun HealthProfileScreen(
                                 GenderButton(
                                     text = group,
                                     selected = bloodGroup.equals(group, ignoreCase = true),
-                                    onClick = { bloodGroup = group },
+                                    onClick = {
+                                        bloodGroup = group
+                                        BMIRepository.updateBloodGroup(context, group)
+                                        syncToCloudInBackground()
+                                    },
                                     modifier = Modifier.weight(1f)
                                 )
                             }
@@ -511,7 +641,7 @@ fun HealthProfileScreen(
                                 .take(6)
 
                             height = filtered
-                            calculateBmi()
+                            recalculateBmi(hStr = filtered)
                         },
                         modifier = Modifier.fillMaxWidth(),
                         placeholder = { Text("e.g. 172", color = TextMuted) },
@@ -557,7 +687,7 @@ fun HealthProfileScreen(
                                 .take(6)
 
                             weight = filtered
-                            calculateBmi()
+                            recalculateBmi(wStr = filtered)
                         },
                         modifier = Modifier
                             .fillMaxWidth()

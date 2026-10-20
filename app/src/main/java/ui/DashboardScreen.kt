@@ -429,13 +429,10 @@ fun DashboardScreen(
     var showProfileMenu by remember { mutableStateOf(false) }
 
     fun refreshDashboardData() {
-        val bmiPrefs = context.getSharedPreferences(
-            "medassist_bmi_preferences",
-            Context.MODE_PRIVATE
-        )
-        userGender = bmiPrefs.getString("gender", "") ?: ""
-        savedBmi = bmiPrefs.getFloat("bmi", 0f)
-        savedBmiStatus = bmiPrefs.getString("bmi_status", "") ?: ""
+        val currentBmiData = BMIRepository.getBMIData(context)
+        userGender = currentBmiData.gender
+        savedBmi = currentBmiData.bmi
+        savedBmiStatus = if (currentBmiData.bmi > 0f) currentBmiData.bmiStatus else ""
 
         savedReminders = MedicineReminderRepository.getAll(context)
         savedPrescriptions = PrescriptionRepository.getSavedPrescriptions(context)
