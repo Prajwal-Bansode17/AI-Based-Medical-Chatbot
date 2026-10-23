@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.TimePickerDialog
 import android.content.pm.PackageManager
 import android.content.Intent
+import android.net.Uri
 import android.provider.Settings
 import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -52,7 +53,11 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -121,6 +126,7 @@ fun MedicineReminderScreen(
     initialReminder: MedicineReminder? = null
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val appLanguageController = LocalAppLanguageController.current
     val selectedLanguage = appLanguageController.selectedLanguage
     fun t(key: String): String = appText(key, selectedLanguage)
@@ -229,7 +235,32 @@ fun MedicineReminderScreen(
             }
         }
 
+    var exactAlarmPermissionGranted by remember {
+        mutableStateOf(MedicineReminderScheduler.canScheduleExactAlarms(context))
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                notificationPermissionGranted =
+                    Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+                            ContextCompat.checkSelfPermission(
+                                context,
+                                Manifest.permission.POST_NOTIFICATIONS
+                            ) == PackageManager.PERMISSION_GRANTED
+                exactAlarmPermissionGranted =
+                    MedicineReminderScheduler.canScheduleExactAlarms(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
     LaunchedEffect(Unit) {
+        exactAlarmPermissionGranted =
+            MedicineReminderScheduler.canScheduleExactAlarms(context)
         notificationPermissionGranted =
             Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
                     ContextCompat.checkSelfPermission(
@@ -493,6 +524,76 @@ fun MedicineReminderScreen(
                                 )
                             ) {
                                 Text(t("reminder_allow_btn"))
+                            }
+                        }
+                    }
+                }
+            }
+
+            item {
+                if (!exactAlarmPermissionGranted && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(18.dp),
+                        colors = CardDefaults.cardColors(
+                            containerColor = ReminderLightBlue
+                        ),
+                        border = BorderStroke(1.dp, ReminderMintBorder)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(14.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Notifications,
+                                contentDescription = t("reminder_exact_alarm_title"),
+                                tint = ReminderDarkBlue,
+                                modifier = Modifier.size(24.dp)
+                            )
+
+                            Spacer(modifier = Modifier.width(10.dp))
+
+                            Column(
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(
+                                    text = t("reminder_exact_alarm_title"),
+                                    fontWeight = FontWeight.Bold,
+                                    color = ReminderDarkBlue
+                                )
+                                Text(
+                                    text = t("reminder_exact_alarm_desc"),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = TextMuted
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(8.dp))
+
+                            Button(
+                                onClick = {
+                                    try {
+                                        context.startActivity(
+                                            MedicineReminderScheduler.createExactAlarmSettingsIntent(context.packageName)
+                                        )
+                                    } catch (_: Exception) {
+                                        try {
+                                            context.startActivity(
+                                                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                                    data = Uri.parse("package:${context.packageName}")
+                                                }
+                                            )
+                                        } catch (_: Exception) {}
+                                    }
+                                },
+                                shape = RoundedCornerShape(12.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = ReminderBlue
+                                )
+                            ) {
+                                Text(t("reminder_exact_alarm_btn"))
                             }
                         }
                     }

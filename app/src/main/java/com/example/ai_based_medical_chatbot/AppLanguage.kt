@@ -1,6 +1,7 @@
 package com.example.ai_based_medical_chatbot
 
 import android.content.Context
+import android.content.SharedPreferences
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.MutableState
@@ -20,22 +21,27 @@ import androidx.compose.ui.platform.LocalContext
  * The selected language is persisted locally and exposed through
  * LocalAppLanguageController so every Compose screen can react immediately.
  */
-class AppLanguageController(context: Context) {
+class AppLanguageController {
 
-    private val preferences =
-        context.applicationContext.getSharedPreferences(
-            PREFERENCES_NAME,
-            Context.MODE_PRIVATE
-        )
+    private val preferences: SharedPreferences?
+    private val languageState: MutableState<String>
 
-    private val languageState: MutableState<String> =
-        synchronized(stateLock) {
+    constructor(context: Context) {
+        val app = context.applicationContext ?: context
+        preferences = app.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+        languageState = synchronized(stateLock) {
             sharedLanguageState ?: mutableStateOf(
                 normalizeAppLanguage(
                     preferences.getString(KEY_SELECTED_LANGUAGE, null)
                 )
             ).also { sharedLanguageState = it }
         }
+    }
+
+    internal constructor(preferences: SharedPreferences?, initialLanguage: String) {
+        this.preferences = preferences
+        this.languageState = mutableStateOf(normalizeAppLanguage(initialLanguage))
+    }
 
     val selectedLanguage: String
         get() = languageState.value
@@ -43,23 +49,27 @@ class AppLanguageController(context: Context) {
     fun setLanguage(language: String) {
         val normalized = normalizeAppLanguage(language)
         languageState.value = normalized
-        preferences.edit()
-            .putString(KEY_SELECTED_LANGUAGE, normalized)
-            .apply()
+        preferences?.edit()
+            ?.putString(KEY_SELECTED_LANGUAGE, normalized)
+            ?.apply()
     }
 
-    private companion object {
+    companion object {
         const val PREFERENCES_NAME = "medassist_language_preferences"
         const val KEY_SELECTED_LANGUAGE = "selected_language"
 
         private val stateLock = Any()
         private var sharedLanguageState: MutableState<String>? = null
+
+        fun createPreviewController(language: String = LANGUAGE_ENGLISH): AppLanguageController {
+            return AppLanguageController(null, language)
+        }
     }
 }
 
 val LocalAppLanguageController =
     compositionLocalOf<AppLanguageController> {
-        error("AppLanguageController is not provided.")
+        AppLanguageController.createPreviewController()
     }
 
 @Composable

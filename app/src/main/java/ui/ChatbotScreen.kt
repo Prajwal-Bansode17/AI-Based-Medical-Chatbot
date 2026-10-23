@@ -75,6 +75,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
@@ -84,6 +85,7 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.interaction.collectIsDraggedAsState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.shape.CircleShape
@@ -124,7 +126,10 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import java.util.Locale
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -135,6 +140,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.layout.ContentScale
+import com.example.ai_based_medical_chatbot.R
+import com.example.ai_based_medical_chatbot.appText
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.asImageBitmap
@@ -160,6 +169,7 @@ import com.example.ai_based_medical_chatbot.data.api.PredictionRequest
 import com.example.ai_based_medical_chatbot.data.api.RetrofitClient
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
@@ -291,6 +301,23 @@ data class ChatMessage(
 
     val imagePaths: List<String> = emptyList()
 )
+
+internal fun resolveChatbotPrompt(text: String, hasImages: Boolean): String {
+    val clean = text.trim()
+    return when {
+        clean.isNotEmpty() -> clean
+        hasImages -> "Please analyze the attached medical prescription or clinical report image."
+        else -> "Please assess my health query."
+    }
+}
+
+internal fun isChatbotSendEnabled(text: String, hasImages: Boolean, isTyping: Boolean): Boolean {
+    return (text.trim().isNotEmpty() || hasImages) && !isTyping
+}
+
+internal fun shouldShowChatbotWelcome(messagesEmpty: Boolean, isTyping: Boolean): Boolean {
+    return messagesEmpty && !isTyping
+}
 
 
 // =============================================================
@@ -743,8 +770,27 @@ fun ChatbotScreen(
 
     val chatScrollState =
         rememberScrollState()
+    val isDragged by chatScrollState.interactionSource.collectIsDraggedAsState()
+    var userScrolledUp by remember { mutableStateOf(false) }
+
+    var currentlySpeakingText by remember { mutableStateOf<String?>(null) }
+    val voiceAssistant = remember(context) {
+        VoiceAssistant(context) { isSpeaking ->
+            if (!isSpeaking) {
+                currentlySpeakingText = null
+            }
+        }
+    }
+
+    DisposableEffect(Unit) {
+        onDispose {
+            voiceAssistant.shutdown()
+        }
+    }
 
     fun startNewChat() {
+        voiceAssistant.stop()
+        currentlySpeakingText = null
         if (messages.isNotEmpty()) {
             ChatHistoryRepository.saveChat(context, currentSessionId, messages)
         }
@@ -754,6 +800,7 @@ fun ChatbotScreen(
         messages.clear()
         message = ""
         isTyping = false
+        userScrolledUp = false
         selectedImages.clear()
         attachmentLabel = ""
         pendingImageUris = emptyList()
@@ -763,6 +810,8 @@ fun ChatbotScreen(
     }
 
     fun handleBack() {
+        voiceAssistant.stop()
+        currentlySpeakingText = null
         if (showChatSidebar) {
             showChatSidebar = false
         } else if (showAttachmentMenu) {
@@ -809,25 +858,46 @@ fun ChatbotScreen(
     // avoiding pulling the user away if they scrolled up to read.
     // =========================================================
 
-    val isNearBottom = remember(chatScrollState.value, chatScrollState.maxValue) {
-        chatScrollState.maxValue - chatScrollState.value < 160
+
+
+    // ONLY detect user scrolling when the user is actively dragging the screen with their finger!
+    // Programmatic scrolling (animateScrollTo, scrollTo) never emits DragInteraction,
+    // completely eliminating false triggers where userScrolledUp was set to true on message arrival.
+    LaunchedEffect(isDragged, chatScrollState.value, chatScrollState.maxValue) {
+        val distanceToBottom = chatScrollState.maxValue - chatScrollState.value
+        if (isDragged) {
+            if (distanceToBottom > 80) {
+                userScrolledUp = true
+            } else if (distanceToBottom <= 20) {
+                userScrolledUp = false
+            }
+        } else {
+            // When drag finishes or during natural settling, if user reaches the bottom, re-enable auto-follow
+            if (distanceToBottom <= 20) {
+                userScrolledUp = false
+            }
+        }
     }
 
-    var userScrolledUp by remember { mutableStateOf(false) }
-
-    LaunchedEffect(chatScrollState.value, chatScrollState.maxValue) {
-        userScrolledUp = (chatScrollState.maxValue - chatScrollState.value) > 220
+    // Follow layout height growth (e.g. streaming responses, keyboard opening, message rendering)
+    // without yanking the user if they deliberately scrolled up to read history.
+    LaunchedEffect(Unit) {
+        snapshotFlow { chatScrollState.maxValue }
+            .collect { targetMax ->
+                if (!userScrolledUp && targetMax > 0) {
+                    val currentDist = targetMax - chatScrollState.value
+                    if (currentDist > 0 && currentDist <= 300) {
+                        chatScrollState.scrollTo(targetMax)
+                    }
+                }
+            }
     }
 
-    // Scroll to latest message or typing indicator as content arrives or height expands
-    LaunchedEffect(
-        messages.size,
-        isTyping,
-        chatScrollState.maxValue
-    ) {
-        if (messages.isNotEmpty() || isTyping) {
-            // Automatically scroll to bottom if user is following the conversation
-            if (!userScrolledUp && chatScrollState.value < chatScrollState.maxValue) {
+    // Auto-scroll on new message added or typing state change
+    LaunchedEffect(messages.size, isTyping) {
+        if (!userScrolledUp) {
+            delay(60)
+            if (chatScrollState.maxValue > 0) {
                 chatScrollState.animateScrollTo(chatScrollState.maxValue)
             }
         }
@@ -879,6 +949,8 @@ fun ChatbotScreen(
 
         editingMessageIndex = null
         userScrolledUp = false
+        voiceAssistant.stop()
+        currentlySpeakingText = null
 
         ChatHistoryRepository.saveChat(context, currentSessionId, messages)
         savedChats = ChatHistoryRepository.getChats(context)
@@ -916,9 +988,10 @@ fun ChatbotScreen(
                         val prescriptionMemory =
                             PrescriptionMemory.build(context)
 
+                        val queryPrompt = resolveChatbotPrompt(cleanText, attachedImagePaths.isNotEmpty())
                         val chatbotText =
                             if (prescriptionMemory.isBlank()) {
-                                cleanText
+                                queryPrompt
                             } else {
                                 """
                                 USER'S SAVED PRESCRIPTION MEMORY:
@@ -934,7 +1007,7 @@ fun ChatbotScreen(
                                 not available in the saved prescription.
 
                                 USER QUESTION:
-                                $cleanText
+                                $queryPrompt
                                 """.trimIndent()
                             }
 
@@ -1014,29 +1087,24 @@ fun ChatbotScreen(
 
 
                     // =================================================
-                    // AI MESSAGE
+                    // AI MESSAGE (with deduplication)
                     // =================================================
 
-                    messages.add(
+                    val isDuplicateResponse = messages.lastOrNull()?.let { last ->
+                        !last.isUser && last.text.trim() == finalAnswer.trim()
+                    } ?: false
 
-                        ChatMessage(
-
-                            text =
-                                finalAnswer,
-
-                            isUser =
-                                false,
-
-                            intent =
-                                result.intent,
-
-                            confidence =
-                                result.confidence,
-
-                            similarity =
-                                result.answerSimilarity
+                    if (!isDuplicateResponse) {
+                        messages.add(
+                            ChatMessage(
+                                text = finalAnswer,
+                                isUser = false,
+                                intent = result.intent,
+                                confidence = result.confidence,
+                                similarity = result.answerSimilarity
+                            )
                         )
-                    )
+                    }
 
                     val requestSessionId = currentSessionId
 
@@ -1132,6 +1200,7 @@ fun ChatbotScreen(
 
     fun retryMessage(failedIndex: Int? = null) {
         if (isTyping) return
+        userScrolledUp = false
 
         val errorIdx = failedIndex ?: messages.indexOfLast { !it.isUser && it.isError }
         if (errorIdx in messages.indices) {
@@ -1140,12 +1209,15 @@ fun ChatbotScreen(
 
         val lastUserMessage = messages.lastOrNull { it.isUser } ?: return
 
+        voiceAssistant.stop()
+        currentlySpeakingText = null
         isTyping = true
         scope.launch {
             try {
                 val prescriptionMemory = PrescriptionMemory.build(context)
+                val retryPrompt = resolveChatbotPrompt(lastUserMessage.text, lastUserMessage.imagePaths.isNotEmpty())
                 val chatbotText = if (prescriptionMemory.isBlank()) {
-                    lastUserMessage.text
+                    retryPrompt
                 } else {
                     """
                     USER'S SAVED PRESCRIPTION MEMORY:
@@ -1161,7 +1233,7 @@ fun ChatbotScreen(
                     not available in the saved prescription.
 
                     USER QUESTION:
-                    ${lastUserMessage.text}
+                    $retryPrompt
                     """.trimIndent()
                 }
 
@@ -1186,15 +1258,21 @@ fun ChatbotScreen(
                         "I’m sorry, I could not generate a response right now."
                     }
 
-                    messages.add(
-                        ChatMessage(
-                            text = finalAnswer,
-                            isUser = false,
-                            intent = result.intent,
-                            confidence = result.confidence,
-                            similarity = result.answerSimilarity
+                    val isDuplicateRetry = messages.lastOrNull()?.let { last ->
+                        !last.isUser && last.text.trim() == finalAnswer.trim()
+                    } ?: false
+
+                    if (!isDuplicateRetry) {
+                        messages.add(
+                            ChatMessage(
+                                text = finalAnswer,
+                                isUser = false,
+                                intent = result.intent,
+                                confidence = result.confidence,
+                                similarity = result.answerSimilarity
+                            )
                         )
-                    )
+                    }
 
                     val requestSessionId = currentSessionId
 
@@ -1415,7 +1493,7 @@ fun ChatbotScreen(
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
+                            contentDescription = t("back"),
                             tint = PureWhite
                         )
                     }
@@ -1450,7 +1528,7 @@ fun ChatbotScreen(
                             )
                             Spacer(Modifier.width(5.dp))
                             Text(
-                                text = if (isTyping) "Thinking..." else "AI health assistant",
+                                text = if (isTyping) t("chat_status_thinking") else t("chat_assistant_subtitle"),
                                 color = PureWhite.copy(alpha = 0.88f),
                                 fontSize = 11.sp
                             )
@@ -1511,35 +1589,38 @@ fun ChatbotScreen(
                 shadowElevation = 2.dp,
                 border = BorderStroke(1.dp, mintBorder)
             ) {
-                Box(
+                Column(
                     modifier = Modifier
                         .fillMaxSize()
                         .imePadding()
                 ) {
 
-                    Column(
+                    // 1. Message list container occupying available space above the composer
+                    Box(
                         modifier = Modifier
-                            .fillMaxSize()
-                            .verticalScroll(chatScrollState)
-                            .padding(
-                                start = 12.dp,
-                                end = 12.dp,
-                                top = 8.dp,
-                                bottom = 96.dp
-                            ),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                            .fillMaxWidth()
+                            .weight(1f)
                     ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .verticalScroll(chatScrollState)
+                                .padding(
+                                    start = 12.dp,
+                                    end = 12.dp,
+                                    top = 8.dp,
+                                    bottom = 12.dp
+                                ),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
                         Spacer(Modifier.height(2.dp))
 
-                        if (messages.isEmpty() && !isTyping) {
+                        if (shouldShowChatbotWelcome(messages.isEmpty(), isTyping)) {
                             WelcomeSection(
                                 primaryTeal = primaryTeal,
                                 mutedText = mutedText,
-                                onColdClick = {
-                                    sendMessage("I have cold and flu symptoms with fever and cough")
-                                },
-                                onMedicineClick = {
-                                    message = "Tell me about medicine "
+                                onPopulateMessage = { prompt ->
+                                    message = prompt
                                 }
                             )
                         }
@@ -1549,9 +1630,6 @@ fun ChatbotScreen(
                                 message = chatMessage,
                                 onEdit = if (chatMessage.isUser && !chatMessage.isError) {
                                     {
-                                        // Editing happens in a dedicated compact modal.
-                                        // The main composer stays untouched and the bot
-                                        // is not called while the user is editing.
                                         editingMessageIndex = index
                                         editingDraft = chatMessage.text
                                         showEditMessageDialog = true
@@ -1562,6 +1640,23 @@ fun ChatbotScreen(
                                 },
                                 onRetry = if (!chatMessage.isUser && chatMessage.isError) {
                                     { retryMessage(index) }
+                                } else null,
+                                isSpeaking = currentlySpeakingText == chatMessage.text,
+                                onToggleSpeak = if (!chatMessage.isUser && !chatMessage.isError && chatMessage.text.isNotBlank()) {
+                                    {
+                                        if (currentlySpeakingText == chatMessage.text) {
+                                            voiceAssistant.stop()
+                                            currentlySpeakingText = null
+                                        } else {
+                                            currentlySpeakingText = chatMessage.text
+                                            val ttsLocale = when (selectedLanguage) {
+                                                "मराठी", "mr", "mr-IN" -> Locale.forLanguageTag("mr-IN")
+                                                "हिंदी", "hi", "hi-IN" -> Locale.forLanguageTag("hi-IN")
+                                                else -> Locale.US
+                                            }
+                                            voiceAssistant.speak(chatMessage.text, ttsLocale)
+                                        }
+                                    }
                                 } else null
                             )
                         }
@@ -1573,55 +1668,54 @@ fun ChatbotScreen(
                         Spacer(Modifier.height(2.dp))
                     }
 
-                    // Floating Jump to Latest Button (when user scrolled up)
-                    androidx.compose.animation.AnimatedVisibility(
-                        visible = userScrolledUp && messages.isNotEmpty(),
-                        enter = fadeIn(animationSpec = tween(180)) + scaleIn(initialScale = 0.8f),
-                        exit = fadeOut(animationSpec = tween(150)),
-                        modifier = Modifier
-                            .align(Alignment.BottomEnd)
-                            .padding(end = 16.dp, bottom = 82.dp)
-                    ) {
-                        Surface(
-                            onClick = {
-                                userScrolledUp = false
-                                scope.launch {
-                                    chatScrollState.animateScrollTo(chatScrollState.maxValue)
-                                }
-                            },
-                            shape = CircleShape,
-                            color = primaryTeal,
-                            contentColor = PureWhite,
-                            shadowElevation = 5.dp,
-                            modifier = Modifier.size(38.dp)
+                        // Floating Jump to Latest Button (when user scrolled up)
+                        androidx.compose.animation.AnimatedVisibility(
+                            visible = userScrolledUp && (chatScrollState.maxValue - chatScrollState.value > 60) && messages.isNotEmpty(),
+                            enter = fadeIn(animationSpec = tween(180)) + scaleIn(initialScale = 0.8f),
+                            exit = fadeOut(animationSpec = tween(150)),
+                            modifier = Modifier
+                                .align(Alignment.BottomEnd)
+                                .padding(end = 16.dp, bottom = 12.dp)
                         ) {
-                            Box(contentAlignment = Alignment.Center) {
-                                Icon(
-                                    imageVector = Icons.Filled.KeyboardArrowDown,
-                                    contentDescription = "Scroll to bottom",
-                                    tint = PureWhite,
-                                    modifier = Modifier.size(22.dp)
-                                )
+                            Surface(
+                                onClick = {
+                                    userScrolledUp = false
+                                    scope.launch {
+                                        chatScrollState.animateScrollTo(chatScrollState.maxValue)
+                                    }
+                                },
+                                shape = CircleShape,
+                                color = primaryTeal,
+                                contentColor = PureWhite,
+                                shadowElevation = 5.dp,
+                                modifier = Modifier.size(38.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = Icons.Filled.KeyboardArrowDown,
+                                        contentDescription = "Scroll to bottom",
+                                        tint = PureWhite,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                }
                             }
                         }
                     }
 
-
                     // -----------------------------------------
-                    // FLOATING COMPOSER
+                    // BOTTOM COMPOSER (docked below messages)
                     // -----------------------------------------
                     Surface(
                         modifier = Modifier
-                            .align(Alignment.BottomCenter)
                             .fillMaxWidth()
                             .navigationBarsPadding()
                             .padding(
                                 horizontal = 10.dp,
-                                vertical = 8.dp
+                                vertical = 6.dp
                             ),
                         shape = RoundedCornerShape(26.dp),
                         color = PureWhite,
-                        shadowElevation = 6.dp,
+                        shadowElevation = 4.dp,
                         border = BorderStroke(
                             1.dp,
                             mintBorder
@@ -1826,7 +1920,7 @@ fun ChatbotScreen(
                                         placeholder = {
                                             Text(
                                                 text = if (attachmentLabel.isBlank()) {
-                                                    "Ask MedAssist..."
+                                                    t("chat_input_placeholder")
                                                 } else {
                                                     attachmentLabel
                                                 },
@@ -1906,11 +2000,7 @@ fun ChatbotScreen(
 
                                     Spacer(Modifier.width(4.dp))
 
-                                    val canSend =
-                                        (
-                                                message.trim().isNotEmpty() ||
-                                                        selectedImages.isNotEmpty()
-                                                ) && !isTyping
+                                    val canSend = isChatbotSendEnabled(message, selectedImages.isNotEmpty(), isTyping)
 
                                     IconButton(
                                         onClick = { sendMessage(message) },
@@ -2562,7 +2652,254 @@ fun ChatbotScreen(
 // MIC ICON (self-contained, no material-icons-extended needed)
 // =============================================================
 
-private val MicIcon: ImageVector by lazy {
+// =============================================================
+// VECTOR ICONS FOR CHAT SUGGESTIONS & ACTIONS
+// =============================================================
+
+private val SpeakerVectorIcon: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "SpeakerVectorIcon",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    ).addPath(
+        pathData = addPathNodes(
+            "M3,9v6h4l5,5V4L7,9H3zm13.5,3c0,-1.77 -1.02,-3.29 -2.5,-4.03v8.05c1.48,-0.73 2.5,-2.25 2.5,-4.02zM14,3.23v2.06c2.89,0.86 5,3.54 5,6.71s-2.11,5.85 -5,6.71v2.06c4.01,-0.91 7,-4.49 7,-8.77s-2.99,-7.86 -7,-8.77z"
+        ),
+        fill = SolidColor(Color.Black)
+    ).build()
+}
+
+private val StopSpeakerVectorIcon: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "StopSpeakerVectorIcon",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    ).addPath(
+        pathData = addPathNodes(
+            "M6,6h12v12H6z"
+        ),
+        fill = SolidColor(Color.Black)
+    ).build()
+}
+
+private val ShareVectorIcon: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "ShareVectorIcon",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    ).addPath(
+        pathData = addPathNodes(
+            "M18,16.08c-0.76,0 -1.44,0.3 -1.96,0.77L8.91,12.7c0.05,-0.23 0.09,-0.46 0.09,-0.7s-0.04,-0.47 -0.09,-0.7l7.05,-4.11c0.54,0.5 1.25,0.81 2.04,0.81 1.66,0 3,-1.34 3,-3s-1.34,-3 -3,-3 -3,1.34 -3,3c0,0.24 0.04,0.47 0.09,0.7L8.04,9.81C7.5,9.31 6.79,9 6,9c-1.66,0 -3,1.34 -3,3s1.34,3 3,3c0.79,0 1.5,-0.31 2.04,-0.81l7.12,4.16c-0.05,0.21 -0.08,0.43 -0.08,0.65 0,1.61 1.31,2.92 2.92,2.92 1.61,0 2.92,-1.31 2.92,-2.92s-1.31,-2.92 -2.92,-2.92z"
+        ),
+        fill = SolidColor(Color.Black)
+    ).build()
+}
+
+@Composable
+private fun AiResponseActionRow(
+    messageText: String,
+    isSpeaking: Boolean,
+    onToggleSpeak: (() -> Unit)?,
+    modifier: Modifier = Modifier
+) {
+    val context = LocalContext.current
+    val currentLang = LocalAppLanguageController.current.selectedLanguage
+
+    var toolbarVisible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        toolbarVisible = true
+    }
+
+    AnimatedVisibility(
+        visible = toolbarVisible,
+        enter = fadeIn(animationSpec = tween(180)) + slideInVertically(
+            initialOffsetY = { it / 3 },
+            animationSpec = tween(180)
+        )
+    ) {
+        Row(
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(top = 2.dp, bottom = 2.dp)
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // 1. Copy Action
+            val copyLabel = appText("chat_action_copy_btn", currentLang)
+            val copyDesc = appText("chat_action_copy", currentLang)
+            Surface(
+                onClick = {
+                    val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as? ClipboardManager
+                    val clip = ClipData.newPlainText("MedAssist Response", messageText)
+                    clipboard?.setPrimaryClip(clip)
+                    Toast.makeText(context, appText("chat_copy_done", currentLang), Toast.LENGTH_SHORT).show()
+                },
+                shape = RoundedCornerShape(8.dp),
+                color = Color.Transparent,
+                contentColor = DeepTeal,
+                modifier = Modifier
+                    .height(32.dp)
+                    .defaultMinSize(minWidth = 48.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Icon(
+                        imageVector = CopyVectorIcon,
+                        contentDescription = copyDesc,
+                        tint = DeepTeal,
+                        modifier = Modifier.size(13.dp)
+                    )
+                    Text(
+                        text = copyLabel,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = DeepTeal
+                    )
+                }
+            }
+
+            // 2. Share Action
+            val shareLabel = appText("chat_action_share_btn", currentLang)
+            val shareDesc = appText("chat_action_share", currentLang)
+            val shareTitle = appText("chat_share_title", currentLang)
+            Surface(
+                onClick = {
+                    val sendIntent = Intent().apply {
+                        action = Intent.ACTION_SEND
+                        putExtra(Intent.EXTRA_TEXT, messageText)
+                        type = "text/plain"
+                    }
+                    val shareIntent = Intent.createChooser(sendIntent, shareTitle)
+                    context.startActivity(shareIntent)
+                },
+                shape = RoundedCornerShape(8.dp),
+                color = Color.Transparent,
+                contentColor = DeepTeal,
+                modifier = Modifier
+                    .height(32.dp)
+                    .defaultMinSize(minWidth = 48.dp)
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Icon(
+                        imageVector = ShareVectorIcon,
+                        contentDescription = shareDesc,
+                        tint = DeepTeal,
+                        modifier = Modifier.size(13.dp)
+                    )
+                    Text(
+                        text = shareLabel,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        color = DeepTeal
+                    )
+                }
+            }
+
+            // 3. Read Aloud / Stop Action
+            if (onToggleSpeak != null) {
+                val ttsLabel = if (isSpeaking) {
+                    appText("chat_action_stop_btn", currentLang)
+                } else {
+                    appText("chat_action_read_btn", currentLang)
+                }
+                val ttsDesc = if (isSpeaking) {
+                    appText("chat_action_stop_speaking", currentLang)
+                } else {
+                    appText("chat_action_read_aloud", currentLang)
+                }
+                Surface(
+                    onClick = onToggleSpeak,
+                    shape = RoundedCornerShape(8.dp),
+                    color = if (isSpeaking) SoftMint else Color.Transparent,
+                    contentColor = DeepTeal,
+                    modifier = Modifier
+                        .height(32.dp)
+                        .defaultMinSize(minWidth = 48.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        Icon(
+                            imageVector = if (isSpeaking) StopSpeakerVectorIcon else SpeakerVectorIcon,
+                            contentDescription = ttsDesc,
+                            tint = DeepTeal,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Text(
+                            text = ttsLabel,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = DeepTeal
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+private val CopyVectorIcon: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "CopyVectorIcon",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    ).addPath(
+        pathData = addPathNodes(
+            "M16,1H4c-1.1,0 -2,0.9 -2,2v14h2V3h12V1zm3,4H8c-1.1,0 -2,0.9 -2,2v14c0,1.1 0.9,2 2,2h11c1.1,0 2,-0.9 2,-2V7c0,-1.1 -0.9,-2 -2,-2zm0,16H8V7h11v14z"
+        ),
+        fill = SolidColor(Color.Black)
+    ).build()
+}
+
+private val DocumentVectorIcon: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "DocumentVectorIcon",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    ).addPath(
+        pathData = addPathNodes(
+            "M14,2H6c-1.1,0 -2,0.9 -2,2v16c0,1.1 0.9,2 2,2h12c1.1,0 2,-0.9 2,-2V8l-6,-6zm2,16H8v-2h8v2zm0,-4H8v-2h8v2zm-3,-5V3.5L18.5,9H13z"
+        ),
+        fill = SolidColor(Color.Black)
+    ).build()
+}
+
+private val WellnessVectorIcon: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "WellnessVectorIcon",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    ).addPath(
+        pathData = addPathNodes(
+            "M12,21.35l-1.45,-1.32C5.4,15.36 2,12.28 2,8.5 2,5.42 4.42,3 7.5,3c1.74,0 3.41,0.81 4.5,2.09C13.09,3.81 14.76,3 16.5,3 19.58,3 22,5.42 22,8.5c0,3.78 -3.4,6.86 -8.55,11.54L12,21.35z"
+        ),
+        fill = SolidColor(Color.Black)
+    ).build()
+}
+
+internal val MicIcon: ImageVector by lazy {
     ImageVector.Builder(
         name = "MicIcon",
         defaultWidth = 24.dp,
@@ -2585,12 +2922,15 @@ private val MicIcon: ImageVector by lazy {
 // =============================================================
 
 @Composable
-private fun WelcomeSection(
+internal fun WelcomeSection(
     primaryTeal: Color,
     mutedText: Color,
-    onColdClick: () -> Unit = {},
-    onMedicineClick: () -> Unit = {}
+    onPopulateMessage: (String) -> Unit = {}
 ) {
+    val appLanguageController = LocalAppLanguageController.current
+    val selectedLanguage = appLanguageController.selectedLanguage
+    fun t(key: String): String = appText(key, selectedLanguage)
+
     var visible by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
@@ -2599,125 +2939,180 @@ private fun WelcomeSection(
 
     AnimatedVisibility(
         visible = visible,
-        enter = fadeIn(animationSpec = tween(650)) +
+        enter = fadeIn(animationSpec = tween(400)) +
                 slideInVertically(
-                    animationSpec = tween(650, easing = FastOutSlowInEasing),
+                    animationSpec = tween(400, easing = FastOutSlowInEasing),
                     initialOffsetY = { fullHeight -> fullHeight / 6 }
                 )
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 20.dp, bottom = 12.dp, start = 8.dp, end = 8.dp),
+                .padding(top = 16.dp, bottom = 10.dp, start = 6.dp, end = 6.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             RobotAvatar(
-                size = 76.dp,
+                size = 58.dp,
                 isError = false
             )
 
-            Spacer(Modifier.height(14.dp))
+            Spacer(Modifier.height(10.dp))
 
             Text(
-                text = "How can I help you today?",
-                fontSize = 19.sp,
+                text = t("chat_welcome_title"),
+                fontSize = 18.sp,
                 fontWeight = FontWeight.Bold,
                 color = primaryTeal,
                 textAlign = TextAlign.Center
             )
 
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(4.dp))
 
             Text(
-                text = "Ask about symptoms, medicines, or medical report interpretation.",
-                fontSize = 13.sp,
+                text = t("chat_welcome_subtitle"),
+                fontSize = 12.5.sp,
                 color = mutedText,
                 textAlign = TextAlign.Center,
-                lineHeight = 18.sp
+                lineHeight = 17.sp,
+                modifier = Modifier.padding(horizontal = 12.dp)
             )
 
-            Spacer(Modifier.height(18.dp))
+            Spacer(Modifier.height(14.dp))
 
-            // Quick suggestion chips
+            // 4 Compact Healthcare Suggestion Chips (2 rows of 2)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Surface(
-                    onClick = onColdClick,
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(14.dp)),
-                    color = SoftMint,
-                    border = BorderStroke(1.dp, Mint)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(10.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = StethoscopeVectorIcon,
-                                contentDescription = null,
-                                tint = primaryTeal,
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Text(
-                                text = "Common Cold & Flu",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = primaryTeal
-                            )
-                        }
-                        Spacer(Modifier.height(2.dp))
-                        Text(
-                            text = "Check fever, cough or chills",
-                            fontSize = 10.sp,
-                            color = mutedText
-                        )
-                    }
-                }
+                SuggestionCard(
+                    title = t("chat_chip_symptoms"),
+                    subtitle = t("chat_chip_symptoms_sub"),
+                    icon = StethoscopeVectorIcon,
+                    primaryTeal = primaryTeal,
+                    mutedText = mutedText,
+                    modifier = Modifier.weight(1f),
+                    onClick = { onPopulateMessage(t("chat_chip_symptoms_prompt")) }
+                )
 
-                Surface(
-                    onClick = onMedicineClick,
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(14.dp)),
-                    color = SoftMint,
-                    border = BorderStroke(1.dp, Mint)
+                SuggestionCard(
+                    title = t("chat_chip_medicines"),
+                    subtitle = t("chat_chip_medicines_sub"),
+                    icon = PillVectorIcon,
+                    primaryTeal = primaryTeal,
+                    mutedText = mutedText,
+                    modifier = Modifier.weight(1f),
+                    onClick = { onPopulateMessage(t("chat_chip_medicines_prompt")) }
+                )
+            }
+
+            Spacer(Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                SuggestionCard(
+                    title = t("chat_chip_reports"),
+                    subtitle = t("chat_chip_reports_sub"),
+                    icon = DocumentVectorIcon,
+                    primaryTeal = primaryTeal,
+                    mutedText = mutedText,
+                    modifier = Modifier.weight(1f),
+                    onClick = { onPopulateMessage(t("chat_chip_reports_prompt")) }
+                )
+
+                SuggestionCard(
+                    title = t("chat_chip_wellness"),
+                    subtitle = t("chat_chip_wellness_sub"),
+                    icon = WellnessVectorIcon,
+                    primaryTeal = primaryTeal,
+                    mutedText = mutedText,
+                    modifier = Modifier.weight(1f),
+                    onClick = { onPopulateMessage(t("chat_chip_wellness_prompt")) }
+                )
+            }
+
+            Spacer(Modifier.height(12.dp))
+
+            // Compact Medical Safety Disclaimer Note
+            Surface(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(10.dp),
+                color = Ivory,
+                border = BorderStroke(1.dp, Mint.copy(alpha = 0.5f))
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(
-                        modifier = Modifier.padding(10.dp)
-                    ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = PillVectorIcon,
-                                contentDescription = null,
-                                tint = primaryTeal,
-                                modifier = Modifier.size(14.dp)
-                            )
-                            Spacer(Modifier.width(6.dp))
-                            Text(
-                                text = "Medicine Info",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = primaryTeal
-                            )
-                        }
-                        Spacer(Modifier.height(2.dp))
-                        Text(
-                            text = "Dosage, side effects & uses",
-                            fontSize = 10.sp,
-                            color = mutedText
-                        )
-                    }
+                    Icon(
+                        imageVector = Icons.Filled.Info,
+                        contentDescription = null,
+                        tint = SageGreen,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(Modifier.width(6.dp))
+                    Text(
+                        text = t("chat_disclaimer_short"),
+                        fontSize = 10.5.sp,
+                        color = TextMuted,
+                        lineHeight = 14.5.sp
+                    )
                 }
             }
         }
-
     }
 }
 
+@Composable
+internal fun SuggestionCard(
+    title: String,
+    subtitle: String,
+    icon: ImageVector,
+    primaryTeal: Color,
+    mutedText: Color,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier.clip(RoundedCornerShape(12.dp)),
+        color = SoftMint.copy(alpha = 0.7f),
+        border = BorderStroke(1.dp, Mint.copy(alpha = 0.6f)),
+        shadowElevation = 0.5.dp
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 9.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = primaryTeal,
+                    modifier = Modifier.size(14.dp)
+                )
+                Spacer(Modifier.width(6.dp))
+                Text(
+                    text = title,
+                    fontSize = 12.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    color = primaryTeal,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+            }
+            Spacer(Modifier.height(2.dp))
+            Text(
+                text = subtitle,
+                fontSize = 10.sp,
+                color = mutedText,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+                lineHeight = 13.sp
+            )
+        }
+    }
+}
 
 // =============================================================
 // SAVE IMAGE TO GALLERY + RETURN CONTENT URI
@@ -3558,15 +3953,15 @@ private fun fixMeasurementFormatting(
 // =============================================================
 
 @Composable
-private fun RobotAvatar(
+internal fun RobotAvatar(
     size: androidx.compose.ui.unit.Dp,
     isError: Boolean
 ) {
     val backgroundColor =
         if (isError) StatusErrorBackground else SoftMint
 
-    val robotColor =
-        if (isError) StatusError else DeepTeal
+    val borderColor =
+        if (isError) StatusErrorBorder else Mint
 
     Box(
         modifier = Modifier
@@ -3575,49 +3970,17 @@ private fun RobotAvatar(
             .background(backgroundColor)
             .border(
                 width = 1.dp,
-                color = if (isError) StatusErrorBorder else Mint,
+                color = borderColor,
                 shape = CircleShape
             ),
         contentAlignment = Alignment.Center
     ) {
-        // Antenna
-        Box(
-            modifier = Modifier
-                .size(size * 0.10f)
-                .clip(CircleShape)
-                .background(robotColor)
-                .align(Alignment.TopCenter)
-                .padding(top = size * 0.08f)
+        Image(
+            painter = painterResource(id = R.drawable.doctor_avatar),
+            contentDescription = "MedAssist Medical Robot Doctor",
+            modifier = Modifier.fillMaxSize(),
+            contentScale = ContentScale.Crop
         )
-
-        // Robot head
-        Box(
-            modifier = Modifier
-                .size(size * 0.62f, size * 0.50f)
-                .clip(RoundedCornerShape(size * 0.14f))
-                .background(robotColor)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(horizontal = size * 0.13f),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Box(
-                    Modifier
-                        .size(size * 0.095f)
-                        .clip(CircleShape)
-                        .background(PureWhite)
-                )
-                Box(
-                    Modifier
-                        .size(size * 0.095f)
-                        .clip(CircleShape)
-                        .background(PureWhite)
-                )
-            }
-        }
     }
 }
 
@@ -3630,14 +3993,11 @@ fun MessageBubble(
     message: ChatMessage,
     onEdit: (() -> Unit)? = null,
     onImageClick: ((String) -> Unit)? = null,
-    onRetry: (() -> Unit)? = null
+    onRetry: (() -> Unit)? = null,
+    isSpeaking: Boolean = false,
+    onToggleSpeak: (() -> Unit)? = null
 ) {
-    var showMessage by remember { mutableStateOf(false) }
-
-    LaunchedEffect(message.text, message.imagePaths) {
-        showMessage = false
-        showMessage = true
-    }
+    var showMessage by remember { mutableStateOf(true) }
 
     val bubbleShape =
         if (message.isUser) {
@@ -3663,16 +4023,15 @@ fun MessageBubble(
             message.isError -> StatusErrorBackground
             message.isUser && hasImages -> PureWhite
             message.isUser -> DeepTeal
-            else -> SoftMint
+            else -> PureWhite
         }
 
     val bubbleBorder =
         when {
             message.isError -> BorderStroke(1.dp, StatusErrorBorder)
-            message.isUser && hasImages ->
-                BorderStroke(1.dp, Mint)
+            message.isUser && hasImages -> BorderStroke(1.dp, Mint)
             message.isUser -> null
-            else -> BorderStroke(1.dp, Mint)
+            else -> BorderStroke(1.dp, Mint.copy(alpha = 0.5f))
         }
 
     AnimatedVisibility(
@@ -3862,7 +4221,7 @@ fun MessageBubble(
 
                         IconButton(
                             onClick = onEdit,
-                            modifier = Modifier.size(22.dp)
+                            modifier = Modifier.size(32.dp)
                         ) {
                             Icon(
                                 imageVector = Icons.Filled.Edit,
@@ -3888,6 +4247,16 @@ fun MessageBubble(
                             color = SageGreen
                         )
                     }
+
+                }
+
+                // ChatGPT-style Action Row (Copy, Share, Read Aloud) for completed AI responses
+                if (!message.isUser && !message.isError && message.text.isNotBlank()) {
+                    AiResponseActionRow(
+                        messageText = message.text,
+                        isSpeaking = isSpeaking,
+                        onToggleSpeak = onToggleSpeak
+                    )
                 }
             }
         }
@@ -3899,7 +4268,7 @@ fun MessageBubble(
 // =============================================================
 
 @Composable
-private fun FormattedMessageText(
+internal fun FormattedMessageText(
 
     text: String,
 

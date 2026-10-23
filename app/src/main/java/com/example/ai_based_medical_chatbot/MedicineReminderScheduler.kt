@@ -7,7 +7,9 @@ import android.app.PendingIntent
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
 import android.os.Build
+import android.provider.Settings
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import java.text.SimpleDateFormat
@@ -159,6 +161,42 @@ class MedicineReminderScheduler(private val context: Context) {
         }
 
         return null
+    }
+
+    fun canScheduleExactAlarms(): Boolean {
+        return canScheduleExactAlarms(context)
+    }
+
+    companion object {
+        fun canScheduleExactAlarms(context: Context): Boolean {
+            return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                val alarmManager =
+                    context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager
+                alarmManager?.canScheduleExactAlarms() ?: true
+            } else {
+                true
+            }
+        }
+
+        fun checkExactAlarmPermission(sdkInt: Int, canScheduleSupplier: () -> Boolean): Boolean {
+            return if (sdkInt >= Build.VERSION_CODES.S) {
+                canScheduleSupplier()
+            } else {
+                true
+            }
+        }
+
+        fun createExactAlarmSettingsIntent(packageName: String): Intent {
+            return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                Intent(Settings.ACTION_REQUEST_SCHEDULE_EXACT_ALARM).apply {
+                    data = Uri.parse("package:$packageName")
+                }
+            } else {
+                Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = Uri.parse("package:$packageName")
+                }
+            }
+        }
     }
 }
 

@@ -21,168 +21,8 @@ class VoiceAssistant(
     companion object {
         private const val TAG = "MEDASSIST_TTS"
         private const val UTTERANCE_ID = "medassist_response"
-    }
 
-    private val appContext = context.applicationContext
-
-    private val textToSpeech =
-        TextToSpeech(appContext, this)
-
-    private var initialized = false
-
-    override fun onInit(status: Int) {
-
-        if (status == TextToSpeech.SUCCESS) {
-
-            initialized = true
-
-            textToSpeech.setOnUtteranceProgressListener(
-                object : UtteranceProgressListener() {
-
-                    override fun onStart(utteranceId: String?) {
-                        onSpeakingChanged(true)
-                    }
-
-                    override fun onDone(utteranceId: String?) {
-                        onSpeakingChanged(false)
-                    }
-
-                    @Deprecated("Deprecated by Android API")
-                    override fun onError(utteranceId: String?) {
-                        onSpeakingChanged(false)
-                    }
-
-                    override fun onError(
-                        utteranceId: String?,
-                        errorCode: Int
-                    ) {
-                        Log.e(TAG, "TTS error: $errorCode")
-                        onSpeakingChanged(false)
-                    }
-                }
-            )
-
-            Log.d(TAG, "TTS initialized")
-
-        } else {
-
-            initialized = false
-
-            Log.e(
-                TAG,
-                "TTS initialization failed"
-            )
-        }
-    }
-
-    /**
-     * Speaks the supplied AI response after completely
-     * removing Markdown/UI formatting.
-     */
-    fun speak(
-        originalText: String,
-        locale: Locale
-    ) {
-
-        if (!initialized) {
-            Log.w(TAG, "TTS is not initialized")
-            return
-        }
-
-        /*
-         * IMPORTANT:
-         * Cleaning happens immediately before TTS.
-         * Therefore raw ###, **, emojis, etc. cannot reach
-         * TextToSpeech.
-         */
-        val speechText =
-            cleanForSpeech(originalText)
-
-        if (speechText.isBlank()) {
-            Log.w(TAG, "No readable text after cleaning")
-            return
-        }
-
-        Log.d(
-            TAG,
-            "TTS cleaned text: $speechText"
-        )
-
-        textToSpeech.stop()
-
-        setBestLanguage(locale)
-
-        textToSpeech.speak(
-            speechText,
-            TextToSpeech.QUEUE_FLUSH,
-            null,
-            UTTERANCE_ID
-        )
-    }
-
-    fun stop() {
-
-        if (initialized) {
-            textToSpeech.stop()
-        }
-
-        onSpeakingChanged(false)
-    }
-
-    fun shutdown() {
-
-        textToSpeech.stop()
-        textToSpeech.shutdown()
-
-        initialized = false
-
-        onSpeakingChanged(false)
-    }
-
-    private fun setBestLanguage(
-        requestedLocale: Locale
-    ): Boolean {
-
-        var result =
-            textToSpeech.setLanguage(
-                requestedLocale
-            )
-
-        if (
-            result != TextToSpeech.LANG_MISSING_DATA &&
-            result != TextToSpeech.LANG_NOT_SUPPORTED
-        ) {
-            return true
-        }
-
-        val languageOnly =
-            Locale(requestedLocale.language)
-
-        result =
-            textToSpeech.setLanguage(
-                languageOnly
-            )
-
-        if (
-            result != TextToSpeech.LANG_MISSING_DATA &&
-            result != TextToSpeech.LANG_NOT_SUPPORTED
-        ) {
-            return true
-        }
-
-        textToSpeech.setLanguage(Locale.US)
-
-        return false
-    }
-
-    /**
-     * Converts Gemini/Markdown text into plain natural speech.
-     *
-     * This function is deliberately aggressive:
-     * the final output is guaranteed not to contain '#'
-     * or Markdown formatting.
-     */
-    private fun cleanForSpeech(
+    internal fun cleanForSpeech(
         text: String
     ): String {
 
@@ -307,4 +147,170 @@ class VoiceAssistant(
 
             .trim()
     }
+
+    }
+
+    private val appContext = context.applicationContext
+
+    private val textToSpeech =
+        TextToSpeech(appContext, this)
+
+    private var initialized = false
+
+    override fun onInit(status: Int) {
+
+        if (status == TextToSpeech.SUCCESS) {
+
+            initialized = true
+
+            textToSpeech.setOnUtteranceProgressListener(
+                object : UtteranceProgressListener() {
+
+                    override fun onStart(utteranceId: String?) {
+                        onSpeakingChanged(true)
+                    }
+
+                    override fun onDone(utteranceId: String?) {
+                        onSpeakingChanged(false)
+                    }
+
+                    @Deprecated("Deprecated by Android API")
+                    override fun onError(utteranceId: String?) {
+                        onSpeakingChanged(false)
+                    }
+
+                    override fun onError(
+                        utteranceId: String?,
+                        errorCode: Int
+                    ) {
+                        Log.e(TAG, "TTS error: $errorCode")
+                        onSpeakingChanged(false)
+                    }
+                }
+            )
+
+            Log.d(TAG, "TTS initialized")
+
+        } else {
+
+            initialized = false
+
+            Log.e(
+                TAG,
+                "TTS initialization failed"
+            )
+        }
+    }
+
+    /**
+     * Speaks the supplied AI response after completely
+     * removing Markdown/UI formatting.
+     */
+    fun speak(
+        originalText: String,
+        locale: Locale
+    ) {
+
+        if (!initialized) {
+            Log.w(TAG, "TTS is not initialized")
+            return
+        }
+
+        /*
+         * IMPORTANT:
+         * Cleaning happens immediately before TTS.
+         * Therefore raw ###, **, emojis, etc. cannot reach
+         * TextToSpeech.
+         */
+        val speechText =
+            cleanForSpeech(originalText)
+
+        if (speechText.isBlank()) {
+            Log.w(TAG, "No readable text after cleaning")
+            return
+        }
+
+        Log.d(
+            TAG,
+            "TTS cleaned text: $speechText"
+        )
+
+        textToSpeech.stop()
+
+        setBestLanguage(locale)
+
+        textToSpeech.speak(
+            speechText,
+            TextToSpeech.QUEUE_FLUSH,
+            null,
+            UTTERANCE_ID
+        )
+    }
+
+    fun isSpeaking(): Boolean {
+        return initialized && textToSpeech.isSpeaking
+    }
+
+    fun stop() {
+
+        if (initialized) {
+            textToSpeech.stop()
+        }
+
+        onSpeakingChanged(false)
+    }
+
+    fun shutdown() {
+
+        textToSpeech.stop()
+        textToSpeech.shutdown()
+
+        initialized = false
+
+        onSpeakingChanged(false)
+    }
+
+    private fun setBestLanguage(
+        requestedLocale: Locale
+    ): Boolean {
+
+        var result =
+            textToSpeech.setLanguage(
+                requestedLocale
+            )
+
+        if (
+            result != TextToSpeech.LANG_MISSING_DATA &&
+            result != TextToSpeech.LANG_NOT_SUPPORTED
+        ) {
+            return true
+        }
+
+        val languageOnly =
+            Locale.forLanguageTag(requestedLocale.language)
+
+        result =
+            textToSpeech.setLanguage(
+                languageOnly
+            )
+
+        if (
+            result != TextToSpeech.LANG_MISSING_DATA &&
+            result != TextToSpeech.LANG_NOT_SUPPORTED
+        ) {
+            return true
+        }
+
+        textToSpeech.setLanguage(Locale.US)
+
+        return false
+    }
+
+    /**
+     * Converts Gemini/Markdown text into plain natural speech.
+     *
+     * This function is deliberately aggressive:
+     * the final output is guaranteed not to contain '#'
+     * or Markdown formatting.
+     */
 }

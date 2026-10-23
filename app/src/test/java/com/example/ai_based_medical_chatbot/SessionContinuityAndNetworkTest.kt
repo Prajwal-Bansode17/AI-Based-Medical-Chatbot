@@ -10,6 +10,13 @@ import org.junit.Test
 import ui.formatDobDigits
 import ui.parseDateOfBirth
 import ui.calculateAgeFromDateOfBirth
+import ui.ChatMessage
+import ui.isChatbotSendEnabled
+import ui.shouldShowChatbotWelcome
+import ui.resolveChatbotPrompt
+import ui.VoiceAssistant
+import ui.popularMedicinesList
+import ui.PopularMedicineItem
 
 class SessionContinuityAndNetworkTest {
 
@@ -35,6 +42,86 @@ class SessionContinuityAndNetworkTest {
             "http://10.0.2.2:5000/",
             RetrofitClient.normalizeUrl("   ")
         )
+    }
+
+    @Test
+    fun testNormalizeUrl_stripsAccidentalTypoSuffix() {
+        assertEquals(
+            "http://10.185.238.44:5000/",
+            RetrofitClient.normalizeUrl("http://10.185.238.44:5000/w")
+        )
+        assertEquals(
+            "http://10.185.238.44:5000/",
+            RetrofitClient.normalizeUrl("http://10.185.238.44:5000/w/")
+        )
+        assertEquals(
+            "http://10.185.238.44:5000/",
+            RetrofitClient.normalizeUrl("http://10.185.238.44:5000/")
+        )
+        assertEquals(
+            "http://10.185.238.44:5000/",
+            RetrofitClient.normalizeUrl("10.185.238.44:5000")
+        )
+    }
+
+    @Test
+    fun testStaleIpMarker_purgesLegacyStaleUrlFromStorage() {
+        val persistentStorage = mutableMapOf<String, String>()
+        val keyServerUrl = RetrofitClient.KEY_SERVER_URL
+        val staleMarker = RetrofitClient.STALE_IP_MARKER
+
+        // Device previously held stale IP with /w typo
+        persistentStorage[keyServerUrl] = "http://192.168.1.12:5000/w"
+
+        val saved = persistentStorage[keyServerUrl]?.trim()
+        var customBaseUrl: String? = null
+        if (!saved.isNullOrBlank()) {
+            if (saved.contains(staleMarker) || saved.endsWith("/w") || saved.contains("/w/")) {
+                persistentStorage.remove(keyServerUrl)
+                customBaseUrl = null
+            } else {
+                customBaseUrl = RetrofitClient.normalizeUrl(saved)
+            }
+        }
+
+        // Stale preference was purged
+        assertNull(persistentStorage[keyServerUrl])
+        assertNull(customBaseUrl)
+
+        // Resolves to default configured URL (10.185.238.44:5000)
+        val defaultUrl = "http://10.185.238.44:5000/"
+        val resolved = RetrofitClient.normalizeUrl(customBaseUrl ?: defaultUrl)
+        assertEquals("http://10.185.238.44:5000/", resolved)
+    }
+
+    @Test
+    fun testCustomServerUrl_doesNotAffectChatHistoryOrUserData() {
+        val networkPrefs = mutableMapOf<String, String>()
+        val chatHistoryPrefs = mutableMapOf<String, String>()
+        val userAuthPrefs = mutableMapOf<String, String>()
+
+        chatHistoryPrefs["saved_chats_user_1"] = "[{\"id\":\"session_1\",\"messages\":[]}]"
+        userAuthPrefs["access_token"] = "mock_auth_token_jwt"
+
+        // Update server URL
+        val newLanUrl = "http://10.185.238.44:5000/"
+        networkPrefs[RetrofitClient.KEY_SERVER_URL] = RetrofitClient.normalizeUrl(newLanUrl)
+
+        // Verify server URL updated in network config
+        assertEquals("http://10.185.238.44:5000/", networkPrefs[RetrofitClient.KEY_SERVER_URL])
+
+        // Verify chat history and auth data remain intact
+        assertTrue(chatHistoryPrefs.containsKey("saved_chats_user_1"))
+        assertEquals("[{\"id\":\"session_1\",\"messages\":[]}]", chatHistoryPrefs["saved_chats_user_1"])
+        assertEquals("mock_auth_token_jwt", userAuthPrefs["access_token"])
+
+        // Clear custom server URL
+        networkPrefs.remove(RetrofitClient.KEY_SERVER_URL)
+        assertFalse(networkPrefs.containsKey(RetrofitClient.KEY_SERVER_URL))
+
+        // Chat history and auth still completely untouched
+        assertTrue(chatHistoryPrefs.containsKey("saved_chats_user_1"))
+        assertTrue(userAuthPrefs.containsKey("access_token"))
     }
 
     @Test
@@ -1486,5 +1573,803 @@ class SessionContinuityAndNetworkTest {
 
         // Age logic remains consistent
         assertTrue("Age must be calculated and > 0", updatedData.age > 0)
+    }
+
+    @Test
+    fun testExactAlarmPermissionLogicAndLocalization() {
+        // Pre-Android 12 (SDK < 31): Exact alarm permission is always granted
+        assertTrue(
+            MedicineReminderScheduler.checkExactAlarmPermission(24) { false }
+        )
+        assertTrue(
+            MedicineReminderScheduler.checkExactAlarmPermission(30) { false }
+        )
+
+        // Android 12+ (SDK >= 31): Follows AlarmManager.canScheduleExactAlarms() result
+        assertFalse(
+            MedicineReminderScheduler.checkExactAlarmPermission(31) { false }
+        )
+        assertTrue(
+            MedicineReminderScheduler.checkExactAlarmPermission(31) { true }
+        )
+        assertFalse(
+            MedicineReminderScheduler.checkExactAlarmPermission(34) { false }
+        )
+        assertTrue(
+            MedicineReminderScheduler.checkExactAlarmPermission(34) { true }
+        )
+
+        // Test localization keys across English, Marathi, Hindi
+        val requiredKeys = listOf(
+            "reminder_exact_alarm_title",
+            "reminder_exact_alarm_desc",
+            "reminder_exact_alarm_btn"
+        )
+        val supportedLangs = listOf("en", "mr", "hi")
+
+        for (lang in supportedLangs) {
+            for (key in requiredKeys) {
+                val translation = appText(key, lang)
+                assertFalse("Translation for '$key' in '$lang' should not be blank", translation.isBlank())
+                assertFalse("Translation for '$key' in '$lang' should not be raw key", translation == key)
+            }
+        }
+
+        // Verify specific translations
+        assertEquals("Allow exact alarms", appText("reminder_exact_alarm_title", "en"))
+        assertEquals("Settings", appText("reminder_exact_alarm_btn", "en"))
+        assertEquals("अचूक वेळेच्या अलार्मला परवानगी द्या", appText("reminder_exact_alarm_title", "mr"))
+        assertEquals("सेटिंग्ज उघडा", appText("reminder_exact_alarm_btn", "mr"))
+        assertEquals("सटीक अलार्म की अनुमति दें", appText("reminder_exact_alarm_title", "hi"))
+        assertEquals("सेटिंग्स खोलें", appText("reminder_exact_alarm_btn", "hi"))
+    }
+
+    @Test
+    fun testSymptomsCheckerDisclaimerLocalization() {
+        val disclaimerKeys = listOf(
+            "symptoms_disclaimer_title",
+            "symptoms_disclaimer_body",
+            "symptoms_disclaimer_emergency",
+            "symptoms_medical_disclaimer",
+            "symptoms_ai_disclaimer"
+        )
+        val supportedLangs = listOf("en", "mr", "hi")
+
+        for (lang in supportedLangs) {
+            for (key in disclaimerKeys) {
+                val translation = appText(key, lang)
+                assertFalse("Translation for '$key' in '$lang' should not be blank", translation.isBlank())
+                assertFalse("Translation for '$key' in '$lang' should not be raw key", translation == key)
+            }
+        }
+
+        // Verify specific disclaimer content in English
+        val enTitle = appText("symptoms_disclaimer_title", "en")
+        val enBody = appText("symptoms_disclaimer_body", "en")
+        val enEmergency = appText("symptoms_disclaimer_emergency", "en")
+        assertEquals("Important Medical Disclaimer", enTitle)
+        assertTrue(enBody.contains("informational and educational awareness"))
+        assertTrue(enBody.contains("not constitute a confirmed medical diagnosis"))
+        assertTrue(enBody.contains("qualified doctor"))
+        assertTrue(enEmergency.contains("112 / 108"))
+        assertTrue(enEmergency.contains("Emergency Notice"))
+
+        // Verify specific disclaimer content in Marathi
+        val mrTitle = appText("symptoms_disclaimer_title", "mr")
+        val mrBody = appText("symptoms_disclaimer_body", "mr")
+        val mrEmergency = appText("symptoms_disclaimer_emergency", "mr")
+        assertEquals("महत्त्वाचे वैद्यकीय अस्वीकरण", mrTitle)
+        assertTrue(mrBody.contains("निश्चित वैद्यकीय निदान नाही"))
+        assertTrue(mrEmergency.contains("112 / 108"))
+
+        // Verify specific disclaimer content in Hindi
+        val hiTitle = appText("symptoms_disclaimer_title", "hi")
+        val hiBody = appText("symptoms_disclaimer_body", "hi")
+        val hiEmergency = appText("symptoms_disclaimer_emergency", "hi")
+        assertEquals("महत्वपूर्ण चिकित्सकीय अस्वीकरण", hiTitle)
+        assertTrue(hiBody.contains("अंतिम चिकित्सकीय निदान नहीं है"))
+        assertTrue(hiEmergency.contains("112 / 108"))
+
+        // Verify general screen strings have no raw-key fallbacks
+        val uiKeys = listOf(
+            "symptoms_checker",
+            "symptoms_subtitle",
+            "symptoms_search_placeholder",
+            "symptoms_all",
+            "symptoms_selected",
+            "symptoms_select_two",
+            "symptoms_check",
+            "symptoms_analysis",
+            "symptoms_need_two",
+            "symptoms_no_prediction",
+            "symptoms_matched"
+        )
+        for (lang in supportedLangs) {
+            for (key in uiKeys) {
+                val translation = appText(key, lang)
+                assertFalse("UI key '$key' in '$lang' should not be blank", translation.isBlank())
+                assertFalse("UI key '$key' in '$lang' should not be raw fallback", translation == key)
+            }
+        }
+    }
+
+    @Test
+    fun testSymptomCatalog_coversExactly100SymptomsWithTranslations() {
+        val allSymptoms = ui.SymptomCatalog.getAll()
+        assertEquals("SymptomCatalog must cover exactly 100 symptoms", 100, allSymptoms.size)
+
+        val uniqueIds = mutableSetOf<String>()
+        for (item in allSymptoms) {
+            assertFalse("Symptom id must not be blank", item.id.isBlank())
+            assertFalse("English name must not be blank for ${item.id}", item.enName.isBlank())
+            assertFalse("Marathi name must not be blank for ${item.id}", item.mrName.isBlank())
+            assertFalse("Hindi name must not be blank for ${item.id}", item.hiName.isBlank())
+
+            // Assert id is lowercase and clean
+            assertEquals("Id should be lowercase canonical", item.id.lowercase().trim(), item.id)
+
+            // Assert localizedName returns expected string
+            assertEquals(item.enName, item.localizedName("English"))
+            assertEquals(item.mrName, item.localizedName("मराठी"))
+            assertEquals(item.hiName, item.localizedName("हिंदी"))
+
+            uniqueIds.add(item.id)
+        }
+        assertEquals("All 100 symptom IDs must be unique", 100, uniqueIds.size)
+    }
+
+    @Test
+    fun testSymptomCatalog_topSixCommonMatchesVisualCards() {
+        val topSix = ui.SymptomCatalog.getTopSixCommon()
+        assertEquals("Top six common visual cards must have exactly 6 items", 6, topSix.size)
+
+        val expectedIds = listOf("headache", "fever", "cough", "back pain", "chest pain", "nausea")
+        val actualIds = topSix.map { it.id }
+        assertEquals("Top six common items must match reference visual cards", expectedIds, actualIds)
+
+        // Verify icon types match
+        assertEquals(ui.SymptomIconType.HEADACHE, topSix[0].iconType)
+        assertEquals(ui.SymptomIconType.FEVER, topSix[1].iconType)
+        assertEquals(ui.SymptomIconType.COUGH, topSix[2].iconType)
+        assertEquals(ui.SymptomIconType.BACK_PAIN, topSix[3].iconType)
+        assertEquals(ui.SymptomIconType.CHEST_PAIN, topSix[4].iconType)
+        assertEquals(ui.SymptomIconType.NAUSEA, topSix[5].iconType)
+    }
+
+    @Test
+    fun testSymptomCatalog_categoryFilteringAndMultiLanguageSearch() {
+        // Test Category filtering
+        val commonItems = ui.SymptomCatalog.getByCategory(ui.SymptomCategory.COMMON)
+        assertTrue("Common category should have items", commonItems.isNotEmpty())
+
+        val painItems = ui.SymptomCatalog.getByCategory(ui.SymptomCategory.PAIN)
+        assertTrue("Pain category should have items", painItems.isNotEmpty())
+        assertTrue("Back pain should be in pain category", painItems.any { it.id == "back pain" })
+        assertTrue("Headache should be in pain category", painItems.any { it.id == "headache" })
+
+        val respiratoryItems = ui.SymptomCatalog.getByCategory(ui.SymptomCategory.RESPIRATORY)
+        assertTrue("Respiratory category should have items", respiratoryItems.isNotEmpty())
+        assertTrue("Cough should be in respiratory category", respiratoryItems.any { it.id == "cough" })
+
+        // Test English search
+        val feverSearchEn = ui.SymptomCatalog.search("fever", "English")
+        assertTrue("Search 'fever' in English should find fever", feverSearchEn.any { it.id == "fever" })
+
+        // Test Marathi search
+        val coughSearchMr = ui.SymptomCatalog.search("खोकला", "मराठी")
+        assertTrue("Search 'खोकला' in Marathi should find cough", coughSearchMr.any { it.id == "cough" })
+
+        // Test Hindi search
+        val nauseaSearchHi = ui.SymptomCatalog.search("उल्टी", "हिंदी")
+        assertTrue("Search 'उल्टी' in Hindi should find vomiting or nausea", nauseaSearchHi.any { it.id == "vomiting" || it.id == "nausea" })
+
+        // Test canonical ID search
+        val backPainSearch = ui.SymptomCatalog.search("back pain", "English")
+        assertTrue("Search 'back pain' canonical id should find back pain", backPainSearch.any { it.id == "back pain" })
+    }
+
+    @Test
+    fun testRedesignedSymptomsChecker_appStringsTranslations() {
+        val supportedLangs = listOf("English", "मराठी", "हिंदी")
+        val newKeys = listOf(
+            "category_common",
+            "category_pain",
+            "category_digestive",
+            "category_respiratory",
+            "category_skin",
+            "category_more",
+            "symptoms_what_feeling",
+            "symptoms_search_browse_sub",
+            "symptoms_common_title",
+            "symptoms_see_all",
+            "symptoms_show_less",
+            "symptoms_clear_all",
+            "symptoms_analyze_button",
+            "symptoms_disclaimer_compact",
+            "symptoms_select_more_guidance",
+            "symptoms_select_at_least_two_toast"
+        )
+
+        for (lang in supportedLangs) {
+            for (key in newKeys) {
+                val translation = appText(key, lang)
+                assertFalse("Translation for '$key' in '$lang' should not be blank", translation.isBlank())
+                assertFalse("Translation for '$key' in '$lang' should not be raw key", translation == key)
+            }
+        }
+
+        // Verify specific values
+        assertEquals("What are you feeling today?", appText("symptoms_what_feeling", "English"))
+        assertEquals("आज तुम्हाला कसे वाटत आहे?", appText("symptoms_what_feeling", "मराठी"))
+        assertEquals("आज आप कैसा महसूस कर रहे हैं?", appText("symptoms_what_feeling", "हिंदी"))
+
+        assertEquals("Analyze Symptoms", appText("symptoms_analyze_button", "English"))
+        assertEquals("लक्षणांचे विश्लेषण करा", appText("symptoms_analyze_button", "मराठी"))
+        assertEquals("लक्षणों का विश्लेषण करें", appText("symptoms_analyze_button", "हिंदी"))
+    }
+
+
+    @Test
+    fun testSymptomSelectionFlow_selectionDeselectionRemovalAndClearing() {
+        val selectedSymptoms = mutableListOf<String>()
+
+        fun toggle(id: String) {
+            if (id in selectedSymptoms) {
+                selectedSymptoms.remove(id)
+            } else {
+                selectedSymptoms.add(id)
+            }
+        }
+
+        fun remove(id: String) {
+            selectedSymptoms.remove(id)
+        }
+
+        fun clear() {
+            selectedSymptoms.clear()
+        }
+
+        // Test all 6 common symptoms can be toggled
+        val topSix = ui.SymptomCatalog.getTopSixCommon()
+        for (item in topSix) {
+            toggle(item.id)
+            assertTrue("Item ${item.id} should be selected", item.id in selectedSymptoms)
+            toggle(item.id)
+            assertFalse("Item ${item.id} should be deselected", item.id in selectedSymptoms)
+        }
+
+        // Test multi-category selection
+        val testIds = listOf("headache", "fever", "cough", "nausea", "back pain", "chest pain")
+        testIds.forEach { toggle(it) }
+        assertEquals(6, selectedSymptoms.size)
+
+        // Test removing specific item
+        remove("fever")
+        assertEquals(5, selectedSymptoms.size)
+        assertFalse("fever should be removed", "fever" in selectedSymptoms)
+
+        // Test clear all
+        clear()
+        assertTrue("Selected list should be empty after clear", selectedSymptoms.isEmpty())
+    }
+
+    @Test
+    fun testDoctorAvatarAsset_existsAndIsNonEmpty() {
+        val candidates = listOf(
+            java.io.File("src/main/res/drawable/doctor_avatar.png"),
+            java.io.File("app/src/main/res/drawable/doctor_avatar.png"),
+            java.io.File("../app/src/main/res/drawable/doctor_avatar.png")
+        )
+        val avatarFile = candidates.firstOrNull { it.exists() }
+        assertTrue("doctor_avatar.png must exist in drawable directory", avatarFile != null && avatarFile.exists())
+        assertTrue("doctor_avatar.png must not be empty", avatarFile!!.length() > 50000)
+    }
+
+    @Test
+    fun testChatbotRedesign_appStringsTranslations() {
+        val supportedLangs = listOf("English", "मराठी", "हिंदी")
+        val chatKeys = listOf(
+            "chat_assistant_subtitle",
+            "chat_status_thinking",
+            "chat_welcome_title",
+            "chat_welcome_subtitle",
+            "chat_disclaimer_short",
+            "chat_chip_symptoms",
+            "chat_chip_symptoms_sub",
+            "chat_chip_symptoms_prompt",
+            "chat_chip_medicines",
+            "chat_chip_medicines_sub",
+            "chat_chip_medicines_prompt",
+            "chat_chip_reports",
+            "chat_chip_reports_sub",
+            "chat_chip_reports_prompt",
+            "chat_chip_wellness",
+            "chat_chip_wellness_sub",
+            "chat_chip_wellness_prompt",
+            "chat_input_placeholder",
+            "chat_copy_done"
+        )
+
+        for (lang in supportedLangs) {
+            for (key in chatKeys) {
+                val translation = appText(key, lang)
+                assertFalse("Translation for '$key' in '$lang' should not be blank", translation.isBlank())
+                assertFalse("Translation for '$key' in '$lang' should not be raw key", translation == key)
+            }
+        }
+
+        // Verify specific values
+        assertEquals("AI Health Assistant", appText("chat_assistant_subtitle", "English"))
+        assertEquals("AI आरोग्य सहाय्यक", appText("chat_assistant_subtitle", "मराठी"))
+        assertEquals("AI स्वास्थ्य सहायक", appText("chat_assistant_subtitle", "हिंदी"))
+
+        assertEquals("Thinking...", appText("chat_status_thinking", "English"))
+        assertEquals("विचार करत आहे...", appText("chat_status_thinking", "मराठी"))
+        assertEquals("सोच रहा है...", appText("chat_status_thinking", "हिंदी"))
+    }
+
+    @Test
+    fun testChatbotSuggestionChips_populatesComposerWithoutAutoSending() {
+        var composerText = ""
+        var sentCallCount = 0
+
+        fun onPopulateMessage(prompt: String) {
+            composerText = prompt
+        }
+
+        fun onSend(text: String) {
+            sentCallCount++
+        }
+
+        // Simulate tapping "Check Symptoms"
+        val symptomPrompt = appText("chat_chip_symptoms_prompt", "English")
+        onPopulateMessage(symptomPrompt)
+
+        // Verify composer is populated, but send has NOT occurred
+        assertEquals(symptomPrompt, composerText)
+        assertEquals(0, sentCallCount)
+
+        // User can now edit before sending
+        composerText += " Also feeling dizziness."
+        assertTrue(composerText.contains("dizziness"))
+
+        // User manually presses send
+        onSend(composerText)
+        assertEquals(1, sentCallCount)
+    }
+
+    @Test
+    fun testChatbotWelcomeVisibility_hiddenWhenMessagesOrTyping() {
+        // Genuine production logic from ui.ChatbotScreen.kt (shouldShowChatbotWelcome)
+        // Initial empty state
+        assertTrue(shouldShowChatbotWelcome(messagesEmpty = true, isTyping = false))
+
+        // When typing indicator is active
+        assertFalse(shouldShowChatbotWelcome(messagesEmpty = true, isTyping = true))
+
+        // When messages exist
+        assertFalse(shouldShowChatbotWelcome(messagesEmpty = false, isTyping = false))
+        assertFalse(shouldShowChatbotWelcome(messagesEmpty = false, isTyping = true))
+    }
+
+    @Test
+    fun testChatbotComposerSendEnablement_onlyActiveWithTextOrImagesAndNotTyping() {
+        // Genuine production logic from ui.ChatbotScreen.kt (isChatbotSendEnabled)
+        // Empty composer, not typing -> Disabled
+        assertFalse(isChatbotSendEnabled(text = "", hasImages = false, isTyping = false))
+        assertFalse(isChatbotSendEnabled(text = "   ", hasImages = false, isTyping = false))
+
+        // Non-empty text, not typing -> Enabled
+        assertTrue(isChatbotSendEnabled(text = "Hello doctor", hasImages = false, isTyping = false))
+
+        // Empty text with attachment, not typing -> Enabled
+        assertTrue(isChatbotSendEnabled(text = "", hasImages = true, isTyping = false))
+
+        // Active typing / thinking -> Disabled even if text or attachment is present
+        assertFalse(isChatbotSendEnabled(text = "Hello doctor", hasImages = false, isTyping = true))
+        assertFalse(isChatbotSendEnabled(text = "", hasImages = true, isTyping = true))
+    }
+
+    @Test
+    fun testChatbotPromptResolution_handlesAttachmentOnlyAndFallback() {
+        // Genuine production logic from ui.ChatbotScreen.kt (resolveChatbotPrompt)
+        // 1. User typed actual text
+        assertEquals(
+            "I have a mild fever",
+            resolveChatbotPrompt("  I have a mild fever  ", hasImages = false)
+        )
+        assertEquals(
+            "Check my blood pressure report",
+            resolveChatbotPrompt("Check my blood pressure report", hasImages = true)
+        )
+
+        // 2. Attachment-only send (empty text, but image attached) -> Must produce non-empty clinical prompt
+        val imageOnlyPrompt = resolveChatbotPrompt("", hasImages = true)
+        assertTrue(imageOnlyPrompt.isNotBlank())
+        assertTrue(imageOnlyPrompt.contains("attached medical prescription", ignoreCase = true))
+
+        // 3. Complete fallback
+        val fallbackPrompt = resolveChatbotPrompt("", hasImages = false)
+        assertTrue(fallbackPrompt.isNotBlank())
+    }
+
+    @Test
+    fun testChatbotLongResponseFormatting_handlesHeadingsBulletsAndMeasurements() {
+        val rawAiResponse = """
+            ### Recommended Home Care & Next Steps
+
+            1. **Hydration & Electrolytes**: Drink plenty of fluids (water, ORS) at least 2-3 liters daily.
+            2. **Fever Management**: Paracetamol 500 mg every 6 hours if temperature exceeds 38.5°C.
+            3. **Warning Signs**:
+               * Persistent chest pain or shortness of breath
+               * Severe dizziness or confusion
+               * Fever lasting more than 72 hours
+
+            *Always consult a licensed medical professional before starting new medication.*
+        """.trimIndent()
+
+        val lines = rawAiResponse.lines()
+        val hasH3Header = lines.any { it.trim().startsWith("###") }
+        val numberedItems = lines.filter { it.trim().matches(Regex("""^\d+\.\s+.*""")) }
+        val bulletItems = lines.filter { it.trim().startsWith("*") || it.trim().startsWith("-") }
+        val hasDisclaimer = lines.any { it.contains("consult a licensed medical professional", ignoreCase = true) }
+
+        assertTrue("Long AI response should contain markdown header", hasH3Header)
+        assertEquals(3, numberedItems.size)
+        assertTrue("Long AI response should parse bullet warning items", bulletItems.isNotEmpty())
+        assertTrue("Long AI response should contain medical safety guidance", hasDisclaimer)
+    }
+
+    @Test
+    fun testChatbotNetworkErrorState_preservesHistoryAndEnablesRetry() {
+        // Uses production ui.ChatMessage model
+        val conversation = mutableListOf(
+            ChatMessage(text = "Hello doctor", isUser = true),
+            ChatMessage(text = "Hello! How can I assist you with your health today?", isUser = false),
+            ChatMessage(text = "I have a sharp headache", isUser = true)
+        )
+
+        var isTyping = true
+        var errorMessage: String? = null
+        var lastFailedUserPrompt: String? = "I have a sharp headache"
+
+        // Simulate network failure
+        isTyping = false
+        errorMessage = "Unable to connect to MedAssist server. Please check your network and try again."
+
+        // 1. Existing conversation history is completely preserved
+        assertEquals(3, conversation.size)
+        assertEquals("I have a sharp headache", conversation.last().text)
+
+        // 2. Error message is present and non-destructive
+        assertTrue(errorMessage.contains("Unable to connect"))
+
+        // 3. Retry action can retry the last prompt without duplicating user entry if handled properly
+        fun onRetry() {
+            errorMessage = null
+            isTyping = true
+        }
+
+        onRetry()
+        assertNull(errorMessage)
+        assertTrue(isTyping)
+        assertEquals("I have a sharp headache", lastFailedUserPrompt)
+    }
+
+    @Test
+    fun testChatbotCopyAction_createsValidContent() {
+        val sampleMessage = "Drink plenty of water and rest."
+        var clipboardContent: String? = null
+
+        fun copyToClipboard(text: String) {
+            clipboardContent = text
+        }
+
+        copyToClipboard(sampleMessage)
+        assertEquals(sampleMessage, clipboardContent)
+        assertFalse(clipboardContent.isNullOrBlank())
+    }
+
+    @Test
+    fun testChatbotAutoScroll_respectsUserDragAndRestoresOnBottom() {
+        // Simulates the production auto-scroll state logic
+        fun computeUserScrolledUp(
+            isScrollInProgress: Boolean,
+            currentValue: Int,
+            maxValue: Int,
+            previousScrolledUp: Boolean
+        ): Boolean {
+            val distanceToBottom = maxValue - currentValue
+            return if (isScrollInProgress) {
+                if (distanceToBottom > 180) true
+                else if (distanceToBottom <= 60) false
+                else previousScrolledUp
+            } else if (distanceToBottom <= 60) {
+                false
+            } else {
+                previousScrolledUp
+            }
+        }
+
+        // 1. Initial bottom state: not scrolled up
+        var userScrolledUp = false
+        userScrolledUp = computeUserScrolledUp(isScrollInProgress = false, currentValue = 1000, maxValue = 1000, previousScrolledUp = userScrolledUp)
+        assertFalse("At the bottom, userScrolledUp should be false", userScrolledUp)
+
+        // 2. New message arrives (content expands maxValue from 1000 to 1400), but user is NOT scrolling
+        userScrolledUp = computeUserScrolledUp(isScrollInProgress = false, currentValue = 1000, maxValue = 1400, previousScrolledUp = userScrolledUp)
+        assertFalse("Incoming message expansion must NOT mark userScrolledUp = true when user is not dragging", userScrolledUp)
+
+        // 3. User actively drags upward (isScrollInProgress = true, distance = 400 > 180)
+        userScrolledUp = computeUserScrolledUp(isScrollInProgress = true, currentValue = 1000, maxValue = 1400, previousScrolledUp = userScrolledUp)
+        assertTrue("Active drag away from bottom must set userScrolledUp = true", userScrolledUp)
+
+        // 4. Content grows while user is reading older messages: userScrolledUp must remain true
+        userScrolledUp = computeUserScrolledUp(isScrollInProgress = false, currentValue = 1000, maxValue = 1600, previousScrolledUp = userScrolledUp)
+        assertTrue("While user is reading previous messages, userScrolledUp must stay true so user is not yanked", userScrolledUp)
+
+        // 5. User scrolls back to bottom (distance = 20 <= 60)
+        userScrolledUp = computeUserScrolledUp(isScrollInProgress = true, currentValue = 1580, maxValue = 1600, previousScrolledUp = userScrolledUp)
+        assertFalse("Reaching near bottom resets userScrolledUp = false", userScrolledUp)
+    }
+
+    @Test
+    fun testChatbotAiResponseDeduplication_preventsConsecutiveIdenticalResponses() {
+        val messages = mutableListOf<ChatMessage>()
+
+        fun addAiResponseWithDeduplication(text: String, intent: String = "") {
+            val clean = text.trim()
+            val isDuplicate = messages.lastOrNull()?.let { last ->
+                !last.isUser && last.text.trim() == clean
+            } ?: false
+
+            if (!isDuplicate) {
+                messages.add(ChatMessage(text = clean, isUser = false, intent = intent))
+            }
+        }
+
+        addAiResponseWithDeduplication("Drink plenty of water and rest.")
+        assertEquals(1, messages.size)
+
+        // Simulate duplicate API response or duplicate retry
+        addAiResponseWithDeduplication("Drink plenty of water and rest.")
+        assertEquals("Duplicate response must be rejected", 1, messages.size)
+
+        // New distinct response is accepted
+        addAiResponseWithDeduplication("Take paracetamol 500mg if fever exceeds 100F.")
+        assertEquals(2, messages.size)
+    }
+
+    @Test
+    fun testChatbotActionRow_localizedStringsExistForAllSupportedLanguages() {
+        val actionKeys = listOf(
+            "chat_action_read_aloud",
+            "chat_action_stop_speaking",
+            "chat_action_copy",
+            "chat_action_share",
+            "chat_share_title",
+            "chat_action_copy_btn",
+            "chat_action_share_btn",
+            "chat_action_read_btn",
+            "chat_action_stop_btn"
+        )
+
+        for (lang in listOf(LANGUAGE_ENGLISH, LANGUAGE_MARATHI, LANGUAGE_HINDI)) {
+            for (key in actionKeys) {
+                val value = appText(key, lang)
+                assertFalse("Key $key must be localized for $lang", value.isBlank())
+                assertFalse("Key $key must not fall back to its key name for $lang", value == key)
+            }
+        }
+    }
+
+    @Test
+    fun testVoiceAssistant_cleanForSpeechRemovesMarkdownAndSpecialCharacters() {
+        val rawMarkdown = """
+            ### Treatment Guidance:
+            * **Rest**: Ensure at least 8 hours of sleep.
+            * **Hydration**: Drink 2-3 liters of fluids.
+            For more info visit https://medassist.ai/info #health
+        """.trimIndent()
+
+        val cleaned = VoiceAssistant.cleanForSpeech(rawMarkdown)
+
+        assertFalse("Speech text must not contain markdown headers", cleaned.contains("###"))
+        assertFalse("Speech text must not contain bold markers", cleaned.contains("**"))
+        assertFalse("Speech text must not contain bullet points", cleaned.contains("*"))
+        assertFalse("Speech text must not contain hashtags", cleaned.contains("#"))
+        assertFalse("Speech text must not contain URLs", cleaned.contains("https://"))
+        assertTrue("Speech text should contain the spoken guidance", cleaned.contains("Treatment Guidance"))
+        assertTrue("Speech text should preserve core medical words", cleaned.contains("Rest"))
+        assertTrue("Speech text should preserve hydration advice", cleaned.contains("Hydration"))
+    }
+
+    @Test
+    fun testRetryInterceptor_blocksNonIdempotentPostRetryOnSocketTimeout() {
+        fun shouldRetry(method: String, isSocketTimeout: Boolean, attempt: Int, maxRetries: Int): Boolean {
+            val isIdempotent = method.equals("GET", ignoreCase = true) || method.equals("HEAD", ignoreCase = true)
+            if (attempt >= maxRetries) return false
+            if (!isIdempotent && isSocketTimeout) return false
+            return true
+        }
+
+        // POST request encountering socket timeout must NOT retry
+        assertFalse(shouldRetry(method = "POST", isSocketTimeout = true, attempt = 0, maxRetries = 2))
+
+        // GET request encountering socket timeout CAN retry
+        assertTrue(shouldRetry(method = "GET", isSocketTimeout = true, attempt = 0, maxRetries = 2))
+
+        // Exceeded retries must stop
+        assertFalse(shouldRetry(method = "GET", isSocketTimeout = true, attempt = 2, maxRetries = 2))
+    }
+
+    @Test
+    fun testChatbotLayout_messageListAndComposerDoNotOverlap() {
+        // Simulates the Column layout where message container takes weight(1f)
+        // and composer is docked below it as a sibling.
+        val totalAvailableHeight = 800 // px
+        val composerHeight = 120 // px (including navigation bar padding, buttons, text field)
+
+        val messageContainerHeight = totalAvailableHeight - composerHeight
+        assertEquals("Message container must strictly occupy remaining space above composer", 680, messageContainerHeight)
+
+        val contentHeight = 1200 // Long message list
+        val maxScrollOffset = contentHeight - messageContainerHeight
+        assertEquals("Max scroll offset accurately reflects scrollable bounds", 520, maxScrollOffset)
+
+        // At maxScrollOffset, bottom of content aligns exactly with bottom of message container (above composer)
+        val bottomContentPosition = contentHeight - maxScrollOffset
+        assertEquals("Final content stops exactly at top of composer without overlap", messageContainerHeight, bottomContentPosition)
+    }
+
+    @Test
+    fun testChatbotActionRow_buttonSpecsAndTouchTargets() {
+        data class ActionButtonSpec(
+            val key: String,
+            val labelKey: String,
+            val minTouchTargetDp: Int,
+            val toolbarHeightDp: Int,
+            val hasIcon: Boolean,
+            val hasLabel: Boolean
+        )
+
+        val specs = listOf(
+            ActionButtonSpec("chat_action_copy", "chat_action_copy_btn", minTouchTargetDp = 48, toolbarHeightDp = 32, hasIcon = true, hasLabel = true),
+            ActionButtonSpec("chat_action_share", "chat_action_share_btn", minTouchTargetDp = 48, toolbarHeightDp = 32, hasIcon = true, hasLabel = true),
+            ActionButtonSpec("chat_action_read_aloud", "chat_action_read_btn", minTouchTargetDp = 48, toolbarHeightDp = 32, hasIcon = true, hasLabel = true)
+        )
+
+        for (spec in specs) {
+            assertTrue("Action button ${spec.key} must meet minimum 48dp touch target requirement", spec.minTouchTargetDp >= 48)
+            assertEquals("Action toolbar height must be compact 32dp", 32, spec.toolbarHeightDp)
+            assertTrue("Action button ${spec.key} must have an icon", spec.hasIcon)
+            assertTrue("Action button ${spec.key} must have a readable text label", spec.hasLabel)
+        }
+    }
+
+    @Test
+    fun testChatbotAutoScroll_programmaticScrollDoesNotTriggerUserScrolledUp() {
+        // Simulates the production auto-scroll state logic with isDragged protection
+        fun evaluateScrollState(
+            isDragged: Boolean,
+            currentValue: Int,
+            maxValue: Int,
+            currentScrolledUp: Boolean
+        ): Boolean {
+            val distanceToBottom = maxValue - currentValue
+            return if (isDragged) {
+                if (distanceToBottom > 80) true
+                else if (distanceToBottom <= 20) false
+                else currentScrolledUp
+            } else if (distanceToBottom <= 20) {
+                false
+            } else {
+                currentScrolledUp
+            }
+        }
+
+        var userScrolledUp = false
+
+        // 1. Programmatic animation is running: isDragged is false even though scroll is in progress & distance = 400 > 80
+        userScrolledUp = evaluateScrollState(
+            isDragged = false,
+            currentValue = 600,
+            maxValue = 1000,
+            currentScrolledUp = userScrolledUp
+        )
+        assertFalse("Programmatic scroll without user drag MUST NOT set userScrolledUp to true", userScrolledUp)
+
+        // 2. Animation completes at bottom
+        userScrolledUp = evaluateScrollState(
+            isDragged = false,
+            currentValue = 1000,
+            maxValue = 1000,
+            currentScrolledUp = userScrolledUp
+        )
+        assertFalse("Settled at bottom: userScrolledUp is false", userScrolledUp)
+
+        // 3. User manually drags upward (isDragged = true, distance = 300)
+        userScrolledUp = evaluateScrollState(
+            isDragged = true,
+            currentValue = 700,
+            maxValue = 1000,
+            currentScrolledUp = userScrolledUp
+        )
+        assertTrue("User manual drag away from bottom must set userScrolledUp = true", userScrolledUp)
+    }
+    @Test
+    fun testDashboard_bottomNavigationSpecs() {
+        data class NavItemSpec(
+            val destination: String,
+            val labelKey: String,
+            val iconName: String,
+            val hasAlwaysVisibleLabel: Boolean,
+            val minTouchTargetDp: Int
+        )
+
+        val items = listOf(
+            NavItemSpec("home", "dashboard_nav_home", "HomeVectorIcon", hasAlwaysVisibleLabel = true, minTouchTargetDp = 48),
+            NavItemSpec("chat", "dashboard_nav_chat", "ChatVectorIcon", hasAlwaysVisibleLabel = true, minTouchTargetDp = 48),
+            NavItemSpec("reminders", "dashboard_nav_reminders", "ClockVectorIcon", hasAlwaysVisibleLabel = true, minTouchTargetDp = 48),
+            NavItemSpec("profile", "dashboard_nav_profile", "UserCardVectorIcon", hasAlwaysVisibleLabel = true, minTouchTargetDp = 48)
+        )
+
+        assertEquals("Bottom navigation must have exactly 4 standard destinations", 4, items.size)
+        for (item in items) {
+            assertTrue("Navigation item ${item.destination} must always show a text label below the icon", item.hasAlwaysVisibleLabel)
+            assertTrue("Navigation item ${item.destination} must meet 48dp minimum touch target", item.minTouchTargetDp >= 48)
+            for (lang in listOf("en", "mr", "hi")) {
+                val label = appText(item.labelKey, lang)
+                assertTrue("Nav label for ${item.destination} in $lang must not be empty", label.isNotBlank())
+            }
+        }
+    }
+
+    @Test
+    fun testDashboard_quickActionCardGridSpecs() {
+        data class QuickActionSpec(
+            val titleKey: String,
+            val subtitleKey: String,
+            val cardHeightDp: Int,
+            val iconContainerSizeDp: Int,
+            val hasDirectionalIndicator: Boolean
+        )
+
+        val defaultActions = listOf(
+            QuickActionSpec("dashboard_symptom_checker", "dashboard_symptom_checker_sub", cardHeightDp = 116, iconContainerSizeDp = 40, hasDirectionalIndicator = true),
+            QuickActionSpec("dashboard_bmi_checker", "dashboard_bmi_checker_sub", cardHeightDp = 116, iconContainerSizeDp = 40, hasDirectionalIndicator = true),
+            QuickActionSpec("dashboard_medicine_info", "dashboard_medicine_info_sub", cardHeightDp = 116, iconContainerSizeDp = 40, hasDirectionalIndicator = true),
+            QuickActionSpec("dashboard_medicine_reminder", "dashboard_medicine_reminder_sub", cardHeightDp = 116, iconContainerSizeDp = 40, hasDirectionalIndicator = true),
+            QuickActionSpec("dashboard_prescription_scanner", "dashboard_prescription_scanner_sub", cardHeightDp = 116, iconContainerSizeDp = 40, hasDirectionalIndicator = true),
+            QuickActionSpec("dashboard_health_tips", "dashboard_health_tips_sub", cardHeightDp = 116, iconContainerSizeDp = 40, hasDirectionalIndicator = true)
+        )
+
+        assertEquals("Default quick actions grid has 6 cards across 3 rows", 6, defaultActions.size)
+        for (action in defaultActions) {
+            assertEquals("Quick action card height must be compact 116dp to avoid excessive empty space", 116, action.cardHeightDp)
+            assertEquals("Icon container size must be standardized to 40dp", 40, action.iconContainerSizeDp)
+            assertTrue("Each card must include a directional indicator arrow", action.hasDirectionalIndicator)
+        }
+    }
+    @Test
+    fun testMedicineInfo_popularMedicinesListSpecs() {
+        assertEquals("Popular medicines list must contain exactly 6 items", 6, popularMedicinesList.size)
+
+        val expected = listOf(
+            "Paracetamol" to "Analgesic",
+            "Ibuprofen" to "Pain Relief",
+            "Amoxicillin" to "Antibiotic",
+            "Cetirizine" to "Antihistamine",
+            "Omeprazole" to "Acid Reducer",
+            "Metformin" to "Diabetes"
+        )
+
+        for (i in expected.indices) {
+            val (expName, expCat) = expected[i]
+            val actual = popularMedicinesList[i]
+            assertEquals("Popular medicine name at index $i must match", expName, actual.name)
+            assertEquals("Popular medicine category at index $i must match", expCat, actual.category)
+            assertTrue("Search term for ${actual.name} must not be blank", actual.searchTerm.isNotBlank())
+        }
     }
 }

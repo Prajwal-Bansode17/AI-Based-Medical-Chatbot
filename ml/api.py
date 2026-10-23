@@ -550,7 +550,7 @@ def _env_bool(name, default):
 # ---------------------------- Gemini (fallback) ----------------------------
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.8-flash")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
 gemini_client = None
 
 if GEMINI_API_KEY:
@@ -580,7 +580,7 @@ OLLAMA_MODEL = (os.getenv("OLLAMA_MODEL", "gemma3:latest") or "").strip() or "ge
 OLLAMA_CONNECT_TIMEOUT = _env_float("OLLAMA_CONNECT_TIMEOUT", 3.0)
 # Read timeout tuned to 25s to fit well within Android OkHttpClient's read timeout (90s)
 # while allowing fast failover to Gemini (and offline retrieval) if Ollama is unresponsive.
-OLLAMA_READ_TIMEOUT = _env_float("OLLAMA_READ_TIMEOUT", 25.0)
+OLLAMA_READ_TIMEOUT = _env_float("OLLAMA_READ_TIMEOUT", 12.0)
 OLLAMA_TEMPERATURE = _env_float("OLLAMA_TEMPERATURE", 0.3)
 OLLAMA_NUM_CTX = _env_int("OLLAMA_NUM_CTX", 2048)
 OLLAMA_NUM_PREDICT = _env_int("OLLAMA_NUM_PREDICT", 512)
@@ -760,10 +760,13 @@ def get_ai_status_fields():
     except Exception:
         ollama = {"reachable": False, "model_available": False}
 
-    if OLLAMA_ENABLED:
+    primary_pref = os.getenv("AI_PRIMARY_PROVIDER", "auto").strip().lower()
+    if primary_pref == "ollama" and OLLAMA_ENABLED:
         primary = "ollama"
     elif gemini_client is not None:
         primary = "gemini"
+    elif OLLAMA_ENABLED:
+        primary = "ollama"
     else:
         primary = "none"
 
@@ -848,6 +851,8 @@ def _build_medical_system_instruction(language, memory_summary=""):
         f"7. Do not provide a definitive diagnosis or claim certainty. Do not prescribe specific drug dosages.\n"
         f"8. OUTPUT LANGUAGE REQUIREMENT: Write the ENTIRE response in {target_language}. "
         f"If the target is Marathi or Hindi, use native Devanagari script. Standard medicine names, units, and proper names may remain intact.\n"
+        f"9. NEVER repeat self-introductions (such as 'Hello! I am MEDASSIST AI...' or 'Welcome to MEDASSIST AI'). "
+        f"Do not start every message with greeting formulas. Address the user's question directly and concisely.\n"
     )
     if memory_summary:
         instruction += f"\nCONFIRMED PATIENT FACTS IN THIS CONVERSATION:\n{memory_summary}\n"
@@ -924,19 +929,25 @@ def _gemini_generate(contents):
     if gemini_client is None:
         return None
 
-    for attempt in range(2):
-        try:
-            response = gemini_client.models.generate_content(
-                model=GEMINI_MODEL,
-                contents=contents,
-            )
-            answer = getattr(response, "text", None)
-            if answer and answer.strip():
-                return answer.strip()
-        except Exception as e:
-            print(f"Gemini generation error (attempt {attempt + 1}/2):", e)
-            if attempt == 0:
-                time.sleep(0.8)
+    candidate_models = [GEMINI_MODEL]
+    for alt_model in ["gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-3.8-flash"]:
+        if alt_model not in candidate_models:
+            candidate_models.append(alt_model)
+
+    for current_model in candidate_models:
+        for attempt in range(2):
+            try:
+                response = gemini_client.models.generate_content(
+                    model=current_model,
+                    contents=contents,
+                )
+                answer = getattr(response, "text", None)
+                if answer and answer.strip():
+                    return answer.strip()
+            except Exception as e:
+                print(f"Gemini generation error with {current_model} (attempt {attempt + 1}/2):", e)
+                if attempt == 0:
+                    time.sleep(0.4)
 
     return None
 
@@ -968,20 +979,31 @@ def generate_medical_response_with_provider(
             limit=8,
         )
 
+    primary_pref = os.getenv("AI_PRIMARY_PROVIDER", "auto").strip().lower()
+
     providers = []
-    if ollama_available:
-        if structured_messages:
-            providers.append(("ollama", lambda: ollama_chat(system_instruction, prompt, messages=structured_messages)))
-        else:
-            providers.append(("ollama", lambda: ollama_chat(system_instruction, prompt)))
-    if gemini_available:
-        if structured_messages:
-            gemini_content = _format_messages_for_gemini(structured_messages)
-        else:
-            gemini_content = system_instruction + "\n\n" + prompt
-        providers.append(
-            ("gemini", lambda: _gemini_generate(gemini_content))
-        )
+
+    def _add_gemini():
+        if gemini_available:
+            if structured_messages:
+                gemini_content = _format_messages_for_gemini(structured_messages)
+            else:
+                gemini_content = system_instruction + "\n\n" + prompt
+            providers.append(("gemini", lambda: _gemini_generate(gemini_content)))
+
+    def _add_ollama():
+        if ollama_available:
+            if structured_messages:
+                providers.append(("ollama", lambda: ollama_chat(system_instruction, prompt, messages=structured_messages)))
+            else:
+                providers.append(("ollama", lambda: ollama_chat(system_instruction, prompt)))
+
+    if primary_pref == "ollama":
+        _add_ollama()
+        _add_gemini()
+    else:  # "auto" or "gemini" -> fast cloud API first with instant fallback
+        _add_gemini()
+        _add_ollama()
 
     for provider_name, call in providers:
         answer = call()

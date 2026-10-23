@@ -31,6 +31,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -118,6 +119,36 @@ import java.util.Locale
 // ============================================================
 // HEALTHCARE VECTOR ICONS (Consistent 24x24 scale)
 // ============================================================
+
+val HomeVectorIcon: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "HomeVectorIcon",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    ).apply {
+        path(
+            stroke = SolidColor(DeepTeal),
+            strokeLineWidth = 2f,
+            strokeLineCap = StrokeCap.Round,
+            strokeLineJoin = StrokeJoin.Round
+        ) {
+            moveTo(3f, 10f)
+            lineTo(12f, 3f)
+            lineTo(21f, 10f)
+            lineTo(21f, 20f)
+            curveTo(21f, 20.6f, 20.6f, 21f, 20f, 21f)
+            lineTo(15f, 21f)
+            lineTo(15f, 14f)
+            lineTo(9f, 14f)
+            lineTo(9f, 21f)
+            lineTo(4f, 21f)
+            curveTo(3.4f, 21f, 3f, 20.6f, 3f, 20f)
+            close()
+        }
+    }.build()
+}
 
 val ScaleVectorIcon: ImageVector by lazy {
     ImageVector.Builder(
@@ -501,14 +532,13 @@ fun DashboardScreen(
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 // =========================================================
-                // A. PREMIUM HEADER SECTION (Inspired by Reference Layout)
-                // =========================================================
+                // A. PREMIUM HEADER SECTION
                 item {
                     AnimatedVisibility(
                         visible = showContent,
-                        enter = fadeIn(tween(350)) + slideInVertically(
-                            initialOffsetY = { -20 },
-                            animationSpec = tween(350)
+                        enter = fadeIn(tween(300)) + slideInVertically(
+                            initialOffsetY = { -15 },
+                            animationSpec = tween(300)
                         )
                     ) {
                         Row(
@@ -519,24 +549,30 @@ fun DashboardScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Hello, $displayName",
+                                    color = TextDark,
+                                    fontSize = 21.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    letterSpacing = (-0.3).sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                                Spacer(modifier = Modifier.height(3.dp))
                                 Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(6.dp)
+                                            .background(SageGreen, CircleShape)
+                                    )
+                                    Spacer(modifier = Modifier.width(6.dp))
                                     Text(
-                                        text = "Hello, $displayName",
-                                        color = TextDark,
-                                        fontSize = 22.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        letterSpacing = (-0.2).sp,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis
+                                        text = currentDateFormatted,
+                                        color = TextMuted,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Medium
                                     )
                                 }
-                                Spacer(modifier = Modifier.height(3.dp))
-                                Text(
-                                    text = currentDateFormatted,
-                                    color = TextMuted,
-                                    fontSize = 13.sp,
-                                    fontWeight = FontWeight.Medium
-                                )
                             }
 
                             Spacer(modifier = Modifier.width(12.dp))
@@ -547,9 +583,9 @@ fun DashboardScreen(
                                     onClick = { showProfileMenu = true },
                                     shape = CircleShape,
                                     color = PureWhite,
-                                    border = BorderStroke(1.dp, Mint),
+                                    border = BorderStroke(1.5.dp, Mint),
                                     shadowElevation = 2.dp,
-                                    modifier = Modifier.size(46.dp)
+                                    modifier = Modifier.size(44.dp)
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
                                         DashboardGenderAvatar(gender = userGender)
@@ -561,7 +597,7 @@ fun DashboardScreen(
                                     onDismissRequest = { showProfileMenu = false },
                                     modifier = Modifier
                                         .background(PureWhite)
-                                        .border(1.dp, Mint, RoundedCornerShape(12.dp))
+                                        .border(1.dp, Mint.copy(alpha = 0.6f), RoundedCornerShape(14.dp))
                                 ) {
                                     DropdownMenuItem(
                                         text = { Text(t("profile"), color = TextDark, fontWeight = FontWeight.SemiBold) },
@@ -569,7 +605,8 @@ fun DashboardScreen(
                                             Icon(
                                                 imageVector = Icons.Default.Person,
                                                 contentDescription = null,
-                                                tint = DeepTeal
+                                                tint = DeepTeal,
+                                                modifier = Modifier.size(18.dp)
                                             )
                                         },
                                         onClick = {
@@ -583,7 +620,8 @@ fun DashboardScreen(
                                             Icon(
                                                 imageVector = UserCardVectorIcon,
                                                 contentDescription = null,
-                                                tint = DeepTeal
+                                                tint = DeepTeal,
+                                                modifier = Modifier.size(18.dp)
                                             )
                                         },
                                         onClick = {
@@ -597,7 +635,8 @@ fun DashboardScreen(
                                             Icon(
                                                 imageVector = Icons.AutoMirrored.Filled.ExitToApp,
                                                 contentDescription = null,
-                                                tint = StatusError
+                                                tint = StatusError,
+                                                modifier = Modifier.size(18.dp)
                                             )
                                         },
                                         onClick = {
@@ -612,28 +651,28 @@ fun DashboardScreen(
                 }
 
                 // =========================================================
-                // B. AI SYMPTOM INPUT CARD (Prominent symptom triage box)
+                // B. AI SYMPTOM INPUT CARD (Hero Triage Action)
                 // =========================================================
                 item {
                     AnimatedVisibility(
                         visible = showContent,
-                        enter = fadeIn(tween(420, delayMillis = 60)) + slideInVertically(
-                            initialOffsetY = { 30 },
-                            animationSpec = tween(420, delayMillis = 60)
+                        enter = fadeIn(tween(350, delayMillis = 50)) + slideInVertically(
+                            initialOffsetY = { 20 },
+                            animationSpec = tween(350, delayMillis = 50)
                         )
                     ) {
                         Card(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .shadow(
-                                    elevation = 4.dp,
-                                    shape = RoundedCornerShape(24.dp),
-                                    ambientColor = DarkTeal.copy(alpha = 0.08f),
-                                    spotColor = DeepTeal.copy(alpha = 0.12f)
+                                    elevation = 3.dp,
+                                    shape = RoundedCornerShape(22.dp),
+                                    ambientColor = DarkTeal.copy(alpha = 0.06f),
+                                    spotColor = DeepTeal.copy(alpha = 0.10f)
                                 ),
-                            shape = RoundedCornerShape(24.dp),
+                            shape = RoundedCornerShape(22.dp),
                             colors = CardDefaults.cardColors(containerColor = PureWhite),
-                            border = BorderStroke(1.dp, Mint)
+                            border = BorderStroke(1.dp, Mint.copy(alpha = 0.7f))
                         ) {
                             Column(
                                 modifier = Modifier
@@ -645,18 +684,15 @@ fun DashboardScreen(
                                 ) {
                                     Box(
                                         modifier = Modifier
-                                            .size(38.dp)
-                                            .background(
-                                                Brush.linearGradient(listOf(SoftMint, Mint)),
-                                                CircleShape
-                                            ),
+                                            .size(42.dp)
+                                            .background(SoftMint, RoundedCornerShape(14.dp)),
                                         contentAlignment = Alignment.Center
                                     ) {
                                         Icon(
                                             imageVector = StethoscopeVectorIcon,
                                             contentDescription = null,
                                             tint = DeepTeal,
-                                            modifier = Modifier.size(20.dp)
+                                            modifier = Modifier.size(22.dp)
                                         )
                                     }
                                     Spacer(modifier = Modifier.width(12.dp))
@@ -665,12 +701,14 @@ fun DashboardScreen(
                                             text = t("dashboard_bothering_title"),
                                             color = TextDark,
                                             fontSize = 17.sp,
-                                            fontWeight = FontWeight.Bold
+                                            fontWeight = FontWeight.Bold,
+                                            letterSpacing = (-0.2).sp
                                         )
+                                        Spacer(modifier = Modifier.height(2.dp))
                                         Text(
-                                            text = "MedAssist AI symptom triage & triage guidance",
+                                            text = "Describe your symptoms for instant AI medical triage",
                                             color = TextMuted,
-                                            fontSize = 11.sp
+                                            fontSize = 12.sp
                                         )
                                     }
                                 }
@@ -686,7 +724,7 @@ fun DashboardScreen(
                                     },
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .height(100.dp),
+                                        .height(96.dp),
                                     placeholder = {
                                         Text(
                                             text = t("dashboard_symptom_placeholder"),
@@ -702,11 +740,11 @@ fun DashboardScreen(
                                     colors = OutlinedTextFieldDefaults.colors(
                                         focusedBorderColor = DeepTeal,
                                         unfocusedBorderColor = BorderSubtle,
-                                        focusedContainerColor = Ivory.copy(alpha = 0.5f),
-                                        unfocusedContainerColor = Ivory.copy(alpha = 0.4f),
+                                        focusedContainerColor = Ivory.copy(alpha = 0.4f),
+                                        unfocusedContainerColor = Ivory.copy(alpha = 0.35f),
                                         cursorColor = DeepTeal
                                     ),
-                                    shape = RoundedCornerShape(16.dp),
+                                    shape = RoundedCornerShape(14.dp),
                                     keyboardOptions = KeyboardOptions(
                                         capitalization = KeyboardCapitalization.Sentences,
                                         imeAction = ImeAction.Send
@@ -743,21 +781,27 @@ fun DashboardScreen(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically
+                                    Surface(
+                                        shape = RoundedCornerShape(10.dp),
+                                        color = SoftMint.copy(alpha = 0.5f)
                                     ) {
-                                        Box(
-                                            modifier = Modifier
-                                                .size(8.dp)
-                                                .background(SageGreen, CircleShape)
-                                        )
-                                        Spacer(modifier = Modifier.width(6.dp))
-                                        Text(
-                                            text = "Verified Medical AI",
-                                            color = TextMuted,
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Medium
-                                        )
+                                        Row(
+                                            modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(6.dp)
+                                                    .background(SageGreen, CircleShape)
+                                            )
+                                            Spacer(modifier = Modifier.width(6.dp))
+                                            Text(
+                                                text = "Verified Medical AI",
+                                                color = DeepTeal,
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
                                     }
 
                                     Button(
@@ -772,7 +816,7 @@ fun DashboardScreen(
                                             }
                                         },
                                         enabled = !isSubmittingSymptom,
-                                        shape = RoundedCornerShape(14.dp),
+                                        shape = RoundedCornerShape(12.dp),
                                         colors = ButtonDefaults.buttonColors(
                                             containerColor = DeepTeal,
                                             contentColor = PureWhite
@@ -1258,45 +1302,49 @@ private fun DashboardBottomNavigation(
         modifier = Modifier
             .fillMaxWidth()
             .navigationBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 8.dp),
-        shape = RoundedCornerShape(26.dp),
+            .padding(start = 16.dp, end = 16.dp, bottom = 8.dp),
+        shape = RoundedCornerShape(24.dp),
         color = PureWhite,
-        shadowElevation = 8.dp,
-        border = BorderStroke(1.dp, Mint)
+        shadowElevation = 6.dp,
+        border = BorderStroke(1.dp, Mint.copy(alpha = 0.5f))
     ) {
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(vertical = 8.dp, horizontal = 12.dp),
-            horizontalArrangement = Arrangement.SpaceAround,
+                .padding(vertical = 6.dp, horizontal = 4.dp),
+            horizontalArrangement = Arrangement.SpaceEvenly,
             verticalAlignment = Alignment.CenterVertically
         ) {
             BottomNavItem(
-                icon = StethoscopeVectorIcon,
+                icon = HomeVectorIcon,
                 label = t("dashboard_nav_home"),
                 isSelected = currentDestination == "home",
-                onClick = onHomeClick
+                onClick = onHomeClick,
+                modifier = Modifier.weight(1f)
             )
 
             BottomNavItem(
                 icon = ChatVectorIcon,
                 label = t("dashboard_nav_chat"),
                 isSelected = currentDestination == "chat",
-                onClick = onChatbotClick
+                onClick = onChatbotClick,
+                modifier = Modifier.weight(1f)
             )
 
             BottomNavItem(
                 icon = ClockVectorIcon,
                 label = t("dashboard_nav_reminders"),
                 isSelected = currentDestination == "reminders",
-                onClick = onRemindersClick
+                onClick = onRemindersClick,
+                modifier = Modifier.weight(1f)
             )
 
             BottomNavItem(
                 icon = UserCardVectorIcon,
                 label = t("dashboard_nav_profile"),
                 isSelected = currentDestination == "profile",
-                onClick = onProfileClick
+                onClick = onProfileClick,
+                modifier = Modifier.weight(1f)
             )
         }
     }
@@ -1307,48 +1355,60 @@ private fun BottomNavItem(
     icon: ImageVector,
     label: String,
     isSelected: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
-    val animatedBg by animateColorAsState(
-        targetValue = if (isSelected) SoftMint else Color.Transparent,
-        animationSpec = tween(200),
-        label = "nav_bg"
-    )
-    val animatedTint by animateColorAsState(
+    val animatedIconTint by animateColorAsState(
         targetValue = if (isSelected) DeepTeal else TextMuted,
-        animationSpec = tween(200),
+        animationSpec = tween(180),
         label = "nav_tint"
     )
+    val animatedIndicatorBg by animateColorAsState(
+        targetValue = if (isSelected) SoftMint else Color.Transparent,
+        animationSpec = tween(180),
+        label = "nav_indicator"
+    )
 
-    Surface(
-        onClick = onClick,
-        shape = RoundedCornerShape(16.dp),
-        color = animatedBg,
-        modifier = Modifier.padding(horizontal = 4.dp)
+    Column(
+        modifier = modifier
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = ripple(bounded = false, radius = 28.dp),
+                onClick = onClick
+            )
+            .padding(vertical = 4.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center
     ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.Center
+        // Pill indicator around icon when selected
+        Box(
+            modifier = Modifier
+                .height(28.dp)
+                .widthIn(min = 46.dp)
+                .clip(RoundedCornerShape(14.dp))
+                .background(animatedIndicatorBg)
+                .padding(horizontal = 10.dp, vertical = 4.dp),
+            contentAlignment = Alignment.Center
         ) {
             Icon(
                 imageVector = icon,
                 contentDescription = label,
-                tint = animatedTint,
-                modifier = Modifier.size(20.dp)
+                tint = animatedIconTint,
+                modifier = Modifier.size(19.dp)
             )
-
-            if (isSelected) {
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = label,
-                    color = animatedTint,
-                    fontSize = 12.sp,
-                    fontWeight = FontWeight.Bold,
-                    maxLines = 1
-                )
-            }
         }
+
+        Spacer(modifier = Modifier.height(2.dp))
+
+        Text(
+            text = label,
+            color = if (isSelected) DeepTeal else TextMuted,
+            fontSize = 11.sp,
+            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            textAlign = TextAlign.Center
+        )
     }
 }
 
@@ -1368,21 +1428,21 @@ private fun PremiumQuickActionCard(
 ) {
     Card(
         modifier = modifier
-            .height(138.dp)
+            .height(116.dp)
             .clickable(
                 interactionSource = remember { MutableInteractionSource() },
-                indication = ripple(color = Mint),
+                indication = ripple(color = Mint.copy(alpha = 0.4f)),
                 onClick = onClick
             ),
-        shape = RoundedCornerShape(22.dp),
+        shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = PureWhite),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
-        border = BorderStroke(1.dp, Mint)
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.5.dp),
+        border = BorderStroke(1.dp, Mint.copy(alpha = 0.5f))
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(14.dp),
+                .padding(13.dp),
             verticalArrangement = Arrangement.SpaceBetween
         ) {
             Row(
@@ -1393,30 +1453,30 @@ private fun PremiumQuickActionCard(
                 // Vector icon container
                 Box(
                     modifier = Modifier
-                        .size(44.dp)
-                        .background(iconContainerColor, RoundedCornerShape(14.dp)),
+                        .size(40.dp)
+                        .background(iconContainerColor, RoundedCornerShape(12.dp)),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = icon,
                         contentDescription = title,
                         tint = iconTint,
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.size(20.dp)
                     )
                 }
 
-                // Small arrow indicator in top-right (reference 2 layout)
+                // Small arrow indicator in top-right
                 Box(
                     modifier = Modifier
-                        .size(24.dp)
-                        .background(SoftMint, CircleShape),
+                        .size(22.dp)
+                        .background(SoftMint.copy(alpha = 0.6f), CircleShape),
                     contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowForward,
                         contentDescription = null,
                         tint = DeepTeal,
-                        modifier = Modifier.size(13.dp)
+                        modifier = Modifier.size(11.dp)
                     )
                 }
             }
@@ -1427,12 +1487,12 @@ private fun PremiumQuickActionCard(
                 Text(
                     text = title,
                     color = TextDark,
-                    fontSize = 14.sp,
+                    fontSize = 13.5.sp,
                     fontWeight = FontWeight.Bold,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis
                 )
-                Spacer(modifier = Modifier.height(2.dp))
+                Spacer(modifier = Modifier.height(1.dp))
                 Text(
                     text = subtitle,
                     color = TextMuted,

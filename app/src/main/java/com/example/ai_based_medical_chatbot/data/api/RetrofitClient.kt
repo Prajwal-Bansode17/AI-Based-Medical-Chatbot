@@ -1,5 +1,7 @@
 package com.example.ai_based_medical_chatbot.data.api
 
+import android.content.Context
+import android.util.Log
 import com.example.ai_based_medical_chatbot.BuildConfig
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
@@ -10,6 +12,8 @@ import java.io.IOException
 import java.util.concurrent.TimeUnit
 
 object RetrofitClient {
+
+    private const val TAG = "RetrofitClient"
 
     // =========================================================
     // RETRY INTERCEPTOR
@@ -22,6 +26,9 @@ object RetrofitClient {
         override fun intercept(
             chain: Interceptor.Chain
         ): Response {
+            val request = chain.request()
+            val isIdempotent = request.method.equals("GET", ignoreCase = true) ||
+                request.method.equals("HEAD", ignoreCase = true)
 
             var attempt = 0
             var lastException: Exception? = null
@@ -30,17 +37,18 @@ object RetrofitClient {
 
                 try {
 
-                    return chain.proceed(
-                        chain.request()
-                    )
+                    return chain.proceed(request)
 
                 } catch (e: Exception) {
 
                     lastException = e
 
+                    // Do not automatically retry non-idempotent operations (such as POST /predict)
+                    // on socket timeouts to avoid duplicating model calls or saving duplicate records.
                     if (
                         e !is IOException ||
-                        attempt == maxRetries
+                        attempt == maxRetries ||
+                        (!isIdempotent && e is java.net.SocketTimeoutException)
                     ) {
                         throw e
                     }
@@ -69,78 +77,124 @@ object RetrofitClient {
     // Do NOT commit local.properties — it is in .gitignore.
     // =========================================================
 
-    private const val PREFS_NAME = "medassist_network_config"
-    private const val KEY_SERVER_URL = "custom_server_url"
+    const val PREFS_NAME = "medassist_network_config"
+    const val KEY_SERVER_URL = "custom_server_url"
+    const val STALE_IP_MARKER = "192.168.1.12"
 
     @Volatile
     private var customBaseUrl: String? = null
 
     @Volatile
-    private var appContext: android.content.Context? = null
+    private var appContext: Context? = null
 
     @Volatile
     private var cachedApiService: MedicalApiService? = null
 
-    fun initialize(context: android.content.Context) {
+    fun initialize(context: Context) {
         val app = context.applicationContext ?: context
         appContext = app
 
-        val saved = app.getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE)
-            .getString(KEY_SERVER_URL, null)?.trim()
+        val prefs = app.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val saved = prefs.getString(KEY_SERVER_URL, null)?.trim()
         if (!saved.isNullOrBlank()) {
-            customBaseUrl = saved
+            if (saved.contains(STALE_IP_MARKER) || saved.endsWith("/w") || saved.contains("/w/")) {
+                Log.w(TAG, "Purging stale server URL override ($saved) from SharedPreferences")
+                prefs.edit().remove(KEY_SERVER_URL).apply()
+                customBaseUrl = null
+            } else {
+                customBaseUrl = normalizeUrl(saved)
+            }
+        } else {
+            customBaseUrl = null
         }
-        cachedApiService = null
+
+        synchronized(this) {
+            cachedApiService = null
+        }
     }
 
     fun normalizeUrl(rawUrl: String): String {
         val trimmed = rawUrl.trim()
         if (trimmed.isEmpty()) return "http://10.0.2.2:5000/"
-        val withScheme = if (!trimmed.startsWith("http://") && !trimmed.startsWith("https://")) {
-            "http://$trimmed"
+
+        // Remove accidental typos or trailing path fragments like '/w' or '/w/'
+        val cleaned = when {
+            trimmed.endsWith("/w/") -> trimmed.removeSuffix("/w/").trimEnd('/')
+            trimmed.endsWith("/w") -> trimmed.removeSuffix("/w").trimEnd('/')
+            else -> trimmed
+        }
+
+        val withScheme = if (!cleaned.startsWith("http://") && !cleaned.startsWith("https://")) {
+            "http://$cleaned"
         } else {
-            trimmed
+            cleaned
         }
         return if (withScheme.endsWith("/")) withScheme else "$withScheme/"
     }
 
-    fun getBaseUrl(context: android.content.Context? = null): String {
+    fun getBaseUrl(context: Context? = null): String {
         customBaseUrl?.let { if (it.isNotBlank()) return normalizeUrl(it) }
 
         val ctx = context ?: appContext
         if (ctx != null) {
-            val saved = ctx.getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE)
-                .getString(KEY_SERVER_URL, null)?.trim()
+            val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            val saved = prefs.getString(KEY_SERVER_URL, null)?.trim()
             if (!saved.isNullOrBlank()) {
-                customBaseUrl = saved
-                return normalizeUrl(saved)
+                if (saved.contains(STALE_IP_MARKER) || saved.endsWith("/w") || saved.contains("/w/")) {
+                    prefs.edit().remove(KEY_SERVER_URL).apply()
+                    customBaseUrl = null
+                } else {
+                    val normalized = normalizeUrl(saved)
+                    customBaseUrl = normalized
+                    return normalized
+                }
             }
         }
 
         return normalizeUrl(BuildConfig.MEDASSIST_API_URL)
     }
 
-    fun setCustomServerUrl(context: android.content.Context, url: String?) {
+    fun isCustomUrlConfigured(context: Context? = null): Boolean {
+        customBaseUrl?.let { if (it.isNotBlank()) return true }
+        val ctx = context ?: appContext ?: return false
+        val saved = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString(KEY_SERVER_URL, null)?.trim()
+        return !saved.isNullOrBlank() && !saved.contains(STALE_IP_MARKER)
+    }
+
+    fun setCustomServerUrl(context: Context, url: String?) {
         val app = context.applicationContext ?: context
         appContext = app
         val trimmed = url?.trim()
-        app.getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE)
-            .edit()
-            .putString(KEY_SERVER_URL, trimmed)
-            .apply()
-        customBaseUrl = trimmed
-        cachedApiService = null
+        val prefs = app.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        synchronized(this) {
+            if (trimmed.isNullOrBlank()) {
+                prefs.edit().remove(KEY_SERVER_URL).apply()
+                customBaseUrl = null
+            } else {
+                val normalized = normalizeUrl(trimmed)
+                prefs.edit().putString(KEY_SERVER_URL, normalized).apply()
+                customBaseUrl = normalized
+            }
+            cachedApiService = null
+        }
     }
 
-    fun clearCustomServerUrl(context: android.content.Context) {
+    fun clearCustomServerUrl(context: Context) {
         val app = context.applicationContext ?: context
         appContext = app
-        app.getSharedPreferences(PREFS_NAME, android.content.Context.MODE_PRIVATE)
-            .edit()
-            .remove(KEY_SERVER_URL)
-            .apply()
-        customBaseUrl = null
-        cachedApiService = null
+        val prefs = app.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        synchronized(this) {
+            prefs.edit().remove(KEY_SERVER_URL).apply()
+            customBaseUrl = null
+            cachedApiService = null
+        }
+    }
+
+    fun invalidateApiService() {
+        synchronized(this) {
+            cachedApiService = null
+        }
     }
 
     // =========================================================
