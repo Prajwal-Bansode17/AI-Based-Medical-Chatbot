@@ -166,10 +166,10 @@ fun HealthProfileScreen(
         }
         if (localData.bloodGroup.isNotBlank()) bloodGroup = localData.bloodGroup
         if (localData.heightCm > 0f) {
-            height = if (localData.heightCm % 1f == 0f) localData.heightCm.toInt().toString() else localData.heightCm.toString()
+            height = BMIRepository.formatMeasurement(localData.heightCm)
         }
         if (localData.weightKg > 0f) {
-            weight = if (localData.weightKg % 1f == 0f) localData.weightKg.toInt().toString() else localData.weightKg.toString()
+            weight = BMIRepository.formatMeasurement(localData.weightKg)
         }
         if (localData.bmi > 0f) {
             bmi = localData.bmi.toDouble()
@@ -186,10 +186,10 @@ fun HealthProfileScreen(
                 }
                 if (profile.bloodGroup?.isNotBlank() == true) bloodGroup = profile.bloodGroup
                 profile.heightCm?.let {
-                    if (it > 0) height = if (it % 1.0 == 0.0) it.toInt().toString() else it.toString()
+                    if (it > 0) height = BMIRepository.formatMeasurement(it)
                 }
                 profile.weightKg?.let {
-                    if (it > 0) weight = if (it % 1.0 == 0.0) it.toInt().toString() else it.toString()
+                    if (it > 0) weight = BMIRepository.formatMeasurement(it)
                 }
                 if (profile.bmi != null && profile.bmi > 0) {
                     bmi = profile.bmi
@@ -265,7 +265,7 @@ fun HealthProfileScreen(
 
         MedAssistDatePickerDialog(
             initialDate = initialParsedDate,
-            title = "Select Date of Birth",
+            title = t("health_profile_select_dob"),
             allowFutureDates = false,
             onDateSelected = { day, month, year ->
                 val newDob = String.format(Locale.US, "%02d/%02d/%04d", day, month, year)
@@ -273,7 +273,7 @@ fun HealthProfileScreen(
                 showDatePickerDialog = false
                 BMIRepository.updateDateOfBirth(context, newDob)
                 syncToCloudInBackground()
-                saveSuccessMessage = "Date of birth updated."
+                saveSuccessMessage = t("health_profile_dob_updated")
             },
             onDismiss = {
                 showDatePickerDialog = false
@@ -329,14 +329,14 @@ fun HealthProfileScreen(
 
                 result.onSuccess {
                     isSaving = false
-                    saveSuccessMessage = "Health profile updated successfully."
+                    saveSuccessMessage = t("health_profile_updated")
                     if (continueAfterSave) {
                         onContinue()
                     }
                 }.onFailure {
                     // Even if network fails, local update is secured
                     isSaving = false
-                    saveSuccessMessage = "Health profile saved locally."
+                    saveSuccessMessage = t("health_profile_saved_locally")
                     if (continueAfterSave) {
                         onContinue()
                     }
@@ -344,7 +344,7 @@ fun HealthProfileScreen(
             } else {
                 // Guest / Local mode
                 isSaving = false
-                saveSuccessMessage = "Health profile updated successfully."
+                saveSuccessMessage = t("health_profile_updated")
                 if (continueAfterSave) {
                     onContinue()
                 }
@@ -407,13 +407,13 @@ fun HealthProfileScreen(
 
                 Column {
                     Text(
-                        text = "My Health Profile",
+                        text = t("my_health_profile"),
                         color = DarkTeal,
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "Personal & Medical Overview",
+                        text = t("health_profile_subtitle"),
                         color = TextMuted,
                         fontSize = 11.sp
                     )
@@ -458,14 +458,14 @@ fun HealthProfileScreen(
 
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = "Health Information",
+                            text = t("health_info_title"),
                             color = DarkTeal,
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = "Secure health data helps MedAssist AI provide personalized advice and medical awareness.",
+                            text = t("health_info_desc"),
                             color = TextMuted,
                             fontSize = 11.sp,
                             lineHeight = 16.sp
@@ -492,7 +492,7 @@ fun HealthProfileScreen(
                         .padding(20.dp)
                 ) {
                     // NAME FIELD
-                    ProfileLabel("Full Name")
+                    ProfileLabel(t("full_name"))
                     OutlinedTextField(
                         value = name,
                         onValueChange = { name = it },
@@ -502,7 +502,7 @@ fun HealthProfileScreen(
                             keyboardType = KeyboardType.Text,
                             imeAction = ImeAction.Next
                         ),
-                        placeholder = { Text("Enter your full name", color = TextMuted) },
+                        placeholder = { Text(t("health_profile_name_placeholder"), color = TextMuted) },
                         singleLine = true,
                         colors = OutlinedTextFieldDefaults.colors(
                             focusedBorderColor = DeepTeal,
@@ -541,7 +541,7 @@ fun HealthProfileScreen(
                     Spacer(modifier = Modifier.height(18.dp))
 
                     // DATE OF BIRTH FIELD
-                    ProfileLabel("Date of Birth")
+                    ProfileLabel(t("date_of_birth"))
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -557,7 +557,7 @@ fun HealthProfileScreen(
                             trailingIcon = {
                                 Icon(
                                     imageVector = Icons.Default.DateRange,
-                                    contentDescription = "Select Date",
+                                    contentDescription = t("health_profile_select_dob"),
                                     tint = DeepTeal,
                                     modifier = Modifier.size(20.dp)
                                 )
@@ -576,7 +576,7 @@ fun HealthProfileScreen(
                     Spacer(modifier = Modifier.height(18.dp))
 
                     // BLOOD GROUP FIELD
-                    ProfileLabel("Blood Group")
+                    ProfileLabel(t("blood_group"))
                     Column(
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
@@ -623,7 +623,7 @@ fun HealthProfileScreen(
                     Spacer(modifier = Modifier.height(18.dp))
 
                     // HEIGHT FIELD
-                    ProfileLabel("Height")
+                    ProfileLabel(t("height"))
                     OutlinedTextField(
                         value = height,
                         onValueChange = {
@@ -632,8 +632,9 @@ fun HealthProfileScreen(
                                 .let { value ->
                                     val firstDot = value.indexOf('.')
                                     if (firstDot >= 0) {
-                                        value.substring(0, firstDot + 1) +
-                                                value.substring(firstDot + 1).replace(".", "")
+                                        val intPart = value.substring(0, firstDot + 1)
+                                        val decPart = value.substring(firstDot + 1).replace(".", "").take(2)
+                                        intPart + decPart
                                     } else {
                                         value
                                     }
@@ -669,7 +670,7 @@ fun HealthProfileScreen(
                     Spacer(modifier = Modifier.height(18.dp))
 
                     // WEIGHT FIELD
-                    ProfileLabel("Weight")
+                    ProfileLabel(t("weight"))
                     OutlinedTextField(
                         value = weight,
                         onValueChange = {
@@ -678,8 +679,9 @@ fun HealthProfileScreen(
                                 .let { value ->
                                     val firstDot = value.indexOf('.')
                                     if (firstDot >= 0) {
-                                        value.substring(0, firstDot + 1) +
-                                                value.substring(firstDot + 1).replace(".", "")
+                                        val intPart = value.substring(0, firstDot + 1)
+                                        val decPart = value.substring(firstDot + 1).replace(".", "").take(2)
+                                        intPart + decPart
                                     } else {
                                         value
                                     }
@@ -787,7 +789,7 @@ fun HealthProfileScreen(
                             )
                         } else {
                             Text(
-                                text = "Save & Update Profile",
+                                text = t("health_profile_save"),
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = PureWhite
@@ -806,7 +808,7 @@ fun HealthProfileScreen(
                         enabled = !isSaving
                     ) {
                         Text(
-                            text = "Back to Profile",
+                            text = t("health_profile_back"),
                             color = TextMuted,
                             fontSize = 14.sp,
                             fontWeight = FontWeight.SemiBold
@@ -866,11 +868,12 @@ private fun GenderButton(
 
 @Composable
 private fun BmiCard(bmi: Double) {
+    val selectedLanguage = LocalAppLanguageController.current.selectedLanguage
     val category = when {
-        bmi < 18.5 -> "Underweight"
-        bmi < 25.0 -> "Normal"
-        bmi < 30.0 -> "Overweight"
-        else -> "Obesity"
+        bmi < 18.5 -> appText("bmi_underweight", selectedLanguage)
+        bmi < 25.0 -> appText("bmi_normal", selectedLanguage)
+        bmi < 30.0 -> appText("bmi_overweight", selectedLanguage)
+        else -> appText("bmi_obese", selectedLanguage)
     }
 
     Card(
@@ -888,7 +891,7 @@ private fun BmiCard(bmi: Double) {
         ) {
             Column {
                 Text(
-                    text = "Calculated BMI",
+                    text = appText("bmi_calculated_label", selectedLanguage),
                     color = TextMuted,
                     fontSize = 12.sp
                 )

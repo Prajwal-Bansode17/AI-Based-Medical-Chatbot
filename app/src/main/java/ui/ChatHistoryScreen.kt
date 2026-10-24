@@ -3,6 +3,7 @@ package ui
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -21,6 +23,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Refresh
@@ -53,9 +56,12 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
+import com.example.ai_based_medical_chatbot.LocalAppLanguageController
+import com.example.ai_based_medical_chatbot.appText
 import com.example.ai_based_medical_chatbot.data.SupabaseClient
 import com.example.ai_based_medical_chatbot.data.api.ChatHistoryMessage
 import com.example.ai_based_medical_chatbot.data.api.RetrofitClient
@@ -70,6 +76,7 @@ import com.example.ai_based_medical_chatbot.ui.theme.StatusError
 import com.example.ai_based_medical_chatbot.ui.theme.StatusErrorBackground
 import com.example.ai_based_medical_chatbot.ui.theme.StatusErrorBorder
 import com.example.ai_based_medical_chatbot.ui.theme.TextDark
+import com.example.ai_based_medical_chatbot.ui.theme.TextLight
 import com.example.ai_based_medical_chatbot.ui.theme.TextMuted
 import kotlinx.coroutines.launch
 
@@ -77,17 +84,35 @@ import kotlinx.coroutines.launch
 @Composable
 fun ChatHistoryScreen(
     sessionId: String? = null,
+    onOpenConversation: ((String) -> Unit)? = null,
     onBackClick: () -> Unit
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val appLanguageController = LocalAppLanguageController.current
+    val selectedLanguage = appLanguageController.selectedLanguage
+    val t = { key: String -> appText(key, selectedLanguage) }
 
-    var history by remember {
+    var activeSessionId by remember(sessionId) {
+        mutableStateOf(
+            if (!sessionId.isNullOrBlank()) {
+                sessionId.trim()
+            } else {
+                null
+            }
+        )
+    }
+
+    var savedChats by remember {
+        mutableStateOf(ChatHistoryRepository.getChats(context))
+    }
+
+    var messages by remember {
         mutableStateOf<List<ChatHistoryMessage>>(emptyList())
     }
 
     var isLoading by remember {
-        mutableStateOf(true)
+        mutableStateOf(false)
     }
 
     var errorMessage by remember {
@@ -98,120 +123,68 @@ fun ChatHistoryScreen(
         mutableStateOf(false)
     }
 
-    var currentTargetSessionId by remember(sessionId) {
-        mutableStateOf(
-            if (!sessionId.isNullOrBlank()) {
-                sessionId.trim()
-            } else {
-                ChatHistoryRepository.getActiveSessionId(context)
-                    ?: ChatHistoryRepository.getChats(context).firstOrNull()?.id
-                    ?: SupabaseClient.getChatSessionId(context)
-                    ?: ""
+    suspend fun loadMessagesForSession(targetId: String) {
+        if (targetId.isBlank()) {
+            messages = emptyList()
+            isLoading = false
+            return
+        }
+
+        isLoading = true
+        errorMessage = ""
+
+        val localChat = ChatHistoryRepository.getChats(context).firstOrNull { it.id == targetId }
+        if (localChat != null && localChat.messages.isNotEmpty()) {
+            messages = localChat.messages.map { m ->
+                ChatHistoryMessage(
+                    role = if (m.isUser) "user" else "assistant",
+                    message = m.text
+                )
             }
-        )
-    }
+        }
 
-    // =========================================================
-    // LOAD CHAT HISTORY
-    // =========================================================
-
-    suspend fun loadHistory(sessionToLoad: String = currentTargetSessionId) {
         try {
-            isLoading = true
-            errorMessage = ""
-
-            val resolvedId = if (sessionToLoad.isBlank()) {
-                val localChats = ChatHistoryRepository.getChats(context)
-                val fallbackId = localChats.firstOrNull()?.id ?: ""
-                currentTargetSessionId = fallbackId
-                fallbackId
-            } else {
-                sessionToLoad
-            }
-
-            if (resolvedId.isBlank()) {
-                history = emptyList()
-                isLoading = false
-                return
-            }
-
-            // Immediately load from local cache if available so UI never hangs in an endless spinner
-            val initialLocal = ChatHistoryRepository.getChats(context)
-                .firstOrNull { it.id == resolvedId }
-            if (initialLocal != null && initialLocal.messages.isNotEmpty()) {
-                history = initialLocal.messages.map { m ->
-                    ChatHistoryMessage(
-                        role = if (m.isUser) "user" else "assistant",
-                        message = m.text
-                    )
-                }
-            }
-
-            try {
-                val response = RetrofitClient.apiService.getChatHistory(resolvedId)
-
-                if (response.isSuccessful) {
-                    val body = response.body()
-                    val remoteHistory = body?.history ?: emptyList()
-                    if (remoteHistory.isNotEmpty()) {
-                        history = remoteHistory
-                    } else if (history.isEmpty()) {
-                        // Check local fallback if not already loaded
-                        val local = ChatHistoryRepository.getChats(context)
-                            .firstOrNull { it.id == resolvedId }
-                        history = local?.messages?.map { m ->
-                            ChatHistoryMessage(
-                                role = if (m.isUser) "user" else "assistant",
-                                message = m.text
-                            )
-                        } ?: emptyList()
-                    }
-                } else if (history.isEmpty()) {
-                    val local = ChatHistoryRepository.getChats(context)
-                        .firstOrNull { it.id == resolvedId }
-                    if (local != null && local.messages.isNotEmpty()) {
-                        history = local.messages.map { m ->
-                            ChatHistoryMessage(
-                                role = if (m.isUser) "user" else "assistant",
-                                message = m.text
-                            )
-                        }
-                    } else {
-                        errorMessage = "Unable to load chat history.\nServer error: ${response.code()}"
+            val response = RetrofitClient.apiService.getChatHistory(targetId)
+            if (response.isSuccessful) {
+                val remoteHistory = response.body()?.history ?: emptyList()
+                if (remoteHistory.isNotEmpty()) {
+                    messages = remoteHistory
+                } else if (messages.isEmpty() && localChat != null) {
+                    messages = localChat.messages.map { m ->
+                        ChatHistoryMessage(
+                            role = if (m.isUser) "user" else "assistant",
+                            message = m.text
+                        )
                     }
                 }
-            } catch (netEx: Exception) {
-                // If local cache already provided messages, do not display a blocking error
-                if (history.isEmpty()) {
-                    val local = ChatHistoryRepository.getChats(context)
-                        .firstOrNull { it.id == resolvedId }
-                    if (local != null && local.messages.isNotEmpty()) {
-                        history = local.messages.map { m ->
-                            ChatHistoryMessage(
-                                role = if (m.isUser) "user" else "assistant",
-                                message = m.text
-                            )
-                        }
-                    } else {
-                        errorMessage = netEx.message ?: "Unable to load chat history."
-                    }
-                }
+            } else if (messages.isEmpty()) {
+                errorMessage = "Unable to load conversation (HTTP ${response.code()})."
             }
-
-        } catch (e: Exception) {
-            errorMessage = e.message ?: "Unable to load chat history."
+        } catch (netEx: Exception) {
+            if (messages.isEmpty()) {
+                errorMessage = netEx.localizedMessage ?: "Unable to connect to MedAssist server."
+            }
         } finally {
             isLoading = false
         }
     }
 
-    LaunchedEffect(Unit) {
-        loadHistory()
+    LaunchedEffect(activeSessionId) {
+        savedChats = ChatHistoryRepository.getChats(context)
+        val target = activeSessionId
+        if (!target.isNullOrBlank()) {
+            loadMessagesForSession(target)
+        } else {
+            messages = emptyList()
+            errorMessage = ""
+            isLoading = false
+        }
     }
 
-    // =========================================================
-    // SCREEN
-    // =========================================================
+    val isConversationDetail = !activeSessionId.isNullOrBlank()
+    val activeChat = remember(activeSessionId, savedChats) {
+        savedChats.firstOrNull { it.id == activeSessionId }
+    }
 
     Scaffold(
         topBar = {
@@ -219,33 +192,61 @@ fun ChatHistoryScreen(
                 title = {
                     Column {
                         Text(
-                            text = "Chat History",
+                            text = if (isConversationDetail) {
+                                activeChat?.title ?: t("conversation_details")
+                            } else {
+                                t("chat_history_title")
+                            },
                             fontWeight = FontWeight.Bold,
                             color = PureWhite,
-                            fontSize = 18.sp
+                            fontSize = 18.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            text = "Consultation transcript",
-                            color = PureWhite.copy(alpha = 0.8f),
+                            text = if (isConversationDetail) {
+                                if (activeChat != null && activeChat.updatedAt > 0L) {
+                                    chatRelativeTime(activeChat.updatedAt, language = selectedLanguage)
+                                } else {
+                                    t("consultation_transcript")
+                                }
+                            } else {
+                                if (savedChats.size == 1) {
+                                    t("chat_history_one_conversation")
+                                } else {
+                                    t("chat_history_conversations_count").replace("%d", savedChats.size.toString())
+                                }
+                            },
+                            color = PureWhite.copy(alpha = 0.85f),
                             fontSize = 11.sp
                         )
                     }
                 },
                 navigationIcon = {
-                    IconButton(onClick = onBackClick) {
+                    IconButton(
+                        onClick = {
+                            if (isConversationDetail && sessionId.isNullOrBlank()) {
+                                activeSessionId = null
+                                messages = emptyList()
+                                errorMessage = ""
+                            } else {
+                                onBackClick()
+                            }
+                        }
+                    ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "Back",
+                            contentDescription = t("back"),
                             tint = PureWhite
                         )
                     }
                 },
                 actions = {
-                    if (history.isNotEmpty()) {
+                    if (isConversationDetail) {
                         IconButton(onClick = { showDeleteDialog = true }) {
                             Icon(
                                 imageVector = Icons.Default.Delete,
-                                contentDescription = "Clear chat history",
+                                contentDescription = t("chat_delete_conversation_desc"),
                                 tint = PureWhite
                             )
                         }
@@ -267,159 +268,280 @@ fun ChatHistoryScreen(
                     )
                 )
         ) {
-            // =================================================
-            // LOADING
-            // =================================================
-            if (isLoading) {
-                CircularProgressIndicator(
-                    modifier = Modifier.align(Alignment.Center),
-                    color = DeepTeal
-                )
-            }
-            // =================================================
-            // ERROR
-            // =================================================
-            else if (errorMessage.isNotBlank()) {
-                Card(
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .padding(horizontal = 24.dp)
-                        .fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = PureWhite),
-                    border = BorderStroke(1.dp, StatusErrorBorder),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-                ) {
-                    Column(
+            if (isConversationDetail) {
+                // =====================================================
+                // CONVERSATION DETAIL VIEW
+                // =====================================================
+                if (isLoading) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.align(Alignment.Center),
+                        color = DeepTeal
+                    )
+                } else if (errorMessage.isNotBlank() && messages.isEmpty()) {
+                    Card(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
+                            .align(Alignment.Center)
+                            .padding(horizontal = 24.dp)
+                            .fillMaxWidth(),
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(containerColor = PureWhite),
+                        border = BorderStroke(1.dp, StatusErrorBorder),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                     ) {
-                        Box(
+                        Column(
                             modifier = Modifier
-                                .size(56.dp)
-                                .clip(CircleShape)
-                                .background(StatusErrorBackground)
-                                .border(1.dp, StatusErrorBorder, CircleShape),
-                            contentAlignment = Alignment.Center
+                                .fillMaxWidth()
+                                .padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Warning,
-                                contentDescription = null,
-                                tint = StatusError,
-                                modifier = Modifier.size(28.dp)
+                            Box(
+                                modifier = Modifier
+                                    .size(56.dp)
+                                    .clip(CircleShape)
+                                    .background(StatusErrorBackground)
+                                    .border(1.dp, StatusErrorBorder, CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Warning,
+                                    contentDescription = null,
+                                    tint = StatusError,
+                                    modifier = Modifier.size(28.dp)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(14.dp))
+
+                            Text(
+                                text = t("connection_issue"),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = TextDark
+                            )
+
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            Text(
+                                text = errorMessage,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = TextMuted,
+                                textAlign = TextAlign.Center
+                            )
+
+                            Spacer(modifier = Modifier.height(18.dp))
+
+                            Button(
+                                onClick = {
+                                    scope.launch {
+                                        activeSessionId?.let { loadMessagesForSession(it) }
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = DeepTeal),
+                                shape = RoundedCornerShape(12.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Refresh,
+                                    contentDescription = null,
+                                    tint = PureWhite,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(t("retry"), color = PureWhite, fontWeight = FontWeight.SemiBold)
+                            }
+                        }
+                    }
+                } else if (messages.isEmpty()) {
+                    Card(
+                        modifier = Modifier
+                            .align(Alignment.Center)
+                            .padding(horizontal = 24.dp)
+                            .fillMaxWidth(),
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(containerColor = PureWhite),
+                        border = BorderStroke(1.dp, Mint),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(vertical = 36.dp, horizontal = 24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(64.dp)
+                                    .clip(CircleShape)
+                                    .background(SoftMint)
+                                    .border(1.dp, Mint, CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Info,
+                                    contentDescription = null,
+                                    tint = DeepTeal,
+                                    modifier = Modifier.size(30.dp)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            Text(
+                                text = t("no_messages_in_chat"),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = DarkTeal
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Text(
+                                text = t("messages_will_appear_here"),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = TextMuted,
+                                textAlign = TextAlign.Center
                             )
                         }
+                    }
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        items(items = messages) { message ->
+                            ChatHistoryItem(message = message)
+                        }
 
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        Text(
-                            text = "Connection Issue",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = TextDark
-                        )
-
-                        Spacer(modifier = Modifier.height(6.dp))
-
-                        Text(
-                            text = errorMessage,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = TextMuted,
-                            textAlign = TextAlign.Center
-                        )
-
-                        Spacer(modifier = Modifier.height(18.dp))
-
-                        Button(
-                            onClick = {
-                                scope.launch {
-                                    loadHistory()
+                        if (onOpenConversation != null && activeSessionId != null) {
+                            item {
+                                Spacer(Modifier.height(12.dp))
+                                Button(
+                                    onClick = { onOpenConversation(activeSessionId!!) },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = 48.dp),
+                                    shape = RoundedCornerShape(14.dp),
+                                    colors = ButtonDefaults.buttonColors(containerColor = DeepTeal)
+                                ) {
+                                    Text(
+                                        t("continue_conversation"),
+                                        fontWeight = FontWeight.Bold,
+                                        color = PureWhite
+                                    )
                                 }
-                            },
-                            colors = ButtonDefaults.buttonColors(containerColor = DeepTeal),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Refresh,
-                                contentDescription = null,
-                                tint = PureWhite,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Text("Retry", color = PureWhite, fontWeight = FontWeight.SemiBold)
+                            }
                         }
                     }
                 }
-            }
-            // =================================================
-            // EMPTY
-            // =================================================
-            else if (history.isEmpty()) {
-                Card(
-                    modifier = Modifier
-                        .align(Alignment.Center)
-                        .padding(horizontal = 24.dp)
-                        .fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp),
-                    colors = CardDefaults.cardColors(containerColor = PureWhite),
-                    border = BorderStroke(1.dp, Mint),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
-                ) {
-                    Column(
+            } else {
+                // =====================================================
+                // CONVERSATIONS LIST VIEW
+                // =====================================================
+                if (savedChats.isEmpty()) {
+                    Card(
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(vertical = 36.dp, horizontal = 24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally
+                            .align(Alignment.Center)
+                            .padding(horizontal = 24.dp)
+                            .fillMaxWidth(),
+                        shape = RoundedCornerShape(20.dp),
+                        colors = CardDefaults.cardColors(containerColor = PureWhite),
+                        border = BorderStroke(1.dp, Mint),
+                        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
                     ) {
-                        Box(
+                        Column(
                             modifier = Modifier
-                                .size(64.dp)
-                                .clip(CircleShape)
-                                .background(SoftMint)
-                                .border(1.dp, Mint, CircleShape),
-                            contentAlignment = Alignment.Center
+                                .fillMaxWidth()
+                                .padding(vertical = 36.dp, horizontal = 24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Info,
-                                contentDescription = null,
-                                tint = DeepTeal,
-                                modifier = Modifier.size(30.dp)
+                            Box(
+                                modifier = Modifier
+                                    .size(64.dp)
+                                    .clip(CircleShape)
+                                    .background(SoftMint)
+                                    .border(1.dp, Mint, CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Info,
+                                    contentDescription = null,
+                                    tint = DeepTeal,
+                                    modifier = Modifier.size(30.dp)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            Text(
+                                text = t("no_chat_history"),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = DarkTeal
+                            )
+
+                            Spacer(modifier = Modifier.height(8.dp))
+
+                            Text(
+                                text = t("chat_history_empty_desc"),
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = TextMuted,
+                                textAlign = TextAlign.Center
                             )
                         }
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        Text(
-                            text = "No Chat History",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = DarkTeal
-                        )
-
-                        Spacer(modifier = Modifier.height(8.dp))
-
-                        Text(
-                            text = "Your consultations and advice with MedAssist AI will appear here.",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = TextMuted,
-                            textAlign = TextAlign.Center
-                        )
                     }
-                }
-            }
-            // =================================================
-            // HISTORY LIST
-            // =================================================
-            else {
-                LazyColumn(
-                    modifier = Modifier.fillMaxSize(),
-                    contentPadding = PaddingValues(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    items(items = history) { message ->
-                        ChatHistoryItem(message = message)
+                } else {
+                    LazyColumn(
+                        modifier = Modifier.fillMaxSize(),
+                        contentPadding = PaddingValues(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        val pinnedChats = savedChats.filter { it.pinned }
+                        val regularChats = savedChats.filterNot { it.pinned }
+
+                        if (pinnedChats.isNotEmpty()) {
+                            item {
+                                ChatGroupLabel(t("pinned"))
+                            }
+                            items(items = pinnedChats, key = { it.id }) { chat ->
+                                ConversationSummaryCard(
+                                    chat = chat,
+                                    onClick = {
+                                        if (onOpenConversation != null) {
+                                            onOpenConversation(chat.id)
+                                        } else {
+                                            activeSessionId = chat.id
+                                        }
+                                    }
+                                )
+                            }
+                            if (regularChats.isNotEmpty()) {
+                                item { Spacer(Modifier.height(4.dp)) }
+                            }
+                        }
+
+                        var lastGroup = ""
+                        regularChats.forEach { chat ->
+                            val group = chatGroupLabel(chat.updatedAt, language = selectedLanguage)
+                            if (group != lastGroup) {
+                                item {
+                                    ChatGroupLabel(group)
+                                }
+                                lastGroup = group
+                            }
+
+                            item(key = chat.id) {
+                                ConversationSummaryCard(
+                                    chat = chat,
+                                    onClick = {
+                                        if (onOpenConversation != null) {
+                                            onOpenConversation(chat.id)
+                                        } else {
+                                            activeSessionId = chat.id
+                                        }
+                                    }
+                                )
+                            }
+                        }
                     }
                 }
             }
@@ -466,7 +588,7 @@ fun ChatHistoryScreen(
                     Spacer(modifier = Modifier.height(14.dp))
 
                     Text(
-                        text = "Clear Chat History?",
+                        text = t("chat_history_delete_title"),
                         color = TextDark,
                         fontSize = 17.sp,
                         fontWeight = FontWeight.Bold,
@@ -476,7 +598,7 @@ fun ChatHistoryScreen(
                     Spacer(modifier = Modifier.height(6.dp))
 
                     Text(
-                        text = "Are you sure you want to permanently delete this chat history?",
+                        text = t("confirm_delete_chat"),
                         color = TextMuted,
                         fontSize = 12.sp,
                         textAlign = TextAlign.Center
@@ -498,7 +620,7 @@ fun ChatHistoryScreen(
                             border = BorderStroke(1.dp, Mint)
                         ) {
                             Text(
-                                text = "Cancel",
+                                text = t("cancel"),
                                 color = TextDark,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.SemiBold
@@ -511,8 +633,8 @@ fun ChatHistoryScreen(
 
                                 scope.launch {
                                     try {
-                                        val sessionToDelete = currentTargetSessionId
-                                        if (sessionToDelete.isNotBlank()) {
+                                        val sessionToDelete = activeSessionId
+                                        if (!sessionToDelete.isNullOrBlank()) {
                                             try {
                                                 RetrofitClient.apiService.deleteChatHistory(sessionToDelete)
                                             } catch (_: Exception) {
@@ -522,16 +644,10 @@ fun ChatHistoryScreen(
                                             ChatHistoryRepository.deleteChat(context, sessionToDelete)
                                         }
 
-                                        val remainingChats = ChatHistoryRepository.getChats(context)
-                                        val nextSessionId = remainingChats.firstOrNull()?.id ?: ""
-                                        currentTargetSessionId = nextSessionId
-
-                                        if (nextSessionId.isNotBlank()) {
-                                            loadHistory(nextSessionId)
-                                        } else {
-                                            history = emptyList()
-                                            errorMessage = ""
-                                        }
+                                        savedChats = ChatHistoryRepository.getChats(context)
+                                        activeSessionId = null
+                                        messages = emptyList()
+                                        errorMessage = ""
 
                                     } catch (e: Exception) {
                                         errorMessage = e.message ?: "Unable to delete chat history."
@@ -545,7 +661,7 @@ fun ChatHistoryScreen(
                             colors = ButtonDefaults.buttonColors(containerColor = StatusError)
                         ) {
                             Text(
-                                text = "Delete",
+                                text = t("delete"),
                                 color = PureWhite,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold
@@ -554,6 +670,100 @@ fun ChatHistoryScreen(
                     }
                 }
             }
+        }
+    }
+}
+
+// =============================================================
+// CONVERSATION SUMMARY CARD (List Item)
+// =============================================================
+
+@Composable
+private fun ConversationSummaryCard(
+    chat: SavedChat,
+    onClick: () -> Unit
+) {
+    val appLanguageController = LocalAppLanguageController.current
+    val selectedLanguage = appLanguageController.selectedLanguage
+    val t = { key: String -> appText(key, selectedLanguage) }
+    val cardShape = RoundedCornerShape(16.dp)
+    val latestMessage = chat.messages.lastOrNull()?.text?.replace("\n", " ")?.trim().orEmpty()
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
+        shape = cardShape,
+        colors = CardDefaults.cardColors(containerColor = PureWhite),
+        border = BorderStroke(1.dp, Mint),
+        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            RobotAvatar(size = 40.dp, isError = false)
+
+            Spacer(Modifier.width(12.dp))
+
+            Column(Modifier.weight(1f)) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (chat.pinned) {
+                        Icon(
+                            imageVector = PinIcon,
+                            contentDescription = "Pinned",
+                            tint = DeepTeal,
+                            modifier = Modifier.size(13.dp)
+                        )
+                        Spacer(Modifier.width(4.dp))
+                    }
+
+                    Text(
+                        text = chat.title,
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 14.sp,
+                        color = TextDark,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+
+                    if (chat.updatedAt > 0L) {
+                        Spacer(Modifier.width(8.dp))
+                        Text(
+                            text = chatRelativeTime(chat.updatedAt, language = selectedLanguage),
+                            fontSize = 11.sp,
+                            color = TextLight
+                        )
+                    }
+                }
+
+                if (latestMessage.isNotBlank()) {
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        text = latestMessage,
+                        fontSize = 12.sp,
+                        color = TextMuted,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                        lineHeight = 16.sp
+                    )
+                }
+            }
+
+            Spacer(Modifier.width(8.dp))
+
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = t("chat_open_conversation_desc"),
+                tint = TextLight,
+                modifier = Modifier.size(20.dp)
+            )
         }
     }
 }

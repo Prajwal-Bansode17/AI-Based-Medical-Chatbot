@@ -137,49 +137,7 @@ fun ProfileScreen(
     val appLanguage = LocalAppLanguageController.current
     val selectedLanguage = appLanguage.selectedLanguage
 
-    val passwordText: (String) -> String = { key ->
-        when (selectedLanguage) {
-            "मराठी" -> when (key) {
-                "change_password" -> "पासवर्ड बदला"
-                "change_password_subtitle" -> "तुमचा खाते पासवर्ड सुरक्षितपणे बदला"
-                "current_password" -> "सध्याचा पासवर्ड"
-                "new_password" -> "नवीन पासवर्ड"
-                "confirm_password" -> "नवीन पासवर्ड पुन्हा टाका"
-                "password_minimum" -> "पासवर्ड किमान 6 अक्षरांचा असावा"
-                "password_mismatch" -> "नवीन पासवर्ड जुळत नाहीत"
-                "cancel" -> "रद्द करा"
-                "update_password" -> "पासवर्ड अपडेट करा"
-                "password_changed" -> "पासवर्ड यशस्वीरित्या बदलला."
-                else -> key
-            }
-            "हिंदी" -> when (key) {
-                "change_password" -> "पासवर्ड बदलें"
-                "change_password_subtitle" -> "अपना अकाउंट पासवर्ड सुरक्षित रूप से बदलें"
-                "current_password" -> "वर्तमान पासवर्ड"
-                "new_password" -> "नया पासवर्ड"
-                "confirm_password" -> "नया पासवर्ड फिर से दर्ज करें"
-                "password_minimum" -> "पासवर्ड कम से कम 6 अक्षरों का होना चाहिए"
-                "password_mismatch" -> "नए पासवर्ड मेल नहीं खाते"
-                "cancel" -> "रद्द करें"
-                "update_password" -> "पासवर्ड अपडेट करें"
-                "password_changed" -> "पासवर्ड सफलतापूर्वक बदल गया।"
-                else -> key
-            }
-            else -> when (key) {
-                "change_password" -> "Change Password"
-                "change_password_subtitle" -> "Securely change your account password"
-                "current_password" -> "Current Password"
-                "new_password" -> "New Password"
-                "confirm_password" -> "Confirm New Password"
-                "password_minimum" -> "Password must contain at least 6 characters"
-                "password_mismatch" -> "New passwords do not match"
-                "cancel" -> "Cancel"
-                "update_password" -> "Update Password"
-                "password_changed" -> "Password changed successfully."
-                else -> key
-            }
-        }
-    }
+    val passwordText: (String) -> String = { key -> appText(key, selectedLanguage) }
 
     var languageMenuExpanded by remember { mutableStateOf(false) }
     val supportedLanguages = listOf("English", "मराठी", "हिंदी")
@@ -1138,7 +1096,7 @@ fun ProfileScreen(
                             }
                         }
 
-                        context.startActivity(Intent.createChooser(intent, "Share Prescription"))
+                        context.startActivity(Intent.createChooser(intent, appText("share_prescription", selectedLanguage)))
                     }
 
                     Spacer(modifier = Modifier.height(14.dp))
@@ -1172,7 +1130,7 @@ fun ProfileScreen(
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Column {
                                         Text(
-                                            text = "Prescription Details",
+                                            text = appText("prescription_details", selectedLanguage),
                                             color = DarkTeal,
                                             fontSize = 16.sp,
                                             fontWeight = FontWeight.Bold
@@ -1359,7 +1317,7 @@ fun ProfileScreen(
                                                 )
                                                 Spacer(modifier = Modifier.width(6.dp))
                                                 Text(
-                                                    text = "Set Reminder",
+                                                    text = appText("set_reminder", selectedLanguage),
                                                     fontSize = 12.sp,
                                                     fontWeight = FontWeight.Bold,
                                                     color = PureWhite
@@ -1386,7 +1344,7 @@ fun ProfileScreen(
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = "Share Prescription",
+                                    text = appText("share_prescription", selectedLanguage),
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = PureWhite
@@ -1413,7 +1371,7 @@ fun ProfileScreen(
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = "Delete Prescription",
+                                    text = appText("delete_prescription", selectedLanguage),
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = StatusError

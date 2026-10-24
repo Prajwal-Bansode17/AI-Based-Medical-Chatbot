@@ -1,5 +1,7 @@
 package ui
 
+import android.widget.Toast
+
 import android.Manifest
 import android.app.TimePickerDialog
 import android.content.pm.PackageManager
@@ -42,7 +44,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.Divider
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -961,6 +963,7 @@ fun MedicineReminderScreen(
                             onDelete = {
                                 MedicineReminderScheduler(context).cancel(reminder.id)
                                 MedicineReminderRepository.delete(context, reminder.id)
+                                Toast.makeText(context, t("reminder_deleted_success"), Toast.LENGTH_SHORT).show()
                                 refresh()
                             }
                         )
@@ -1130,7 +1133,7 @@ private fun ReminderCard(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            Divider(color = ReminderMintBorder.copy(alpha = 0.5f))
+            HorizontalDivider(color = ReminderMintBorder.copy(alpha = 0.5f))
 
             Spacer(modifier = Modifier.height(10.dp))
 

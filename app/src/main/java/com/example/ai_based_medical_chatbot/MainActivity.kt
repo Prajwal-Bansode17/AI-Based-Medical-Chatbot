@@ -7,6 +7,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.biometric.BiometricManager
 import androidx.biometric.BiometricPrompt
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
@@ -126,10 +127,15 @@ class MainActivity : FragmentActivity() {
         setContent {
             AIBasedMedicalChatbotTheme {
                 ProvideAppLanguage {
-                    MedicalChatbotNavigation(
-                        recoveryUri = recoveryIntentUri.value,
-                        onRecoveryUriHandled = { recoveryIntentUri.value = null }
-                    )
+                    androidx.compose.material3.Surface(
+                        modifier = androidx.compose.ui.Modifier.fillMaxSize(),
+                        color = androidx.compose.material3.MaterialTheme.colorScheme.background
+                    ) {
+                        MedicalChatbotNavigation(
+                            recoveryUri = recoveryIntentUri.value,
+                            onRecoveryUriHandled = { recoveryIntentUri.value = null }
+                        )
+                    }
                 }
             }
         }
@@ -167,6 +173,7 @@ private fun MedicalChatbotNavigation(
     var selectedMedicine by remember { mutableStateOf<ui.Medicine?>(null) }
     var reminderPrefill by remember { mutableStateOf<MedicineReminder?>(null) }
     var selectedHistorySessionId by remember { mutableStateOf<String?>(null) }
+    var activeChatSessionId by remember { mutableStateOf<String?>(null) }
     var recoveryAccessToken by remember { mutableStateOf("") }
     var initialChatQuery by remember { mutableStateOf<String?>(null) }
 
@@ -627,6 +634,7 @@ private fun MedicalChatbotNavigation(
 
         "chatbot" -> {
             ChatbotScreen(
+                initialSessionId = activeChatSessionId,
                 initialUserQuery = initialChatQuery,
                 onViewTranscript = { targetSessionId ->
                     selectedHistorySessionId = targetSessionId
@@ -634,6 +642,7 @@ private fun MedicalChatbotNavigation(
                 },
                 onBack = {
                     initialChatQuery = null
+                    activeChatSessionId = null
                     back()
                 }
             )
@@ -642,7 +651,19 @@ private fun MedicalChatbotNavigation(
         "chatHistory" -> {
             ChatHistoryScreen(
                 sessionId = selectedHistorySessionId,
+                onOpenConversation = { targetSessionId ->
+                    activeChatSessionId = targetSessionId
+                    selectedHistorySessionId = null
+                    if (!screenStack.contains("chatbot")) {
+                        go("chatbot")
+                    } else {
+                        while (screenStack.isNotEmpty() && screenStack.last() != "chatbot") {
+                            screenStack.removeAt(screenStack.lastIndex)
+                        }
+                    }
+                },
                 onBackClick = {
+                    selectedHistorySessionId = null
                     back()
                 }
             )
@@ -726,6 +747,35 @@ private fun MedicalChatbotNavigation(
                 },
                 onContinue = {
                     back()
+                }
+            )
+        }
+
+        else -> {
+            DashboardScreen(
+                userName = userName,
+                onProfileClick = { go("profile") },
+                onChatbotClick = { initialChatQuery = null; go("chatbot") },
+                onSymptomSubmit = { symptomQuery -> initialChatQuery = symptomQuery; go("chatbot") },
+                onBMIClick = { go("bmi") },
+                onSymptomsClick = { go("symptoms") },
+                onMedicineClick = { go("medicine") },
+                onHealthTipsClick = { go("healthTips") },
+                onPrescriptionClick = { go("prescription") },
+                onMedicineReminderClick = { go("medicineReminder") },
+                onHealthProfileClick = { go("healthProfile") },
+                onLogoutClick = {
+                    val currentUserId = SupabaseClient.getSavedUser(context)?.id
+                    ChatHistoryRepository.clearActiveSession(context, currentUserId)
+                    SupabaseClient.clearSession(context)
+                    setBiometricEnabled(context, false)
+                    userName = ""
+                    userEmail = ""
+                    loginError = ""
+                    loginLoading = false
+                    biometricError = ""
+                    screenStack.clear()
+                    screenStack.add("login")
                 }
             )
         }

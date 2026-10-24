@@ -1,6 +1,14 @@
 package ui
 
 import com.example.ai_based_medical_chatbot.LocalAppLanguageController
+import android.util.Base64
+import java.io.ByteArrayOutputStream
+import java.io.File
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import kotlinx.coroutines.suspendCancellableCoroutine
+import kotlin.coroutines.resume
 
 import android.content.Context
 import android.content.Intent
@@ -123,7 +131,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 
 import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import android.provider.OpenableColumns
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -616,7 +626,7 @@ fun ChatbotScreen(
         }
     }
 
-    var currentSessionId by remember {
+    var currentSessionId by remember(initialSessionId) {
         mutableStateOf(initialResolvedSessionId)
     }
 
@@ -672,16 +682,68 @@ fun ChatbotScreen(
         val uris = pendingImageUris
         if (uris.isEmpty()) return@LaunchedEffect
 
+        var oversizeEncountered = false
         val decoded = withContext(Dispatchers.IO) {
             uris.mapNotNull { uri ->
                 try {
-                    context.contentResolver.openInputStream(uri)?.use { input ->
-                        BitmapFactory.decodeStream(input)
+                    val cr = context.contentResolver
+                    val mimeType = cr.getType(uri) ?: "image/*"
+                    var fileSize = -1L
+
+                    cr.query(uri, arrayOf(OpenableColumns.SIZE), null, null, null)?.use { cursor ->
+                        if (cursor.moveToFirst()) {
+                            val sizeIndex = cursor.getColumnIndex(OpenableColumns.SIZE)
+                            if (sizeIndex != -1 && !cursor.isNull(sizeIndex)) {
+                                fileSize = cursor.getLong(sizeIndex)
+                            }
+                        }
                     }
-                } catch (_: Exception) {
+
+                    Log.d("MEDASSIST_ATTACHMENT", "Selected image URI: mime=" + mimeType + ", sizeBytes=" + fileSize)
+
+                    if (fileSize > 15L * 1024L * 1024L) {
+                        oversizeEncountered = true
+                        Log.w("MEDASSIST_ATTACHMENT", "Image skipped: exceeds 15MB limit (" + fileSize + " bytes)")
+                        return@mapNotNull null
+                    }
+
+                    // Two-pass decoding to prevent OOM
+                    val boundsOptions = BitmapFactory.Options().apply {
+                        inJustDecodeBounds = true
+                    }
+                    cr.openInputStream(uri)?.use { input ->
+                        BitmapFactory.decodeStream(input, null, boundsOptions)
+                    }
+
+                    val rawWidth = boundsOptions.outWidth
+                    val rawHeight = boundsOptions.outHeight
+                    var inSampleSize = 1
+                    val maxDimension = 1920
+                    if (rawWidth > maxDimension || rawHeight > maxDimension) {
+                        val halfWidth = rawWidth / 2
+                        val halfHeight = rawHeight / 2
+                        while ((halfWidth / inSampleSize) >= maxDimension || (halfHeight / inSampleSize) >= maxDimension) {
+                            inSampleSize *= 2
+                        }
+                    }
+
+                    val decodeOptions = BitmapFactory.Options().apply {
+                        this.inSampleSize = inSampleSize
+                        inPreferredConfig = Bitmap.Config.ARGB_8888
+                    }
+
+                    cr.openInputStream(uri)?.use { input ->
+                        BitmapFactory.decodeStream(input, null, decodeOptions)
+                    }
+                } catch (e: Exception) {
+                    Log.e("MEDASSIST_ATTACHMENT", "Failed to decode selected image URI: " + e.message)
                     null
                 }
             }
+        }
+
+        if (oversizeEncountered) {
+            Toast.makeText(context, "Selected image exceeds 15MB limit", Toast.LENGTH_SHORT).show()
         }
 
         if (decoded.isNotEmpty()) {
@@ -692,12 +754,47 @@ fun ChatbotScreen(
         pendingImageUris = emptyList()
     }
 
-    val galleryLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetMultipleContents()
-    ) { uris ->
-        if (uris.isNotEmpty()) {
-            pendingImageUris = uris
+    // Modern AndroidX Photo Picker launcher (API 33+ and backported via Google Play services)
+    val photoPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.PickVisualMedia()
+    ) { uri ->
+        if (uri != null) {
+            Log.d("MEDASSIST_ATTACHMENT", "PhotoPicker selected image")
+            pendingImageUris = listOf(uri)
             attachmentLabel = ""
+        }
+    }
+
+    // Fallback image picker launcher for devices where photo picker contract is unavailable
+    val fallbackImageLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri ->
+        if (uri != null) {
+            Log.d("MEDASSIST_ATTACHMENT", "GetContent selected image fallback")
+            pendingImageUris = listOf(uri)
+            attachmentLabel = ""
+        }
+    }
+
+    fun launchImagePicker() {
+        try {
+            if (ActivityResultContracts.PickVisualMedia.isPhotoPickerAvailable(context)) {
+                Log.d("MEDASSIST_ATTACHMENT", "Launching PickVisualMedia PhotoPicker")
+                photoPickerLauncher.launch(
+                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                )
+            } else {
+                Log.d("MEDASSIST_ATTACHMENT", "PhotoPicker not available, launching GetContent fallback")
+                fallbackImageLauncher.launch("image/*")
+            }
+        } catch (e: Exception) {
+            Log.w("MEDASSIST_ATTACHMENT", "PhotoPicker failed, falling back to GetContent: " + e.message)
+            try {
+                fallbackImageLauncher.launch("image/*")
+            } catch (ex: Exception) {
+                Log.e("MEDASSIST_ATTACHMENT", "Fallback image picker also failed: " + ex.message)
+                Toast.makeText(context, "Unable to open image gallery", Toast.LENGTH_SHORT).show()
+            }
         }
     }
 
@@ -834,7 +931,8 @@ fun ChatbotScreen(
         val existing = ChatHistoryRepository.getChats(context)
             .firstOrNull { it.id == currentSessionId }
 
-        if (existing != null && messages.isEmpty()) {
+        if (existing != null) {
+            messages.clear()
             messages.addAll(existing.messages)
         }
 
@@ -904,6 +1002,54 @@ fun ChatbotScreen(
     }
 
 
+
+    suspend fun extractOcrTextFromImagePath(ctx: Context, imgPath: String): String =
+        suspendCancellableCoroutine { continuation ->
+            try {
+                val file = File(imgPath)
+                if (!file.exists()) {
+                    continuation.resume("")
+                    return@suspendCancellableCoroutine
+                }
+                val uri = Uri.fromFile(file)
+                val image = InputImage.fromFilePath(ctx, uri)
+                val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+                recognizer.process(image)
+                    .addOnSuccessListener { visionText ->
+                        recognizer.close()
+                        continuation.resume(visionText.text.trim())
+                    }
+                    .addOnFailureListener {
+                        recognizer.close()
+                        continuation.resume("")
+                    }
+            } catch (e: Throwable) {
+                continuation.resume("")
+            }
+        }
+
+    fun encodeImageToBase64(imgPath: String, maxDimension: Int = 1024): String? {
+        return try {
+            val file = File(imgPath)
+            if (!file.exists() || file.length() > 10 * 1024 * 1024) return null
+            val bmp = BitmapFactory.decodeFile(file.absolutePath) ?: return null
+            val maxDim = maxOf(bmp.width, bmp.height)
+            val scaled = if (maxDim > maxDimension) {
+                val ratio = maxDimension.toFloat() / maxDim
+                Bitmap.createScaledBitmap(bmp, (bmp.width * ratio).toInt(), (bmp.height * ratio).toInt(), true)
+            } else {
+                bmp
+            }
+            val stream = ByteArrayOutputStream()
+            scaled.compress(Bitmap.CompressFormat.JPEG, 80, stream)
+            val bytes = stream.toByteArray()
+            if (scaled !== bmp) scaled.recycle()
+            bmp.recycle()
+            Base64.encodeToString(bytes, Base64.NO_WRAP)
+        } catch (e: Throwable) {
+            null
+        }
+    }
 
     // =========================================================
     // SEND MESSAGE
@@ -988,7 +1134,27 @@ fun ChatbotScreen(
                         val prescriptionMemory =
                             PrescriptionMemory.build(context)
 
-                        val queryPrompt = resolveChatbotPrompt(cleanText, attachedImagePaths.isNotEmpty())
+                        val firstImagePath = attachedImagePaths.firstOrNull()
+                        val ocrText = if (!firstImagePath.isNullOrBlank()) {
+                            extractOcrTextFromImagePath(context, firstImagePath)
+                        } else ""
+                        val imageBase64 = if (!firstImagePath.isNullOrBlank()) {
+                            encodeImageToBase64(firstImagePath)
+                        } else null
+
+                        val basePrompt = resolveChatbotPrompt(cleanText, attachedImagePaths.isNotEmpty())
+                        val queryPrompt = if (ocrText.isNotBlank()) {
+                            """
+                            [ATTACHED MEDICINE / PRESCRIPTION IMAGE TEXT (via OCR)]:
+                            $ocrText
+
+                            USER REQUEST:
+                            ${if (cleanText.isNotBlank()) cleanText else "Please inspect this medicine or prescription image, identify the active medication, therapeutic uses, dosage warnings, and common precautions."}
+                            """.trimIndent()
+                        } else {
+                            basePrompt
+                        }
+
                         val chatbotText =
                             if (prescriptionMemory.isBlank()) {
                                 queryPrompt
@@ -1016,7 +1182,9 @@ fun ChatbotScreen(
                             .predict(
                                 PredictionRequest(
                                     sessionId = currentSessionId,
-                                    text = chatbotText
+                                    text = chatbotText,
+                                    imageBase64 = imageBase64,
+                                    ocrText = ocrText.ifBlank { null }
                                 )
                             )
                     }
@@ -1214,8 +1382,28 @@ fun ChatbotScreen(
         isTyping = true
         scope.launch {
             try {
+                val firstImagePath = lastUserMessage.imagePaths.firstOrNull()
+                val ocrText = if (!firstImagePath.isNullOrBlank()) {
+                    extractOcrTextFromImagePath(context, firstImagePath)
+                } else ""
+                val imageBase64 = if (!firstImagePath.isNullOrBlank()) {
+                    encodeImageToBase64(firstImagePath)
+                } else null
+
+                val basePrompt = resolveChatbotPrompt(lastUserMessage.text, lastUserMessage.imagePaths.isNotEmpty())
+                val retryPrompt = if (ocrText.isNotBlank()) {
+                    """
+                    [ATTACHED MEDICINE / PRESCRIPTION IMAGE TEXT (via OCR)]:
+                    $ocrText
+
+                    USER REQUEST:
+                    ${if (lastUserMessage.text.isNotBlank()) lastUserMessage.text.trim() else "Please inspect this medicine or prescription image, identify the active medication, therapeutic uses, dosage warnings, and common precautions."}
+                    """.trimIndent()
+                } else {
+                    basePrompt
+                }
+
                 val prescriptionMemory = PrescriptionMemory.build(context)
-                val retryPrompt = resolveChatbotPrompt(lastUserMessage.text, lastUserMessage.imagePaths.isNotEmpty())
                 val chatbotText = if (prescriptionMemory.isBlank()) {
                     retryPrompt
                 } else {
@@ -1241,7 +1429,9 @@ fun ChatbotScreen(
                     RetrofitClient.apiService.predict(
                         PredictionRequest(
                             sessionId = currentSessionId,
-                            text = chatbotText
+                            text = chatbotText,
+                            imageBase64 = imageBase64,
+                            ocrText = ocrText.ifBlank { null }
                         )
                     )
                 }
@@ -1557,8 +1747,15 @@ fun ChatbotScreen(
 
                     IconButton(
                         onClick = {
-                            savedChats = ChatHistoryRepository.getChats(context)
-                            showChatSidebar = true
+                            if (messages.isNotEmpty()) {
+                                ChatHistoryRepository.saveChat(context, currentSessionId, messages)
+                            }
+                            if (onViewTranscript != null) {
+                                onViewTranscript(null)
+                            } else {
+                                savedChats = ChatHistoryRepository.getChats(context)
+                                showChatSidebar = true
+                            }
                         },
                         modifier = Modifier.size(40.dp),
                         colors = IconButtonDefaults.iconButtonColors(
@@ -1895,7 +2092,7 @@ fun ChatbotScreen(
                                                     },
                                                     onUploadImage = {
                                                         showAttachmentMenu = false
-                                                        galleryLauncher.launch("image/*")
+                                                        launchImagePicker()
                                                     },
                                                     onUploadReport = {
                                                         showAttachmentMenu = false
@@ -2532,14 +2729,14 @@ fun ChatbotScreen(
                     showRenameDialog = false
                     selectedChatForActions = null
                 },
-                title = { Text("Rename Chat") },
+                title = { Text(t("chat_rename_dialog_title")) },
                 text = {
                     OutlinedTextField(
                         value = renameText,
                         onValueChange = { renameText = it },
                         singleLine = true,
                         modifier = Modifier.fillMaxWidth(),
-                        label = { Text("Chat name") }
+                        label = { Text(t("chat_rename_label")) }
                     )
                 },
                 confirmButton = {
@@ -2563,7 +2760,7 @@ fun ChatbotScreen(
                             containerColor = primaryTeal
                         )
                     ) {
-                        Text("Save")
+                        Text(t("chat_rename_save"))
                     }
                 },
                 dismissButton = {
@@ -2573,7 +2770,7 @@ fun ChatbotScreen(
                             selectedChatForActions = null
                         }
                     ) {
-                        Text("Cancel", color = primaryTeal)
+                        Text(t("btn_cancel"), color = primaryTeal)
                     }
                 }
             )
@@ -2591,11 +2788,11 @@ fun ChatbotScreen(
                 },
 
                 title = {
-                    Text("Clear conversation?")
+                    Text(t("chat_clear_dialog_title"))
                 },
 
                 text = {
-                    Text("This will clear the current conversation from the screen.")
+                    Text(t("chat_clear_dialog_message"))
                 },
 
                 confirmButton = {
@@ -2625,7 +2822,7 @@ fun ChatbotScreen(
                             containerColor = primaryTeal
                         )
                     ) {
-                        Text("Clear")
+                        Text(t("chat_clear_action"))
                     }
                 },
 
@@ -2637,7 +2834,7 @@ fun ChatbotScreen(
                         shape = RoundedCornerShape(14.dp)
                     ) {
                         Text(
-                            text = "Cancel",
+                            text = t("btn_cancel"),
                             color = primaryTeal
                         )
                     }
@@ -3429,6 +3626,9 @@ private fun ChatSidebar(
         topEnd = 24.dp,
         bottomEnd = 24.dp
     )
+    val appLanguageController = LocalAppLanguageController.current
+    val selectedLanguage = appLanguageController.selectedLanguage
+    val t = { key: String -> appText(key, selectedLanguage) }
 
     Column(
         modifier = Modifier
@@ -3584,7 +3784,7 @@ private fun ChatSidebar(
                 val regularChats = savedChats.filterNot { it.pinned }
 
                 if (pinnedChats.isNotEmpty()) {
-                    ChatGroupLabel("Pinned")
+                    ChatGroupLabel(t("pinned"))
                     pinnedChats.forEach { chat ->
                         ChatHistoryItem(
                             chat = chat,
@@ -3598,7 +3798,7 @@ private fun ChatSidebar(
 
                 var lastGroup = ""
                 regularChats.forEach { chat ->
-                    val group = chatGroupLabel(chat.updatedAt)
+                    val group = chatGroupLabel(chat.updatedAt, language = selectedLanguage)
                     if (group != lastGroup) {
                         ChatGroupLabel(group)
                         lastGroup = group
@@ -3643,7 +3843,7 @@ private fun ChatSidebar(
 // CHAT HISTORY HELPERS
 // =============================================================
 
-private fun chatRelativeTime(updatedAt: Long, now: Long = System.currentTimeMillis()): String {
+internal fun chatRelativeTime(updatedAt: Long, now: Long = System.currentTimeMillis(), language: String = "English"): String {
     if (updatedAt <= 0L) return ""
 
     val diff = (now - updatedAt).coerceAtLeast(0L)
@@ -3652,27 +3852,42 @@ private fun chatRelativeTime(updatedAt: Long, now: Long = System.currentTimeMill
     val day = 24 * hour
 
     return when {
-        diff < minute -> "Just now"
-        diff < hour -> "${diff / minute} min ago"
-        diff < day -> "${diff / hour} hrs ago"
-        diff < 2 * day -> "Yesterday"
-        diff < 7 * day -> "${diff / day} days ago"
-        diff < 14 * day -> "1 week ago"
-        diff < 30 * day -> "${diff / (7 * day)} weeks ago"
-        diff < 60 * day -> "1 month ago"
-        else -> "${diff / (30 * day)} months ago"
+        diff < minute -> appText("time_just_now", language)
+        diff < hour -> {
+            val mins = diff / minute
+            appText("time_min_ago", language).replace("%d", mins.toString())
+        }
+        diff < day -> {
+            val hrs = diff / hour
+            appText("time_hrs_ago", language).replace("%d", hrs.toString())
+        }
+        diff < 2 * day -> appText("time_group_yesterday", language)
+        diff < 7 * day -> {
+            val days = diff / day
+            appText("time_days_ago", language).replace("%d", days.toString())
+        }
+        diff < 14 * day -> appText("time_week_ago", language)
+        diff < 30 * day -> {
+            val weeks = diff / (7 * day)
+            appText("time_weeks_ago", language).replace("%d", weeks.toString())
+        }
+        diff < 60 * day -> appText("time_month_ago", language)
+        else -> {
+            val months = diff / (30 * day)
+            appText("time_months_ago", language).replace("%d", months.toString())
+        }
     }
 }
 
-private fun chatGroupLabel(updatedAt: Long, now: Long = System.currentTimeMillis()): String {
+internal fun chatGroupLabel(updatedAt: Long, now: Long = System.currentTimeMillis(), language: String = "English"): String {
     val diff = (now - updatedAt).coerceAtLeast(0L)
     val day = 24 * 60 * 60 * 1000L
     return when {
-        diff < day -> "Today"
-        diff < 2 * day -> "Yesterday"
-        diff < 7 * day -> "Previous 7 Days"
-        diff < 30 * day -> "Previous 30 Days"
-        else -> "Older"
+        diff < day -> appText("time_group_today", language)
+        diff < 2 * day -> appText("time_group_yesterday", language)
+        diff < 7 * day -> appText("time_group_7_days", language)
+        diff < 30 * day -> appText("time_group_30_days", language)
+        else -> appText("time_group_older", language)
     }
 }
 
@@ -3703,7 +3918,7 @@ private fun shareChat(context: Context, chat: SavedChat, chooserTitle: String) {
 }
 
 @Composable
-private fun ChatGroupLabel(text: String) {
+internal fun ChatGroupLabel(text: String) {
     Text(
         text = text,
         modifier = Modifier.padding(top = 8.dp, bottom = 2.dp, start = 2.dp),
@@ -3713,7 +3928,7 @@ private fun ChatGroupLabel(text: String) {
     )
 }
 
-private val PinIcon: ImageVector by lazy {
+internal val PinIcon: ImageVector by lazy {
     ImageVector.Builder(
         name = "PinIcon",
         defaultWidth = 24.dp,
@@ -3736,6 +3951,8 @@ private fun ChatHistoryItem(
     onClick: () -> Unit,
     onLongPress: () -> Unit
 ) {
+    val appLanguageController = LocalAppLanguageController.current
+    val selectedLanguage = appLanguageController.selectedLanguage
     val rowShape = RoundedCornerShape(14.dp)
 
     Row(
@@ -3783,7 +4000,7 @@ private fun ChatHistoryItem(
             }
             Spacer(Modifier.height(2.dp))
             Text(
-                text = chatRelativeTime(chat.updatedAt),
+                text = chatRelativeTime(chat.updatedAt, language = selectedLanguage),
                 fontSize = 11.sp,
                 color = TextLight,
                 maxLines = 1

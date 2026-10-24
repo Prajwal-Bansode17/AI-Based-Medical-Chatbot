@@ -7,7 +7,13 @@ data class PredictionRequest(
     val sessionId: String,
 
     @SerializedName("text")
-    val text: String
+    val text: String,
+
+    @SerializedName("image_base64")
+    val imageBase64: String? = null,
+
+    @SerializedName("ocr_text")
+    val ocrText: String? = null
 )
 
 data class PredictionResponse(

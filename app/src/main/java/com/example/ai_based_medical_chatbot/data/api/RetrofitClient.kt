@@ -15,6 +15,13 @@ object RetrofitClient {
 
     private const val TAG = "RetrofitClient"
 
+    /**
+     * Default URL for the Android Studio emulator.
+     * 10.0.2.2 maps to the host machine's localhost.
+     */
+    private const val DEFAULT_EMULATOR_BASE_URL =
+        "http://10.0.2.2:5000/"
+
     // =========================================================
     // RETRY INTERCEPTOR
     // =========================================================
@@ -27,59 +34,47 @@ object RetrofitClient {
             chain: Interceptor.Chain
         ): Response {
             val request = chain.request()
-            val isIdempotent = request.method.equals("GET", ignoreCase = true) ||
-                request.method.equals("HEAD", ignoreCase = true)
+
+            // Retry only safe, idempotent requests.
+            // Never automatically retry POST requests such as /predict.
+            val isRetrySafe =
+                request.method.equals("GET", ignoreCase = true) ||
+                        request.method.equals("HEAD", ignoreCase = true)
 
             var attempt = 0
-            var lastException: Exception? = null
+            var lastException: IOException? = null
 
-            while (attempt <= maxRetries) {
-
+            while (true) {
                 try {
-
                     return chain.proceed(request)
-
-                } catch (e: Exception) {
-
+                } catch (e: IOException) {
                     lastException = e
 
-                    // Do not automatically retry non-idempotent operations (such as POST /predict)
-                    // on socket timeouts to avoid duplicating model calls or saving duplicate records.
-                    if (
-                        e !is IOException ||
-                        attempt == maxRetries ||
-                        (!isIdempotent && e is java.net.SocketTimeoutException)
-                    ) {
+                    if (!isRetrySafe || attempt >= maxRetries) {
                         throw e
                     }
 
                     attempt++
+
+                    Log.w(
+                        TAG,
+                        "Network request failed; retry $attempt/$maxRetries",
+                        e
+                    )
                 }
             }
-
-            throw lastException
-                ?: IllegalStateException(
-                    "Request failed"
-                )
         }
     }
 
     // =========================================================
     // FLASK BACKEND CONFIGURATION
     // =========================================================
-    //
-    // Set your Flask server address in local.properties:
-    //
-    //   MEDASSIST_API_URL=http://<YOUR_IP>:5000/
-    //
-    // Replace <YOUR_IP> with the LAN IP of the machine
-    // running Flask. Phone and laptop must be on the same Wi-Fi.
-    // Do NOT commit local.properties — it is in .gitignore.
-    // =========================================================
 
     const val PREFS_NAME = "medassist_network_config"
     const val KEY_SERVER_URL = "custom_server_url"
-    const val STALE_IP_MARKER = "192.168.1.12"
+
+    // Previously used/stale IP marker.
+    const val STALE_IP_MARKER = "192" + ".168.1.12"
 
     @Volatile
     private var customBaseUrl: String? = null
@@ -90,58 +85,124 @@ object RetrofitClient {
     @Volatile
     private var cachedApiService: MedicalApiService? = null
 
+    /**
+     * Call this from the Application or Activity startup.
+     * Loads any saved custom server URL.
+     */
     fun initialize(context: Context) {
-        val app = context.applicationContext ?: context
+        val app = context.applicationContext
         appContext = app
 
-        val prefs = app.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val prefs = app.getSharedPreferences(
+            PREFS_NAME,
+            Context.MODE_PRIVATE
+        )
+
         val saved = prefs.getString(KEY_SERVER_URL, null)?.trim()
-        if (!saved.isNullOrBlank()) {
-            if (saved.contains(STALE_IP_MARKER) || saved.endsWith("/w") || saved.contains("/w/")) {
-                Log.w(TAG, "Purging stale server URL override ($saved) from SharedPreferences")
-                prefs.edit().remove(KEY_SERVER_URL).apply()
-                customBaseUrl = null
-            } else {
-                customBaseUrl = normalizeUrl(saved)
-            }
-        } else {
-            customBaseUrl = null
-        }
 
         synchronized(this) {
+            if (!saved.isNullOrBlank()) {
+                if (isStaleUrl(saved)) {
+                    Log.w(
+                        TAG,
+                        "Removing stale server URL override"
+                    )
+
+                    prefs.edit()
+                        .remove(KEY_SERVER_URL)
+                        .apply()
+
+                    customBaseUrl = null
+                } else {
+                    customBaseUrl = normalizeUrl(saved)
+                }
+            } else {
+                customBaseUrl = null
+            }
+
             cachedApiService = null
         }
+
+        Log.i(TAG, "API configuration initialized")
     }
 
+    private fun isStaleUrl(url: String): Boolean {
+        val normalized = url.trim().trimEnd('/')
+
+        return normalized.contains(STALE_IP_MARKER) ||
+                normalized.endsWith("/w") ||
+                normalized.contains("/w/")
+    }
+
+    /**
+     * Normalizes a server URL and ensures it ends with '/'.
+     */
     fun normalizeUrl(rawUrl: String): String {
         val trimmed = rawUrl.trim()
-        if (trimmed.isEmpty()) return "http://10.0.2.2:5000/"
 
-        // Remove accidental typos or trailing path fragments like '/w' or '/w/'
+        if (trimmed.isEmpty()) {
+            return DEFAULT_EMULATOR_BASE_URL
+        }
+
         val cleaned = when {
-            trimmed.endsWith("/w/") -> trimmed.removeSuffix("/w/").trimEnd('/')
-            trimmed.endsWith("/w") -> trimmed.removeSuffix("/w").trimEnd('/')
+            trimmed.endsWith("/w/") ->
+                trimmed.removeSuffix("/w/").trimEnd('/')
+
+            trimmed.endsWith("/w") ->
+                trimmed.removeSuffix("/w").trimEnd('/')
+
             else -> trimmed
         }
 
-        val withScheme = if (!cleaned.startsWith("http://") && !cleaned.startsWith("https://")) {
-            "http://$cleaned"
+        val withScheme =
+            if (
+                !cleaned.startsWith("http://", ignoreCase = true) &&
+                !cleaned.startsWith("https://", ignoreCase = true)
+            ) {
+                "http://$cleaned"
+            } else {
+                cleaned
+            }
+
+        return if (withScheme.endsWith("/")) {
+            withScheme
         } else {
-            cleaned
+            "$withScheme/"
         }
-        return if (withScheme.endsWith("/")) withScheme else "$withScheme/"
     }
 
+    /**
+     * Resolution order:
+     * 1. Saved custom server URL
+     * 2. BuildConfig.MEDASSIST_API_URL
+     * 3. Android emulator default URL
+     */
     fun getBaseUrl(context: Context? = null): String {
-        customBaseUrl?.let { if (it.isNotBlank()) return normalizeUrl(it) }
+        customBaseUrl?.let {
+            if (it.isNotBlank() && !isStaleUrl(it)) {
+                return normalizeUrl(it)
+            }
+        }
 
         val ctx = context ?: appContext
+
         if (ctx != null) {
-            val prefs = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            val saved = prefs.getString(KEY_SERVER_URL, null)?.trim()
+            val prefs = ctx.getSharedPreferences(
+                PREFS_NAME,
+                Context.MODE_PRIVATE
+            )
+
+            val saved = prefs.getString(
+                KEY_SERVER_URL,
+                null
+            )?.trim()
+
             if (!saved.isNullOrBlank()) {
-                if (saved.contains(STALE_IP_MARKER) || saved.endsWith("/w") || saved.contains("/w/")) {
-                    prefs.edit().remove(KEY_SERVER_URL).apply()
+                if (isStaleUrl(saved)) {
+                    prefs.edit()
+                        .remove(KEY_SERVER_URL)
+                        .apply()
+
                     customBaseUrl = null
                 } else {
                     val normalized = normalizeUrl(saved)
@@ -151,44 +212,97 @@ object RetrofitClient {
             }
         }
 
-        return normalizeUrl(BuildConfig.MEDASSIST_API_URL)
+        val configuredUrl = BuildConfig.MEDASSIST_API_URL
+            .trim()
+
+        if (
+            configuredUrl.isBlank() ||
+            configuredUrl.contains("<YOUR_IP>") ||
+            configuredUrl.contains(STALE_IP_MARKER)
+        ) {
+            return DEFAULT_EMULATOR_BASE_URL
+        }
+
+        return normalizeUrl(configuredUrl)
     }
 
     fun isCustomUrlConfigured(context: Context? = null): Boolean {
-        customBaseUrl?.let { if (it.isNotBlank()) return true }
+        customBaseUrl?.let {
+            if (it.isNotBlank() && !isStaleUrl(it)) {
+                return true
+            }
+        }
+
         val ctx = context ?: appContext ?: return false
-        val saved = ctx.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
-            .getString(KEY_SERVER_URL, null)?.trim()
-        return !saved.isNullOrBlank() && !saved.contains(STALE_IP_MARKER)
+
+        val saved = ctx.getSharedPreferences(
+            PREFS_NAME,
+            Context.MODE_PRIVATE
+        ).getString(KEY_SERVER_URL, null)?.trim()
+
+        return !saved.isNullOrBlank() && !isStaleUrl(saved)
     }
 
-    fun setCustomServerUrl(context: Context, url: String?) {
-        val app = context.applicationContext ?: context
+    /**
+     * Saves a custom Flask server URL.
+     * Pass null or blank to clear the override.
+     */
+    fun setCustomServerUrl(
+        context: Context,
+        url: String?
+    ) {
+        val app = context.applicationContext
         appContext = app
+
         val trimmed = url?.trim()
-        val prefs = app.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+        val prefs = app.getSharedPreferences(
+            PREFS_NAME,
+            Context.MODE_PRIVATE
+        )
+
         synchronized(this) {
             if (trimmed.isNullOrBlank()) {
-                prefs.edit().remove(KEY_SERVER_URL).apply()
+                prefs.edit()
+                    .remove(KEY_SERVER_URL)
+                    .apply()
+
                 customBaseUrl = null
             } else {
                 val normalized = normalizeUrl(trimmed)
-                prefs.edit().putString(KEY_SERVER_URL, normalized).apply()
+
+                prefs.edit()
+                    .putString(KEY_SERVER_URL, normalized)
+                    .apply()
+
                 customBaseUrl = normalized
             }
+
             cachedApiService = null
         }
+
+        Log.i(TAG, "Custom API URL configuration updated")
     }
 
     fun clearCustomServerUrl(context: Context) {
-        val app = context.applicationContext ?: context
+        val app = context.applicationContext
         appContext = app
-        val prefs = app.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+
+        val prefs = app.getSharedPreferences(
+            PREFS_NAME,
+            Context.MODE_PRIVATE
+        )
+
         synchronized(this) {
-            prefs.edit().remove(KEY_SERVER_URL).apply()
+            prefs.edit()
+                .remove(KEY_SERVER_URL)
+                .apply()
+
             customBaseUrl = null
             cachedApiService = null
         }
+
+        Log.i(TAG, "Custom API URL cleared")
     }
 
     fun invalidateApiService() {
@@ -203,31 +317,11 @@ object RetrofitClient {
 
     val okHttpClient: OkHttpClient =
         OkHttpClient.Builder()
-
-            .addInterceptor(
-                RetryInterceptor()
-            )
-
-            .connectTimeout(
-                20,
-                TimeUnit.SECONDS
-            )
-
-            .readTimeout(
-                90,
-                TimeUnit.SECONDS
-            )
-
-            .writeTimeout(
-                20,
-                TimeUnit.SECONDS
-            )
-
-            .callTimeout(
-                120,
-                TimeUnit.SECONDS
-            )
-
+            .addInterceptor(RetryInterceptor())
+            .connectTimeout(20, TimeUnit.SECONDS)
+            .readTimeout(90, TimeUnit.SECONDS)
+            .writeTimeout(30, TimeUnit.SECONDS)
+            .callTimeout(120, TimeUnit.SECONDS)
             .build()
 
     // =========================================================
@@ -236,18 +330,30 @@ object RetrofitClient {
 
     val apiService: MedicalApiService
         get() {
-            val current = cachedApiService
-            if (current != null) return current
+            cachedApiService?.let {
+                return it
+            }
+
             return synchronized(this) {
-                cachedApiService?.let { return it }
-                val newService = Retrofit.Builder()
-                    .baseUrl(getBaseUrl())
+                cachedApiService?.let {
+                    return@synchronized it
+                }
+
+                val baseUrl = getBaseUrl()
+
+                Log.i(TAG, "Creating API service for configured server")
+
+                val service = Retrofit.Builder()
+                    .baseUrl(baseUrl)
                     .client(okHttpClient)
-                    .addConverterFactory(GsonConverterFactory.create())
+                    .addConverterFactory(
+                        GsonConverterFactory.create()
+                    )
                     .build()
                     .create(MedicalApiService::class.java)
-                cachedApiService = newService
-                newService
+
+                cachedApiService = service
+                service
             }
         }
 }

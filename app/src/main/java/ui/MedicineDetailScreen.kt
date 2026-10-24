@@ -106,53 +106,63 @@ val HeartFilledVectorIcon: ImageVector by lazy {
     ).build()
 }
 
+
+
+val InteractionsVectorIcon: ImageVector by lazy {
+    ImageVector.Builder(
+        name = "InteractionsIcon",
+        defaultWidth = 24.dp,
+        defaultHeight = 24.dp,
+        viewportWidth = 24f,
+        viewportHeight = 24f
+    ).addPath(
+        pathData = addPathNodes(
+            "M9.01 14H2v2h7.01v3L13 15.5 9.01 12v2zm5.98-1v-3H22V8h-7.01V5L11 8.5l3.99 3.5z"
+        ),
+        fill = SolidColor(DeepTeal)
+    ).build()
+}
+
 @Composable
 fun MedicineDetailScreen(
     medicine: Medicine,
-    onBackClick: () -> Unit
+    onBackClick: () -> Unit,
+    modifier: Modifier = Modifier
 ) {
     val appLanguageController = LocalAppLanguageController.current
-    val selectedLanguage = appLanguageController.selectedLanguage
-    fun t(key: String): String = appText(key, selectedLanguage)
+    val currentLang = appLanguageController.selectedLanguage
+    val t = { key: String -> appText(key, currentLang) }
 
     var isFavorite by remember { mutableStateOf(medicine.isFavorite) }
     val heartScale by animateFloatAsState(
-        targetValue = if (isFavorite) 1.15f else 1.0f,
-        animationSpec = spring(),
+        targetValue = if (isFavorite) 1.2f else 1.0f,
+        animationSpec = spring(dampingRatio = 0.4f),
         label = "heartScale"
     )
 
     Box(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxSize()
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        Ivory,
-                        SoftMint.copy(alpha = 0.5f),
-                        Ivory
-                    )
-                )
-            )
+            .background(Ivory)
+            .statusBarsPadding()
+            .navigationBarsPadding()
     ) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .statusBarsPadding()
-                .navigationBarsPadding()
                 .verticalScroll(rememberScrollState())
                 .padding(
                     PaddingValues(
-                        start = 18.dp,
+                        start = 16.dp,
+                        end = 16.dp,
                         top = 16.dp,
-                        end = 18.dp,
-                        bottom = 28.dp
+                        bottom = 24.dp
                     )
                 ),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             // =========================================================
-            // A. HEADER (Matching Screen 3 & 4)
+            // A. TOP APP BAR
             // =========================================================
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -171,7 +181,7 @@ fun MedicineDetailScreen(
                 ) {
                     Icon(
                         imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                        contentDescription = "Back",
+                        contentDescription = t("back"),
                         tint = DarkTeal,
                         modifier = Modifier.size(20.dp)
                     )
@@ -198,7 +208,7 @@ fun MedicineDetailScreen(
             }
 
             // =========================================================
-            // B. PRODUCT HEADER CARD (Matching Reference Image)
+            // B. PRODUCT HEADER CARD
             // =========================================================
             Card(
                 modifier = Modifier.fillMaxWidth(),
@@ -213,7 +223,6 @@ fun MedicineDetailScreen(
                         .padding(16.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Product Image / Packaging Artwork
                     ProductPackagingIllustration(
                         medicineName = medicine.name,
                         form = medicine.strengthAndForm,
@@ -247,23 +256,49 @@ fun MedicineDetailScreen(
                             fontWeight = FontWeight.Medium
                         )
 
-                        // Tags Row (e.g. [Pain relief] [Fever])
-                        if (medicine.tags.isNotEmpty()) {
-                            Spacer(modifier = Modifier.height(7.dp))
-                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                                for (tag in medicine.tags.take(2)) {
-                                    Box(
-                                        modifier = Modifier
-                                            .background(SoftMint, RoundedCornerShape(8.dp))
-                                            .padding(horizontal = 8.dp, vertical = 3.dp)
-                                    ) {
-                                        Text(
-                                            text = localizeMedicineTag(tag, selectedLanguage),
-                                            color = DeepTeal,
-                                            fontSize = 10.5.sp,
-                                            fontWeight = FontWeight.SemiBold
-                                        )
-                                    }
+                        // Tags & Rx/OTC Badges
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Rx or OTC Badge (only when supported by data)
+                            if (medicine.isPrescription != null) {
+                                val isRx = medicine.isPrescription == true
+                                val badgeBg = if (isRx) Color(0xFFFEE2E2) else Color(0xFFDCFCE7)
+                                val badgeBorder = if (isRx) Color(0xFFFECACA) else Color(0xFFBBF7D0)
+                                val badgeText = if (isRx) Color(0xFF991B1B) else Color(0xFF166534)
+                                val badgeLabel = if (isRx) t("medicine_rx_badge") else t("medicine_otc_badge")
+
+                                Box(
+                                    modifier = Modifier
+                                        .background(badgeBg, RoundedCornerShape(6.dp))
+                                        .border(BorderStroke(1.dp, badgeBorder), RoundedCornerShape(6.dp))
+                                        .padding(horizontal = 7.dp, vertical = 2.5.dp)
+                                ) {
+                                    Text(
+                                        text = badgeLabel,
+                                        color = badgeText,
+                                        fontSize = 10.5.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+
+                            val tagsToShow = medicine.tags.take(2)
+                            for (tag in tagsToShow) {
+                                Box(
+                                    modifier = Modifier
+                                        .background(SoftMint.copy(alpha = 0.5f), RoundedCornerShape(6.dp))
+                                        .border(BorderStroke(1.dp, Mint.copy(alpha = 0.5f)), RoundedCornerShape(6.dp))
+                                        .padding(horizontal = 7.dp, vertical = 2.5.dp)
+                                ) {
+                                    Text(
+                                        text = localizeMedicineTag(tag, currentLang),
+                                        color = DeepTeal,
+                                        fontSize = 10.5.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
                                 }
                             }
                         }
@@ -273,14 +308,23 @@ fun MedicineDetailScreen(
                     Box(
                         modifier = Modifier
                             .size(38.dp)
-                            .background(PureWhite, CircleShape)
-                            .border(BorderStroke(1.dp, Mint.copy(alpha = 0.6f)), CircleShape)
+                            .background(
+                                color = if (isFavorite) Color(0xFFFFEBEE) else SoftMint.copy(alpha = 0.45f),
+                                shape = CircleShape
+                            )
+                            .border(
+                                border = BorderStroke(
+                                    1.dp,
+                                    if (isFavorite) Color(0xFFFFCDD2) else Mint.copy(alpha = 0.5f)
+                                ),
+                                shape = CircleShape
+                            )
                             .clickable { isFavorite = !isFavorite },
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = if (isFavorite) HeartFilledVectorIcon else HeartBorderVectorIcon,
-                            contentDescription = if (isFavorite) "Favorited" else "Favorite",
+                            contentDescription = t("chat_save_favorite_desc"),
                             tint = if (isFavorite) Color(0xFFE53935) else DeepTeal,
                             modifier = Modifier
                                 .size(20.dp)
@@ -291,68 +335,97 @@ fun MedicineDetailScreen(
             }
 
             // =========================================================
-            // C. WHAT IS IT USED FOR? (Green/Teal Medical Cross Icon)
+            // C. MEDICINE SPECIFICATIONS / OVERVIEW CARD
+            // Displays Generic, Brand, Strength, Dosage Form
             // =========================================================
-            val usesContent = medicine.uses.joinToString(" ").ifBlank {
-                "${medicine.name} is used for therapeutic symptom management as directed by a healthcare professional."
-            }
+            val hasSpecifications = medicine.genericName.isNotBlank() ||
+                medicine.brandName.isNotBlank() ||
+                medicine.strength.isNotBlank() ||
+                medicine.dosageForm.isNotBlank() ||
+                medicine.category.isNotBlank()
 
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(18.dp),
-                colors = CardDefaults.cardColors(containerColor = PureWhite),
-                border = BorderStroke(1.dp, Mint.copy(alpha = 0.6f)),
-                elevation = CardDefaults.cardElevation(defaultElevation = 1.5.dp)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp)
+            if (hasSpecifications) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(18.dp),
+                    colors = CardDefaults.cardColors(containerColor = PureWhite),
+                    border = BorderStroke(1.dp, Mint.copy(alpha = 0.6f)),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 1.5.dp)
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(34.dp)
-                                .background(SoftMint, CircleShape)
-                                .border(BorderStroke(1.dp, Mint.copy(alpha = 0.6f)), CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = PillVectorIcon,
-                                contentDescription = null,
-                                tint = DeepTeal,
-                                modifier = Modifier.size(18.dp)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .background(SoftMint, CircleShape)
+                                    .border(BorderStroke(1.dp, Mint.copy(alpha = 0.6f)), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = PillVectorIcon,
+                                    contentDescription = null,
+                                    tint = DeepTeal,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(10.dp))
+
+                            Text(
+                                text = t("medicine_detail_name"),
+                                color = DarkTeal,
+                                fontSize = 15.sp,
+                                fontWeight = FontWeight.Bold
                             )
                         }
 
-                        Spacer(modifier = Modifier.width(10.dp))
+                        // Specification Key-Value Pairs
+                        if (medicine.genericName.isNotBlank()) {
+                            SpecificationRow(
+                                label = t("medicine_detail_generic"),
+                                value = medicine.genericName
+                            )
+                        }
 
-                        Text(
-                            text = t("medicine_what_is_it_used_for"),
-                            color = DarkTeal,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold
-                        )
+                        if (medicine.brandName.isNotBlank() && !medicine.brandName.equals(medicine.name, ignoreCase = true)) {
+                            SpecificationRow(
+                                label = t("medicine_detail_brand"),
+                                value = medicine.brandName
+                            )
+                        }
+
+                        if (medicine.strength.isNotBlank()) {
+                            SpecificationRow(
+                                label = t("medicine_detail_strength"),
+                                value = medicine.strength
+                            )
+                        }
+
+                        if (medicine.dosageForm.isNotBlank()) {
+                            SpecificationRow(
+                                label = t("medicine_detail_dosage_form"),
+                                value = medicine.dosageForm
+                            )
+                        }
+
+                        if (medicine.category.isNotBlank()) {
+                            SpecificationRow(
+                                label = t("medicine_sort"),
+                                value = medicine.category
+                            )
+                        }
                     }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    Text(
-                        text = usesContent,
-                        color = TextDark.copy(alpha = 0.85f),
-                        fontSize = 13.sp,
-                        lineHeight = 19.sp
-                    )
                 }
             }
 
             // =========================================================
-            // D. COMMON SIDE EFFECTS (Amber Warning / Info Icon)
+            // D. SECTION 1: USES
             // =========================================================
-            val sideEffectsContent = medicine.commonSideEffects.joinToString(" ").ifBlank {
-                "Usually well tolerated. Rare mild digestive discomfort or allergic reaction may occur."
-            }
-
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(18.dp),
@@ -365,55 +438,31 @@ fun MedicineDetailScreen(
                         .fillMaxWidth()
                         .padding(16.dp)
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Box(
-                            modifier = Modifier
-                                .size(34.dp)
-                                .background(Color(0xFFFEF3C7), CircleShape)
-                                .border(BorderStroke(1.dp, Color(0xFFFDE68A)), CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Info,
-                                contentDescription = null,
-                                tint = Color(0xFFD97706),
-                                modifier = Modifier.size(18.dp)
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.width(10.dp))
-
-                        Text(
-                            text = t("medicine_detail_side_effects"),
-                            color = DarkTeal,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
+                    SectionHeader(
+                        icon = PillVectorIcon,
+                        iconTint = DeepTeal,
+                        iconBg = SoftMint,
+                        iconBorder = Mint.copy(alpha = 0.6f),
+                        title = t("medicine_what_is_it_used_for")
+                    )
 
                     Spacer(modifier = Modifier.height(10.dp))
 
-                    Text(
-                        text = sideEffectsContent,
-                        color = TextDark.copy(alpha = 0.85f),
-                        fontSize = 13.sp,
-                        lineHeight = 19.sp
-                    )
+                    if (medicine.uses.isNotEmpty()) {
+                        Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                            for (item in medicine.uses) {
+                                BulletRow(text = item, bulletColor = DeepTeal)
+                            }
+                        }
+                    } else {
+                        UnavailableInformationNotice(t("medicine_detail_not_available"))
+                    }
                 }
             }
 
             // =========================================================
-            // E. PRECAUTIONS (Coral/Red Warning Triangle Icon + Bullets)
+            // E. SECTION 2: SIDE EFFECTS
             // =========================================================
-            val precautionsList = medicine.precautions.ifEmpty {
-                listOf(
-                    "Do not exceed the recommended dose.",
-                    "Consult a doctor if symptoms persist or worsen.",
-                    "Ask a doctor before use during pregnancy or breastfeeding.",
-                    "Keep out of reach of children."
-                )
-            }
-
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(18.dp),
@@ -426,69 +475,162 @@ fun MedicineDetailScreen(
                         .fillMaxWidth()
                         .padding(16.dp)
                 ) {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
+                    SectionHeader(
+                        icon = Icons.Default.Info,
+                        iconTint = Color(0xFFD97706),
+                        iconBg = Color(0xFFFEF3C7),
+                        iconBorder = Color(0xFFFDE68A),
+                        title = t("medicine_detail_side_effects")
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    if (medicine.commonSideEffects.isNotEmpty()) {
+                        Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                            for (item in medicine.commonSideEffects) {
+                                BulletRow(text = item, bulletColor = Color(0xFFD97706))
+                            }
+                        }
+                    } else {
+                        UnavailableInformationNotice(t("medicine_detail_not_available"))
+                    }
+                }
+            }
+
+            // =========================================================
+            // F. SECTION 3: PRECAUTIONS
+            // =========================================================
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = PureWhite),
+                border = BorderStroke(1.dp, Mint.copy(alpha = 0.6f)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.5.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    SectionHeader(
+                        icon = Icons.Default.Warning,
+                        iconTint = Color(0xFFDC2626),
+                        iconBg = Color(0xFFFEE2E2),
+                        iconBorder = Color(0xFFFECACA),
+                        title = t("medicine_detail_precautions")
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    if (medicine.precautions.isNotEmpty()) {
+                        Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                            for (item in medicine.precautions) {
+                                BulletRow(text = item, bulletColor = Color(0xFFDC2626))
+                            }
+                        }
+                    } else {
+                        UnavailableInformationNotice(t("medicine_detail_not_available"))
+                    }
+                }
+            }
+
+            // =========================================================
+            // G. SECTION 4: INTERACTIONS
+            // =========================================================
+            Card(
+                modifier = Modifier.fillMaxWidth(),
+                shape = RoundedCornerShape(18.dp),
+                colors = CardDefaults.cardColors(containerColor = PureWhite),
+                border = BorderStroke(1.dp, Mint.copy(alpha = 0.6f)),
+                elevation = CardDefaults.cardElevation(defaultElevation = 1.5.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp)
+                ) {
+                    SectionHeader(
+                        icon = InteractionsVectorIcon,
+                        iconTint = DeepTeal,
+                        iconBg = SoftMint,
+                        iconBorder = Mint.copy(alpha = 0.6f),
+                        title = t("medicine_detail_interactions")
+                    )
+
+                    Spacer(modifier = Modifier.height(10.dp))
+
+                    if (medicine.interactions.isNotEmpty()) {
+                        Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
+                            for (item in medicine.interactions) {
+                                BulletRow(text = item, bulletColor = DeepTeal)
+                            }
+                        }
+                    } else {
+                        UnavailableInformationNotice(t("medicine_detail_not_available"))
+                    }
+                }
+            }
+
+            // =========================================================
+            // H. WARNING CARD (Only displayed if warnings exist in dataset)
+            // =========================================================
+            if (medicine.warning.isNotBlank()) {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFBEB)),
+                    border = BorderStroke(1.dp, Color(0xFFFCD34D))
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalAlignment = Alignment.Top
+                    ) {
                         Box(
                             modifier = Modifier
-                                .size(34.dp)
-                                .background(Color(0xFFFEE2E2), CircleShape)
-                                .border(BorderStroke(1.dp, Color(0xFFFECACA)), CircleShape),
+                                .size(30.dp)
+                                .background(Color(0xFFFDE68A), CircleShape)
+                                .border(BorderStroke(1.dp, Color(0xFFF59E0B)), CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Warning,
                                 contentDescription = null,
-                                tint = Color(0xFFDC2626),
-                                modifier = Modifier.size(17.dp)
+                                tint = Color(0xFFB45309),
+                                modifier = Modifier.size(16.dp)
                             )
                         }
 
                         Spacer(modifier = Modifier.width(10.dp))
 
-                        Text(
-                            text = t("medicine_detail_precautions"),
-                            color = DarkTeal,
-                            fontSize = 15.sp,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
-
-                    Spacer(modifier = Modifier.height(10.dp))
-
-                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        for (item in precautionsList) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalAlignment = Alignment.Top
-                            ) {
-                                Box(
-                                    modifier = Modifier
-                                        .padding(top = 6.dp)
-                                        .size(5.dp)
-                                        .background(DeepTeal, CircleShape)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = item,
-                                    color = TextDark.copy(alpha = 0.85f),
-                                    fontSize = 12.5.sp,
-                                    lineHeight = 17.5.sp
-                                )
-                            }
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = t("medicine_detail_warnings"),
+                                color = Color(0xFF92400E),
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Spacer(modifier = Modifier.height(3.dp))
+                            Text(
+                                text = medicine.warning,
+                                color = Color(0xFF78350F),
+                                fontSize = 12.sp,
+                                lineHeight = 17.sp
+                            )
                         }
                     }
                 }
             }
 
             // =========================================================
-            // F. IMPORTANT NOTE (Distinct Cream/Peach Card with Amber Border)
+            // I. PROMINENT EDUCATIONAL SAFETY NOTICE
             // =========================================================
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(
-                    containerColor = Color(0xFFFEF8F0)
-                ),
-                border = BorderStroke(1.dp, Color(0xFFFCD34D))
+                colors = CardDefaults.cardColors(containerColor = Color(0xFFF0FDF4)),
+                border = BorderStroke(1.dp, Color(0xFF86EFAC))
             ) {
                 Row(
                     modifier = Modifier
@@ -499,14 +641,14 @@ fun MedicineDetailScreen(
                     Box(
                         modifier = Modifier
                             .size(32.dp)
-                            .background(Color(0xFFFDE68A), CircleShape)
-                            .border(BorderStroke(1.dp, Color(0xFFF59E0B)), CircleShape),
+                            .background(Color(0xFFDCFCE7), CircleShape)
+                            .border(BorderStroke(1.dp, Color(0xFF4ADE80)), CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = ShieldCheckVectorIcon,
-                            contentDescription = "Important Note",
-                            tint = Color(0xFFB45309),
+                            contentDescription = t("medicine_safety_notice_title"),
+                            tint = Color(0xFF15803D),
                             modifier = Modifier.size(17.dp)
                         )
                     }
@@ -515,17 +657,17 @@ fun MedicineDetailScreen(
 
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = t("symptoms_disclaimer_title"),
-                            color = Color(0xFF92400E),
+                            text = t("medicine_safety_notice_title"),
+                            color = Color(0xFF166534),
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold
                         )
                         Spacer(modifier = Modifier.height(3.dp))
                         Text(
-                            text = t("medicine_disclaimer"),
-                            color = Color(0xFF78350F),
+                            text = t("medicine_safety_notice_body"),
+                            color = Color(0xFF14532D),
                             fontSize = 11.5.sp,
-                            lineHeight = 16.sp
+                            lineHeight = 16.5.sp
                         )
                     }
                 }
@@ -533,5 +675,111 @@ fun MedicineDetailScreen(
 
             Spacer(modifier = Modifier.height(10.dp))
         }
+    }
+}
+
+@Composable
+private fun SectionHeader(
+    icon: ImageVector,
+    iconTint: Color,
+    iconBg: Color,
+    iconBorder: Color,
+    title: String
+) {
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Box(
+            modifier = Modifier
+                .size(34.dp)
+                .background(iconBg, CircleShape)
+                .border(BorderStroke(1.dp, iconBorder), CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = iconTint,
+                modifier = Modifier.size(18.dp)
+            )
+        }
+
+        Spacer(modifier = Modifier.width(10.dp))
+
+        Text(
+            text = title,
+            color = DarkTeal,
+            fontSize = 15.sp,
+            fontWeight = FontWeight.Bold
+        )
+    }
+}
+
+@Composable
+private fun BulletRow(
+    text: String,
+    bulletColor: Color
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.Top
+    ) {
+        Box(
+            modifier = Modifier
+                .padding(top = 6.dp)
+                .size(5.dp)
+                .background(bulletColor, CircleShape)
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = text,
+            color = TextDark.copy(alpha = 0.85f),
+            fontSize = 12.5.sp,
+            lineHeight = 17.5.sp
+        )
+    }
+}
+
+@Composable
+private fun SpecificationRow(
+    label: String,
+    value: String
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.Top
+    ) {
+        Text(
+            text = label,
+            color = TextMuted,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.width(110.dp)
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = value,
+            color = TextDark,
+            fontSize = 12.5.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
+
+@Composable
+private fun UnavailableInformationNotice(message: String) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(Color(0xFFF9FAFB), RoundedCornerShape(10.dp))
+            .border(BorderStroke(1.dp, Color(0xFFE5E7EB)), RoundedCornerShape(10.dp))
+            .padding(horizontal = 12.dp, vertical = 9.dp)
+    ) {
+        Text(
+            text = message,
+            color = TextMuted,
+            fontSize = 12.sp,
+            fontWeight = FontWeight.Normal
+        )
     }
 }

@@ -126,36 +126,144 @@ data class Medicine(
     val strengthAndForm: String = "",
     val tags: List<String> = emptyList(),
     val shortDescription: String = "",
-    val isFavorite: Boolean = false
+    val isFavorite: Boolean = false,
+    val brandName: String = "",
+    val strength: String = "",
+    val dosageForm: String = "",
+    val interactions: List<String> = emptyList(),
+    val isPrescription: Boolean? = null
 )
 
-private fun humanReadableCategory(
+internal fun extractStrength(name: String, generic: String, ingredients: String): String {
+    val strengthRegex = Regex("""(\d+(?:\.\d+)?\s*(?:mg|ml|mcg|g|%)(?:\s*/\s*\d+\s*(?:ml|mg))?)""", RegexOption.IGNORE_CASE)
+    val match = strengthRegex.find(name)
+        ?: strengthRegex.find(ingredients)
+        ?: strengthRegex.find(generic)
+    return match?.value?.trim() ?: ""
+}
+
+internal fun extractDosageForm(name: String, generic: String, ingredients: String, drugClass: String, uses: String): String {
+    val combined = "$name $generic $ingredients $drugClass $uses".lowercase()
+
+    val injectionRegex = Regex("""\b(?:injection|injectable|parenteral|intravenous|infusion|vial|ampul|ampoule)\b""", RegexOption.IGNORE_CASE)
+    val patchRegex = Regex("""\b(?:patch|transdermal)\b""", RegexOption.IGNORE_CASE)
+    val shampooRegex = Regex("""\bshampoo\b""", RegexOption.IGNORE_CASE)
+    val dropsRegex = Regex("""\b(?:eye drops?|ophthalmic|otic|ear drops?)\b""", RegexOption.IGNORE_CASE)
+    val sprayRegex = Regex("""\b(?:nasal spray|inhaler|inhalation|aerosol|spray)\b""", RegexOption.IGNORE_CASE)
+    val creamRegex = Regex("""\bcream\b""", RegexOption.IGNORE_CASE)
+    val ointmentRegex = Regex("""\bointment\b""", RegexOption.IGNORE_CASE)
+    val gelRegex = Regex("""\bgel\b""", RegexOption.IGNORE_CASE)
+    val lotionRegex = Regex("""\blotion\b""", RegexOption.IGNORE_CASE)
+    val syrupRegex = Regex("""\b(?:syrup|suspension|oral solution|elixir)\b""", RegexOption.IGNORE_CASE)
+    val powderRegex = Regex("""\b(?:powder|granules?|sachet)\b""", RegexOption.IGNORE_CASE)
+    val capsuleRegex = Regex("""\b(?:capsule|capsules)\b""", RegexOption.IGNORE_CASE)
+    val tabletRegex = Regex("""\b(?:tablet|tablets)\b""", RegexOption.IGNORE_CASE)
+
+    return when {
+        injectionRegex.containsMatchIn(combined) -> if (combined.contains("infusion") || combined.contains("diluting")) "IV Infusion" else "Injection"
+        patchRegex.containsMatchIn(combined) -> "Transdermal Patch"
+        shampooRegex.containsMatchIn(combined) -> "Medicated Shampoo"
+        dropsRegex.containsMatchIn(combined) -> "Drops"
+        sprayRegex.containsMatchIn(combined) -> "Spray / Inhaler"
+        creamRegex.containsMatchIn(combined) -> "Topical Cream"
+        ointmentRegex.containsMatchIn(combined) -> "Topical Ointment"
+        gelRegex.containsMatchIn(combined) -> "Topical Gel"
+        lotionRegex.containsMatchIn(combined) -> "Topical Lotion"
+        syrupRegex.containsMatchIn(combined) -> "Suspension (Syrup)"
+        powderRegex.containsMatchIn(combined) -> "Oral Powder / Sachet"
+        capsuleRegex.containsMatchIn(combined) -> "Capsule"
+        tabletRegex.containsMatchIn(combined) -> "Tablet"
+        combined.contains("topical") -> "Topical Formulation"
+        else -> ""
+    }
+}
+
+internal fun extractPrescriptionClassification(drugClass: String, name: String, generic: String): Boolean? {
+    val combined = "$drugClass $name $generic".uppercase()
+    return when {
+        combined.contains("HUMAN OTC DRUG") || combined.contains("OTC") -> false
+        combined.contains("PRESCRIPTION") || combined.contains("HUMAN PRESCRIPTION") || combined.contains("RX") -> true
+        // Clinical class defaults for well-known verified medicines
+        name.contains("Amoxicillin", ignoreCase = true) ||
+        name.contains("Azithromycin", ignoreCase = true) ||
+        name.contains("Ciprofloxacin", ignoreCase = true) ||
+        name.contains("Atorvastatin", ignoreCase = true) ||
+        name.contains("Metformin", ignoreCase = true) ||
+        name.contains("Amlodipine", ignoreCase = true) ||
+        name.contains("Losartan", ignoreCase = true) ||
+        name.contains("Pantoprazole", ignoreCase = true) -> true
+        name.contains("Paracetamol", ignoreCase = true) ||
+        name.contains("Dolo", ignoreCase = true) ||
+        name.contains("Crocin", ignoreCase = true) ||
+        name.contains("Calpol", ignoreCase = true) ||
+        name.contains("Cetirizine", ignoreCase = true) ||
+        name.contains("ORS", ignoreCase = true) -> false
+        else -> null
+    }
+}
+
+
+internal fun humanReadableCategory(
     drugClass: String,
     ingredients: String,
     uses: String,
-    generic: String
+    generic: String,
+    name: String = ""
 ): String {
-    val combined = "$drugClass $ingredients $uses $generic".lowercase()
+    val combined = "$name $drugClass $ingredients $uses $generic".lowercase()
+    val u = uses.lowercase()
     return when {
         combined.contains("acetaminophen") || combined.contains("paracetamol") -> "Analgesic & Antipyretic"
-        combined.contains("ibuprofen") || combined.contains("nsaid") -> "Pain Relief & Anti-inflammatory"
-        combined.contains("amoxicillin") || combined.contains("antibiotic") || combined.contains("penicillin") -> "Antibiotic"
-        combined.contains("cetirizine") || combined.contains("antihistamine") || combined.contains("allergy") -> "Allergy Relief & Antihistamine"
-        combined.contains("omeprazole") || combined.contains("acid") || combined.contains("heartburn") || combined.contains("ppi") -> "Acidity & Heartburn Reducer"
-        combined.contains("metformin") || combined.contains("diabetes") || combined.contains("blood sugar") -> "Diabetes Management"
-        drugClass.contains("HUMAN", ignoreCase = true) -> "General Therapeutic Medicine"
+        combined.contains("ibuprofen") || combined.contains("nsaid") || combined.contains("naproxen") || combined.contains("diclofenac") -> "Pain Relief & Anti-inflammatory"
+        combined.contains("aspirin") -> "Cardiovascular & Pain Relief"
+        combined.contains("amoxicillin") || combined.contains("antibiotic") || combined.contains("penicillin") ||
+            combined.contains("azithromycin") || combined.contains("ciprofloxacin") || combined.contains("cephalexin") || combined.contains("doxycycline") -> "Antibiotic"
+        combined.contains("cetirizine") || combined.contains("antihistamine") || combined.contains("allergy") ||
+            combined.contains("loratadine") || combined.contains("fexofenadine") || combined.contains("diphenhydramine") -> "Allergy Relief & Antihistamine"
+        combined.contains("acidity") || combined.contains("heartburn") || combined.contains("reflux") ||
+            combined.contains("antacid") || combined.contains("gerd") || combined.contains("ppi") ||
+            combined.contains("omeprazole") || combined.contains("pantoprazole") || combined.contains("rabeprazole") ||
+            combined.contains("esomeprazole") || combined.contains("famotidine") || combined.contains("stomach acid") -> "Acidity & Heartburn Reducer"
+        combined.contains("metformin") || combined.contains("diabetes") || combined.contains("blood sugar") || combined.contains("insulin") || combined.contains("glimepiride") -> "Diabetes Management"
+        combined.contains("atorvastatin") || combined.contains("statin") || combined.contains("cholesterol") || combined.contains("rosuvastatin") -> "Cholesterol Management"
+        combined.contains("losartan") || combined.contains("blood pressure") || combined.contains("hypertension") || combined.contains("amlodipine") || combined.contains("telmisartan") -> "Blood Pressure Management"
+        combined.contains("lidocaine") || combined.contains("anesthetic") || combined.contains("benzocaine") || combined.contains("numbing") -> "Local Anesthetic"
+        combined.contains("hydrocortisone") || combined.contains("corticosteroid") || combined.contains("cortisone") ||
+            combined.contains("prednisone") || combined.contains("triamcinolone") || combined.contains("clobetasol") -> "Corticosteroid & Anti-inflammatory"
+        combined.contains("capsaicin") || combined.contains("methyl salicylate") || combined.contains("menthol") || combined.contains("counterirritant") -> "Topical Pain Relief"
+        combined.contains("ketoconazole") || combined.contains("antifungal") || combined.contains("clotrimazole") ||
+            combined.contains("miconazole") || combined.contains("fluconazole") || combined.contains("terbinafine") -> "Antifungal"
+        combined.contains("azelaic acid") || combined.contains("acne") || combined.contains("benzoyl peroxide") ||
+            combined.contains("salicylic acid") || combined.contains("adapalene") || combined.contains("tretinoin") -> "Dermatological Care"
+        combined.contains("sodium chloride") || combined.contains("electrolyte") || combined.contains("saline") ||
+            combined.contains("oral rehydration") || combined.contains("ors") || combined.contains("dextrose") -> "Electrolyte & Fluid Replenishment"
+        combined.contains("sunscreen") || combined.contains("spf") || combined.contains("broad spectrum") ||
+            combined.contains("zinc oxide") || combined.contains("titanium dioxide") || combined.contains("avobenzone") -> "Sun Care & UV Protection"
+        combined.contains("cough") || combined.contains("dextromethorphan") || combined.contains("cold") ||
+            combined.contains("congestion") || combined.contains("expectorant") || combined.contains("decongestant") -> "Cough & Cold Relief"
+        combined.contains("vitamin") || combined.contains("mineral") || combined.contains("supplement") ||
+            combined.contains("calcium") || combined.contains("iron") || combined.contains("cholecalciferol") -> "Nutritional Supplement"
+        drugClass.contains("HUMAN", ignoreCase = true) -> {
+            when {
+                u.contains("pain") || u.contains("ache") -> "Pain Relief"
+                u.contains("itch") || u.contains("rash") || u.contains("skin") -> "Dermatological & Skin Care"
+                u.contains("infection") -> "Anti-infective"
+                else -> "Healthcare Medication"
+            }
+        }
         drugClass.isNotBlank() -> drugClass.trim()
         else -> "General Medicine"
     }
 }
 
-private fun extractStrengthAndForm(
+internal fun extractStrengthAndForm(
     name: String,
     generic: String,
     ingredients: String,
-    drugClass: String
+    drugClass: String,
+    uses: String = ""
 ): String {
-    val combined = "$name $generic $ingredients".lowercase()
+    val combined = "$name $generic $ingredients $uses".lowercase()
 
     when {
         name.equals("Dolo 650", ignoreCase = true) || name.contains("Dolo 650") -> return "Paracetamol 650 mg Tablet"
@@ -173,25 +281,43 @@ private fun extractStrengthAndForm(
         ?: strengthRegex.find(generic)
     val strength = strengthMatch?.value?.trim() ?: ""
 
+    val injectionRegex = Regex("""\b(?:injection|injectable|parenteral|intravenous|infusion|vial|ampul|ampoule)\b""", RegexOption.IGNORE_CASE)
+    val patchRegex = Regex("""\b(?:patch|transdermal)\b""", RegexOption.IGNORE_CASE)
+    val shampooRegex = Regex("""\bshampoo\b""", RegexOption.IGNORE_CASE)
+    val dropsRegex = Regex("""\b(?:eye drops?|ophthalmic|otic|ear drops?)\b""", RegexOption.IGNORE_CASE)
+    val sprayRegex = Regex("""\b(?:nasal spray|inhaler|inhalation|aerosol|spray)\b""", RegexOption.IGNORE_CASE)
+    val creamRegex = Regex("""\bcream\b""", RegexOption.IGNORE_CASE)
+    val ointmentRegex = Regex("""\bointment\b""", RegexOption.IGNORE_CASE)
+    val gelRegex = Regex("""\bgel\b""", RegexOption.IGNORE_CASE)
+    val lotionRegex = Regex("""\blotion\b""", RegexOption.IGNORE_CASE)
+    val syrupRegex = Regex("""\b(?:syrup|suspension|oral solution|elixir)\b""", RegexOption.IGNORE_CASE)
+    val powderRegex = Regex("""\b(?:powder|granules?|sachet)\b""", RegexOption.IGNORE_CASE)
+    val capsuleRegex = Regex("""\b(?:capsule|capsules)\b""", RegexOption.IGNORE_CASE)
+    val tabletRegex = Regex("""\b(?:tablet|tablets)\b""", RegexOption.IGNORE_CASE)
+
     val form = when {
-        combined.contains("syrup") || combined.contains("suspension") || combined.contains("oral solution") -> "Suspension (Syrup)"
-        combined.contains("capsule") || combined.contains("cap") -> "Capsule"
-        combined.contains("tablet") || combined.contains("tab") -> "Tablet"
-        combined.contains("patch") -> "Patch"
-        combined.contains("cream") || combined.contains("ointment") || combined.contains("gel") -> "Topical"
-        combined.contains("injection") || combined.contains("injectable") -> "Injection"
-        else -> "Tablet"
+        injectionRegex.containsMatchIn(combined) -> if (combined.contains("infusion") || combined.contains("diluting")) "IV Infusion / Injection" else "Injection"
+        patchRegex.containsMatchIn(combined) -> "Transdermal Patch"
+        shampooRegex.containsMatchIn(combined) -> "Medicated Shampoo"
+        dropsRegex.containsMatchIn(combined) -> "Drops"
+        sprayRegex.containsMatchIn(combined) -> "Spray / Inhaler"
+        creamRegex.containsMatchIn(combined) -> "Topical Cream"
+        ointmentRegex.containsMatchIn(combined) -> "Topical Ointment"
+        gelRegex.containsMatchIn(combined) -> "Topical Gel"
+        lotionRegex.containsMatchIn(combined) -> "Topical Lotion"
+        syrupRegex.containsMatchIn(combined) -> "Suspension (Syrup)"
+        powderRegex.containsMatchIn(combined) -> "Oral Powder / Sachet"
+        capsuleRegex.containsMatchIn(combined) -> "Capsule"
+        tabletRegex.containsMatchIn(combined) -> "Tablet"
+        combined.contains("topical") -> "Topical Formulation"
+        else -> ""
     }
 
-    return if (strength.isNotBlank()) {
-        val genName = generic.split(",").firstOrNull()?.trim() ?: ""
-        if (genName.isNotBlank() && !name.contains(genName, ignoreCase = true)) {
-            "$genName $strength $form"
-        } else {
-            "$strength $form"
-        }
-    } else {
-        form
+    return when {
+        strength.isNotBlank() && form.isNotBlank() -> "$strength $form".trim()
+        form.isNotBlank() -> form
+        strength.isNotBlank() -> strength
+        else -> "Formulation"
     }
 }
 
@@ -249,38 +375,40 @@ private fun extractShortDescription(
 fun MedicineRecord.toMedicine(): Medicine {
     val cleanName = name.ifBlank { generic.ifBlank { brand.ifBlank { "Unknown Medicine" } } }.trim()
     val cleanGeneric = generic.trim()
+    val cleanBrand = brand.trim()
 
-    val displayCategory = humanReadableCategory(drugClass, ingredients, uses, cleanGeneric)
-    val strengthForm = extractStrengthAndForm(cleanName, cleanGeneric, ingredients, drugClass)
+    val displayCategory = humanReadableCategory(drugClass, ingredients, uses, cleanGeneric, cleanName)
+    val strengthForm = extractStrengthAndForm(cleanName, cleanGeneric, ingredients, drugClass, uses)
+    val extractedStrength = extractStrength(cleanName, cleanGeneric, ingredients)
+    val extractedForm = extractDosageForm(cleanName, cleanGeneric, ingredients, drugClass, uses)
+    val prescriptionStatus = extractPrescriptionClassification(drugClass, cleanName, cleanGeneric)
     val tagsList = extractTags(cleanName, cleanGeneric, ingredients, drugClass, uses)
     val shortDesc = extractShortDescription(cleanName, uses, displayCategory)
 
+    // Never fabricate medical facts or fake fallback lists; keep empty if not in dataset
     val useList = uses
         .split("\n")
         .map { it.trim() }
         .filter { it.isNotBlank() }
         .take(8)
-        .ifEmpty {
-            listOf("Follow physician prescription", "For therapeutic symptom management as directed")
-        }
 
     val precautionList = precautions
         .split("\n")
         .map { it.trim() }
         .filter { it.isNotBlank() }
         .take(8)
-        .ifEmpty {
-            listOf("Keep away from children", "Store in a cool dry place", "Consult physician if pregnant or nursing")
-        }
 
     val sideEffectList = sideEffects
         .split("\n")
         .map { it.trim() }
         .filter { it.isNotBlank() }
         .take(8)
-        .ifEmpty {
-            listOf("Usually well tolerated", "Consult doctor if symptoms persist or unexpected reactions occur")
-        }
+
+    val interactionList = interactions
+        .split("\n")
+        .map { it.trim() }
+        .filter { it.isNotBlank() }
+        .take(8)
 
     return Medicine(
         name = cleanName,
@@ -288,13 +416,16 @@ fun MedicineRecord.toMedicine(): Medicine {
         uses = useList,
         precautions = precautionList,
         commonSideEffects = sideEffectList,
-        warning = warnings.ifBlank {
-            "Follow standard medical guidelines and consult your doctor."
-        },
+        warning = warnings.trim(),
         genericName = cleanGeneric,
         strengthAndForm = strengthForm,
         tags = tagsList,
-        shortDescription = shortDesc
+        shortDescription = shortDesc,
+        brandName = cleanBrand,
+        strength = extractedStrength,
+        dosageForm = extractedForm,
+        interactions = interactionList,
+        isPrescription = prescriptionStatus
     )
 }
 
@@ -458,15 +589,23 @@ fun MedicineInfoScreen(
 
     LaunchedEffect(searchQuery, isBrowsingAll, catalogueLimit) {
         isSearching = true
-        delay(200)
-        val results = loadMedicineResults(
-            context = context,
-            query = searchQuery,
-            isBrowsingAll = isBrowsingAll,
-            catalogueLimit = catalogueLimit
-        )
-        searchResults = results
-        isSearching = false
+        try {
+            delay(250)
+            val results = loadMedicineResults(
+                context = context,
+                query = searchQuery,
+                isBrowsingAll = isBrowsingAll,
+                catalogueLimit = catalogueLimit
+            )
+            searchResults = results
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (e: Throwable) {
+            android.util.Log.e("MedicineInfoScreen", "Failed to load medicine results", e)
+            searchResults = emptyList()
+        } finally {
+            isSearching = false
+        }
     }
 
     val filteredMedicines = remember(searchResults) {
@@ -476,8 +615,22 @@ fun MedicineInfoScreen(
     val sortedMedicines = remember(filteredMedicines, currentSort) {
         when (currentSort) {
             MedicineSortOption.RELEVANCE -> filteredMedicines
-            MedicineSortOption.NAME_ASC -> filteredMedicines.sortedBy { it.name.lowercase() }
-            MedicineSortOption.NAME_DESC -> filteredMedicines.sortedByDescending { it.name.lowercase() }
+            MedicineSortOption.NAME_ASC -> filteredMedicines.sortedWith(
+                compareBy<Medicine> {
+                    val clean = it.name.trimStart { c -> c.isDigit() || c == '.' || c == '%' || c == ' ' || c == '-' }
+                    if (clean.firstOrNull()?.isLetter() == true) 0 else 1
+                }.thenBy {
+                    it.name.trimStart { c -> c.isDigit() || c == '.' || c == '%' || c == ' ' || c == '-' }.lowercase()
+                }.thenBy { it.name.lowercase() }
+            )
+            MedicineSortOption.NAME_DESC -> filteredMedicines.sortedWith(
+                compareByDescending<Medicine> {
+                    val clean = it.name.trimStart { c -> c.isDigit() || c == '.' || c == '%' || c == ' ' || c == '-' }
+                    if (clean.firstOrNull()?.isLetter() == true) 1 else 0
+                }.thenByDescending {
+                    it.name.trimStart { c -> c.isDigit() || c == '.' || c == '%' || c == ' ' || c == '-' }.lowercase()
+                }.thenByDescending { it.name.lowercase() }
+            )
         }
     }
 
@@ -1074,6 +1227,24 @@ fun MedicineInfoScreen(
                                 fontSize = 12.sp,
                                 textAlign = TextAlign.Center
                             )
+                            if (searchQuery.isNotBlank()) {
+                                Spacer(modifier = Modifier.height(14.dp))
+                                Row(
+                                    modifier = Modifier
+                                        .background(SoftMint.copy(alpha = 0.55f), RoundedCornerShape(12.dp))
+                                        .border(BorderStroke(1.dp, Mint), RoundedCornerShape(12.dp))
+                                        .clickable { searchQuery = "" }
+                                        .padding(horizontal = 14.dp, vertical = 7.dp),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = t("medicine_clear_search"),
+                                        color = DeepTeal,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                }
+                            }
                         }
                     }
                 }

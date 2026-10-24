@@ -1,6 +1,8 @@
 
 package ui
 
+import android.widget.Toast
+
 import android.Manifest
 import android.content.ContentValues
 import android.content.Context
@@ -178,10 +180,18 @@ private fun verifyMedicineInDataset(
     val query = normalizeMedicineQuery(medicineName)
     if (query.isBlank()) return MedicineVerification(false)
 
-    val medicines = MedicineRepository.getMedicines(context)
+    val matchedRecord = MedicineRepository.findMedicine(context, query)
+    if (matchedRecord != null) {
+        return MedicineVerification(
+            recognized = true,
+            matchedName = matchedRecord.name.ifBlank { matchedRecord.generic.ifBlank { matchedRecord.brand } }
+        )
+    }
+
+    val candidates = MedicineRepository.verifiedMedicines + MedicineRepository.searchMedicines(context, query, limit = 5)
 
     // Exact normalized match first.
-    medicines.firstOrNull { record ->
+    candidates.firstOrNull { record ->
         listOf(record.name, record.generic, record.brand)
             .any { normalizeMedicineQuery(it) == query }
     }?.let { record ->
@@ -197,7 +207,7 @@ private fun verifyMedicineInDataset(
     var bestName = ""
     var bestDistance = Int.MAX_VALUE
 
-    medicines.forEach { record ->
+    candidates.forEach { record ->
         listOf(record.name, record.generic, record.brand).forEach { candidate ->
             val normalized = normalizeMedicineQuery(candidate)
             if (normalized.length < 4 || query.length < 4) return@forEach
@@ -1888,6 +1898,13 @@ fun PrescriptionScannerScreen(
 
                     cameraLauncher.launch(uri)
                 }
+            } else {
+                val permissionMsg = when (selectedLanguage) {
+                    "मराठी" -> "प्रिस्क्रिप्शन स्कॅन करण्यासाठी कॅमेरा परवानगी आवश्यक आहे."
+                    "हिन्दी" -> "प्रिस्क्रिप्शन स्कैन करने के लिए कैमरा अनुमति आवश्यक है."
+                    else -> "Camera permission is required to scan prescriptions."
+                }
+                Toast.makeText(context, permissionMsg, Toast.LENGTH_SHORT).show()
             }
         }
 

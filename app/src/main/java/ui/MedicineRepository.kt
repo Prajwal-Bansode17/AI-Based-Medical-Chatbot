@@ -36,7 +36,12 @@ object MedicineRepository {
     @Volatile
     private var cachedInitialMedicines: List<MedicineRecord>? = null
 
-    private val searchCache = LinkedHashMap<String, List<MedicineRecord>>(32)
+    private const val MAX_SEARCH_CACHE_SIZE = 64
+    private val searchCache = object : LinkedHashMap<String, List<MedicineRecord>>(32, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, List<MedicineRecord>>?): Boolean {
+            return size > MAX_SEARCH_CACHE_SIZE
+        }
+    }
 
     // ============================================================
     // VERIFIED POPULAR & COMMON MEDICINES (HUMAN-READABLE & ACCURATE)
@@ -186,6 +191,162 @@ object MedicineRepository {
             warnings = "Rare risk of lactic acidosis. Avoid excessive alcohol consumption while on therapy.",
             precautions = "Take with meals to reduce gastrointestinal side effects.\nHave kidney function tested regularly.\nStay properly hydrated, especially during illness or vigorous physical activity.",
             interactions = "Inform medical team before contrast dye procedures or surgery."
+        ),
+        MedicineRecord(
+            name = "Aspirin 75 mg",
+            generic = "Aspirin",
+            brand = "Aspirin 75 mg Tablet",
+            ingredients = "Aspirin (Acetylsalicylic Acid) 75 mg",
+            drugClass = "Cardiovascular & Antiplatelet Agent",
+            uses = "Low-dose antiplatelet therapy for prevention of blood clots, recurrent heart attack, and ischemic stroke under medical guidance.",
+            sideEffects = "Mild stomach irritation, heartburn, or increased tendency to bruise.",
+            warnings = "Do not administer to children or teenagers with viral fever due to risk of Reye's syndrome.",
+            precautions = "Take with or right after food to minimize stomach irritation.\nConsult physician if you have a history of gastric ulcers or bleeding disorders.\nInform healthcare providers before dental or surgical procedures.",
+            interactions = "Increases bleeding risk with anticoagulants (warfarin, heparin) and other NSAIDs."
+        ),
+        MedicineRecord(
+            name = "Azithromycin 500 mg",
+            generic = "Azithromycin",
+            brand = "Azithromycin 500 mg Tablet",
+            ingredients = "Azithromycin Dihydrate 500 mg",
+            drugClass = "Macrolide Antibiotic",
+            uses = "Treatment of bacterial respiratory tract infections, tonsillitis, sinusitis, ear infections, and skin infections.",
+            sideEffects = "Mild nausea, loose stools, abdominal cramping, or headache.",
+            warnings = "Complete the entire prescribed 3-to-5 day course even if symptoms rapidly improve.",
+            precautions = "Take 1 hour before or 2 hours after meals with a glass of water.\nInform doctor if you have known cardiac arrhythmia or hepatic impairment.\nDo not take aluminum- or magnesium-containing antacids simultaneously.",
+            interactions = "Antacids delay absorption. May interact with digoxin, warfarin, and ergotamine."
+        ),
+        MedicineRecord(
+            name = "Pantoprazole 40 mg",
+            generic = "Pantoprazole",
+            brand = "Pantoprazole 40 mg Tablet",
+            ingredients = "Pantoprazole Sodium 40 mg",
+            drugClass = "Proton Pump Inhibitor (PPI)",
+            uses = "Treatment of gastroesophageal reflux disease (GERD), erosive esophagitis, persistent heartburn, and stomach ulcers.",
+            sideEffects = "Mild headache, flatulence, abdominal discomfort, or transient loose stools.",
+            warnings = "Use for the prescribed duration. Consult a physician if persistent reflux does not improve after 2 weeks.",
+            precautions = "Take once daily in the morning, 30 to 60 minutes before breakfast.\nSwallow whole with water; do not crush, split, or chew.\nEnsure adequate dietary calcium and vitamin D during prolonged therapy.",
+            interactions = "May reduce absorption of iron, ketoconazole, and vitamin B12."
+        ),
+        MedicineRecord(
+            name = "Atorvastatin 10 mg",
+            generic = "Atorvastatin",
+            brand = "Atorvastatin 10 mg Tablet",
+            ingredients = "Atorvastatin Calcium 10 mg",
+            drugClass = "HMG-CoA Reductase Inhibitor (Statin)",
+            uses = "Lowers elevated LDL (bad) cholesterol and triglycerides, raises HDL (good) cholesterol, and reduces cardiovascular risk.",
+            sideEffects = "Mild muscle ache, joint stiffness, constipation, or mild indigestion.",
+            warnings = "Contact your doctor immediately if you experience unexplained muscle pain, tenderness, or weakness.",
+            precautions = "Take at the same time each day, with or without food, preferably in the evening.\nAvoid large quantities of grapefruit juice while on treatment.\nUndergo routine periodic liver function tests as advised.",
+            interactions = "Concomitant gemfibrozil, clarithromycin, or cyclosporine increases myopathy risk."
+        ),
+        MedicineRecord(
+            name = "ORS (Oral Rehydration Salts)",
+            generic = "Oral Rehydration Salts",
+            brand = "WHO-Formula ORS Sachet",
+            ingredients = "Sodium Chloride, Potassium Chloride, Sodium Citrate, Anhydrous Dextrose",
+            drugClass = "Electrolyte & Fluid Replenishment",
+            uses = "Restoration of vital electrolytes and body water lost through acute diarrhea, dehydration, vomiting, or excessive sweating.",
+            sideEffects = "Extremely well tolerated. Rare mild nausea if consumed too quickly.",
+            warnings = "Dissolve entire packet in the exact volume of clean drinking water indicated on the sachet (typically 1 liter). Do not boil after mixing.",
+            precautions = "Use freshly prepared solution within 24 hours; discard unused portion.\nDo not add sugar, salt, or fruit juices to the standard prepared solution.\nSeek immediate medical help if the patient cannot drink or dehydration worsens.",
+            interactions = "Safe with routine medications. Exercise caution in severe renal impairment."
+        ),
+        MedicineRecord(
+            name = "Montelukast 10 mg",
+            generic = "Montelukast",
+            brand = "Montelukast 10 mg Tablet",
+            ingredients = "Montelukast Sodium 10 mg",
+            drugClass = "Leukotriene Receptor Antagonist",
+            uses = "Maintenance treatment and prophylaxis of chronic asthma and symptomatic relief of seasonal or perennial allergic rhinitis.",
+            sideEffects = "Headache, mild dizziness, nasal congestion, or abdominal pain.",
+            warnings = "Not intended for treating sudden acute bronchospasm. Always keep a rapid rescue bronchodilator accessible.",
+            precautions = "Take once daily in the evening, with or without food.\nContinue taking regularly even during symptom-free periods.\nInform doctor promptly of any unexplained changes in mood, dreams, or behavior.",
+            interactions = "Phenobarbital and rifampicin may accelerate hepatic metabolism of montelukast."
+        ),
+        MedicineRecord(
+            name = "Cough Syrup (Dextromethorphan)",
+            generic = "Dextromethorphan",
+            brand = "Dextromethorphan Cough Syrup",
+            ingredients = "Dextromethorphan Hydrobromide 10 mg / 5 mL",
+            drugClass = "Antitussive (Cough Suppressant)",
+            uses = "Temporary suppression of dry, irritating, non-productive cough caused by minor throat and bronchial irritation from the common cold.",
+            sideEffects = "Mild drowsiness, dizziness, lightheadedness, or mild nausea.",
+            warnings = "Do not take concurrently with or within 14 days of stopping a Monoamine Oxidase Inhibitor (MAOI).",
+            precautions = "Always measure dose using the calibrated measuring cup provided.\nDo not use for persistent or chronic cough caused by smoking, asthma, or emphysema.\nAvoid driving or operating machinery if drowsiness occurs.",
+            interactions = "Contraindicated with MAO inhibitors. Sedatives and alcohol enhance drowsiness."
+        ),
+        MedicineRecord(
+            name = "Vitamin D3 60,000 IU",
+            generic = "Cholecalciferol",
+            brand = "Vitamin D3 60,000 IU Capsule",
+            ingredients = "Cholecalciferol (Vitamin D3) 60,000 IU",
+            drugClass = "Nutritional & Bone Health Supplement",
+            uses = "Treatment and prevention of vitamin D deficiency, osteomalacia, rickets, and adjunctive therapy for osteoporosis.",
+            sideEffects = "Safe when taken at prescribed weekly or monthly intervals. Excessive intake may cause hypercalcemia.",
+            warnings = "This is a high-potency dose intended for weekly or monthly administration as directed. Do not consume daily.",
+            precautions = "Take with the largest meal of the day containing healthy fats to maximize absorption.\nPeriodically check serum 25-hydroxyvitamin D and calcium levels.\nConsult doctor if you have a history of kidney stones.",
+            interactions = "Thiazide diuretics increase hypercalcemia risk. Corticosteroids may decrease vitamin D action."
+        ),
+        MedicineRecord(
+            name = "Multivitamin & Minerals",
+            generic = "Multivitamins with Minerals",
+            brand = "Daily Complete Multivitamin Tablet",
+            ingredients = "Vitamins A, B-Complex, C, D3, E, Zinc, Iron, Magnesium, Copper",
+            drugClass = "Dietary Supplement & Daily Wellness",
+            uses = "Nutritional support to prevent micronutrient deficiencies, promote immune resistance, and maintain general vitality.",
+            sideEffects = "Occasional mild stomach upset or harmless bright yellow urine coloration due to riboflavin.",
+            warnings = "Do not exceed recommended daily allowance. Dietary supplements should not replace a balanced varied diet.",
+            precautions = "Take with or right after food with a full glass of water.\nKeep stored in a child-resistant container out of reach of children.\nInform physician before combining with other fortified nutritional formulas.",
+            interactions = "Iron may reduce absorption of fluoroquinolone and tetracycline antibiotics."
+        ),
+        MedicineRecord(
+            name = "Antacid Liquid (Magaldrate + Simethicone)",
+            generic = "Magaldrate and Simethicone",
+            brand = "Rapid Antacid Oral Suspension",
+            ingredients = "Magaldrate 400 mg + Simethicone 20 mg / 5 mL",
+            drugClass = "Antacid & Antiflatulent",
+            uses = "Fast symptomatic relief of acute acidity, burning heartburn, acid indigestion, sour stomach, and uncomfortable gastric gas.",
+            sideEffects = "Usually well tolerated; occasional mild alteration in bowel habits.",
+            warnings = "Shake suspension thoroughly before use. Do not take maximum dosage for longer than 2 weeks continuously without consulting a physician.",
+            precautions = "Take 1 to 2 hours after meals and at bedtime, or when symptoms strike.\nSeparate administration from other prescription medications by at least 2 hours.\nConsult doctor before use if you have kidney disease.",
+            interactions = "Impairs oral absorption of tetracyclines, iron salts, fluoroquinolones, and digoxin."
+        ),
+        MedicineRecord(
+            name = "Diclofenac Gel 1%",
+            generic = "Diclofenac Diethylamine",
+            brand = "Diclofenac Topical Pain Relief Gel 1%",
+            ingredients = "Diclofenac Diethylamine 1.16% w/w",
+            drugClass = "Topical Nonsteroidal Anti-inflammatory (NSAID)",
+            uses = "Targeted local relief of inflammatory pain, acute muscular sprains, joint stiffness, tendonitis, and localized osteoarthritis.",
+            sideEffects = "Mild local skin erythema, slight itching, or dryness at application area.",
+            warnings = "For external dermatological application on unbroken skin only. Do not apply near eyes, mucous membranes, or open wounds.",
+            precautions = "Gently massage into the affected area; wash hands immediately after application.\nDo not cover treated skin with airtight bandages or heating pads.\nProtect treated regions from intense direct sun exposure during therapy.",
+            interactions = "Concurrent systemic oral NSAIDs may increase the risk of systemic NSAID adverse effects."
+        ),
+        MedicineRecord(
+            name = "Ciprofloxacin 500 mg",
+            generic = "Ciprofloxacin",
+            brand = "Ciprofloxacin 500 mg Tablet",
+            ingredients = "Ciprofloxacin Hydrochloride 500 mg",
+            drugClass = "Fluoroquinolone Antibiotic",
+            uses = "Treatment of complicated bacterial infections of the urinary tract, lower respiratory tract, gastrointestinal tract, and bone/joint infections.",
+            sideEffects = "Mild nausea, diarrhea, dizziness, headache, or mild dyspepsia.",
+            warnings = "Discontinue immediately and seek urgent medical consultation if tendon pain, swelling, or numbness develops.",
+            precautions = "Maintain generous daily fluid intake throughout therapy to prevent crystalluria.\nDo not take simultaneously with antacids, iron, or dairy products (space by 2 hours).\nAvoid excessive exposure to direct sunlight or UV lamps.",
+            interactions = "Antacids, sucralfate, iron, and multivalent cations significantly reduce ciprofloxacin absorption."
+        ),
+        MedicineRecord(
+            name = "Losartan 50 mg",
+            generic = "Losartan",
+            brand = "Losartan Potassium 50 mg Tablet",
+            ingredients = "Losartan Potassium 50 mg",
+            drugClass = "Angiotensin II Receptor Blocker (ARB)",
+            uses = "Management of systemic arterial hypertension (high blood pressure) and renal protection in hypertensive type 2 diabetic patients.",
+            sideEffects = "Mild dizziness, lightheadedness, nasal stuffiness, or fatigue.",
+            warnings = "Do not use during pregnancy as drugs acting on the renin-angiotensin system can cause fetal injury or death.",
+            precautions = "Take at approximately the same time each day, with or without food.\nStand up gradually from seated or lying postures to avoid orthostatic dizziness.\nAvoid potassium supplements or salt substitutes containing potassium without physician guidance.",
+            interactions = "NSAIDs may diminish antihypertensive efficacy and increase risk of impaired renal function."
         )
     )
 
@@ -256,6 +417,32 @@ object MedicineRepository {
             "pain relief"
         )
     )
+
+    // ============================================================
+    // MALFORMED & NON-MEDICINAL RECORD FILTER
+    // ============================================================
+
+    internal fun isMalformedOrNonMedicinal(
+        name: String,
+        generic: String = "",
+        brand: String = "",
+        uses: String = ""
+    ): Boolean {
+        val cleanName = name.trim()
+        if (cleanName.isBlank()) return true
+        if (cleanName.all { it.isDigit() }) return true
+        val combined = "$cleanName $generic $brand $uses".lowercase()
+        if (combined.contains("laboratory use only") || combined.contains("for laboratory use")) return true
+        if (combined.contains("in vitro diagnostic") && !combined.contains("drug")) return true
+        val sanitizerKeywords = listOf(
+            "hand sanitizer", "hand sanitize", "hand rub", "hand disinfectant",
+            "antiseptic hand rub", "instant hand sanitizer", "hand sanitizer gel",
+            "antibacterial hand soap", "sanitizing hand wipe", "soap"
+        )
+        val nameLower = cleanName.lowercase()
+        val genLower = generic.lowercase()
+        return sanitizerKeywords.any { nameLower.contains(it) || genLower.contains(it) }
+    }
 
     // ============================================================
     // NORMALIZATION
@@ -445,6 +632,7 @@ fun parseMedicineStreamFiltered(
 
                 val cleanName = name.trim()
                 if (cleanName.isBlank()) continue
+                if (isMalformedOrNonMedicinal(cleanName, generic, brand, uses)) continue
                 val normKey = normalizeSearchText(cleanName)
                 if (normKey.isNotBlank() && seenLocal.add(normKey)) {
                     medicines.add(
@@ -478,68 +666,48 @@ fun parseMedicineStreamFiltered(
         inputStream: InputStream,
         limit: Int = 0
     ): List<MedicineRecord> {
-        if (limit > 0) {
-            cachedMedicines?.let {
-                return it.take(limit)
-            }
-            cachedInitialMedicines?.let {
-                if (it.size >= limit) {
-                    return it.take(limit)
-                }
-            }
-            val loaded = parseMedicineStream(inputStream, limit = limit)
-            if (cachedInitialMedicines == null && limit >= 20) {
-                cachedInitialMedicines = loaded
-            }
-            return loaded
-        }
-
+        val effectiveLimit = if (limit <= 0) 50 else limit
         cachedMedicines?.let {
-            return it
+            return it.take(effectiveLimit)
         }
-
-        val all = parseMedicineStream(inputStream, limit = 0)
-        cachedMedicines = all
-        return all
+        cachedInitialMedicines?.let {
+            if (it.size >= effectiveLimit) {
+                return it.take(effectiveLimit)
+            }
+        }
+        val loaded = parseMedicineStream(inputStream, limit = effectiveLimit)
+        if (cachedInitialMedicines == null && effectiveLimit >= 20) {
+            cachedInitialMedicines = loaded
+        }
+        return loaded
     }
 
     fun getMedicines(
         context: Context,
         limit: Int = 0
     ): List<MedicineRecord> {
-        if (limit > 0) {
-            cachedMedicines?.let {
-                return it.take(limit)
-            }
-            if (limit <= verifiedMedicines.size) {
-                return verifiedMedicines.take(limit)
-            }
-            cachedInitialMedicines?.let {
-                if (it.size >= limit) {
-                    return it.take(limit)
-                }
-            }
-            val needed = limit - verifiedMedicines.size
-            val seenKeys = verifiedMedicines.map { normalizeSearchText(it.name) }.toHashSet()
-            val extra = context.assets.open("medicine_data.json").use { stream ->
-                parseMedicineStreamFiltered(stream, needed, seenKeys)
-            }
-            val combined = (verifiedMedicines + extra).take(limit)
-            if (cachedInitialMedicines == null && combined.size >= 20) {
-                cachedInitialMedicines = combined
-            }
-            return combined
-        }
-
+        val effectiveLimit = if (limit <= 0) 50 else limit
         cachedMedicines?.let {
-            return it
+            return it.take(effectiveLimit)
         }
-
-        val all = context.assets.open("medicine_data.json").use { stream ->
-            parseMedicineStream(stream, limit = 0)
+        if (effectiveLimit <= verifiedMedicines.size) {
+            return verifiedMedicines.take(effectiveLimit)
         }
-        cachedMedicines = all
-        return all
+        cachedInitialMedicines?.let {
+            if (it.size >= effectiveLimit) {
+                return it.take(effectiveLimit)
+            }
+        }
+        val needed = effectiveLimit - verifiedMedicines.size
+        val seenKeys = verifiedMedicines.map { normalizeSearchText(it.name) }.toHashSet()
+        val extra = context.assets.open("medicine_data.json").use { stream ->
+            parseMedicineStreamFiltered(stream, needed, seenKeys)
+        }
+        val combined = (verifiedMedicines + extra).take(effectiveLimit)
+        if (cachedInitialMedicines == null && combined.size >= 20) {
+            cachedInitialMedicines = combined
+        }
+        return combined
     }
 
     // ============================================================
@@ -614,6 +782,7 @@ fun parseMedicineStreamFiltered(
         val seenKeys = HashSet<String>()
         val scoredResults = ArrayList<Pair<MedicineRecord, Int>>()
         val acetaminophenCandidates = ArrayList<MedicineRecord>()
+        var recordsScanned = 0
 
         val reader = JsonReader(InputStreamReader(inputStream, StandardCharsets.UTF_8))
         reader.use { jsonReader ->
@@ -623,6 +792,11 @@ fun parseMedicineStreamFiltered(
             jsonReader.beginArray()
 
             while (jsonReader.hasNext()) {
+                recordsScanned++
+                if ((recordsScanned and 63) == 0 && Thread.currentThread().isInterrupted) {
+                    return emptyList()
+                }
+
                 if (jsonReader.peek() != JsonToken.BEGIN_OBJECT) {
                     jsonReader.skipValue()
                     continue
@@ -639,6 +813,7 @@ fun parseMedicineStreamFiltered(
                 var warnings = ""
                 var precautions = ""
                 var interactions = ""
+                var evaluatedScore: Int? = null
 
                 while (jsonReader.hasNext()) {
                     val key = jsonReader.nextName()
@@ -646,12 +821,41 @@ fun parseMedicineStreamFiltered(
                         jsonReader.nextNull()
                         continue
                     }
+
+                    // Fast-skip: If we already evaluated search fields and found no match,
+                    // skip reading remaining long clinical descriptions without heap allocation
+                    if (evaluatedScore == 0 && (key == "u" || key == "s" || key == "w" || key == "p" || key == "x")) {
+                        jsonReader.skipValue()
+                        continue
+                    }
+
                     when (key) {
                         "n" -> name = jsonReader.nextStringOrEmpty()
                         "g" -> generic = jsonReader.nextStringOrEmpty()
                         "b" -> brand = jsonReader.nextStringOrEmpty()
                         "i" -> ingredients = readIngredients(jsonReader)
-                        "c" -> drugClass = jsonReader.nextStringOrEmpty()
+                        "c" -> {
+                            drugClass = jsonReader.nextStringOrEmpty()
+                            val normName = normalizeSearchText(name)
+                            val normGeneric = normalizeSearchText(generic)
+                            val normBrand = normalizeSearchText(brand)
+                            val normIng = normalizeSearchText(ingredients)
+
+                            if (isCanonicalAlias) {
+                                evaluatedScore = if (
+                                    normGeneric == "acetaminophen" ||
+                                    normGeneric.contains("acetaminophen") ||
+                                    normIng.contains("acetaminophen")
+                                ) 900 else 0
+                            } else {
+                                var best = 0
+                                for (term in searchTerms) {
+                                    val s = calculateScore(normName, normGeneric, normBrand, normIng, term)
+                                    if (s > best) best = s
+                                }
+                                evaluatedScore = best
+                            }
+                        }
                         "u" -> uses = jsonReader.nextStringOrEmpty()
                         "s" -> sideEffects = jsonReader.nextStringOrEmpty()
                         "w" -> warnings = jsonReader.nextStringOrEmpty()
@@ -667,6 +871,10 @@ fun parseMedicineStreamFiltered(
                 val normBrand = normalizeSearchText(brand)
                 val normIng = normalizeSearchText(ingredients)
 
+                if (isMalformedOrNonMedicinal(name, generic, brand, uses)) {
+                    continue
+                }
+
                 val uniqueKey = when {
                     normName.isNotBlank() -> normName
                     normGeneric.isNotBlank() -> normGeneric
@@ -676,6 +884,21 @@ fun parseMedicineStreamFiltered(
                 if (uniqueKey.isBlank() || !seenKeys.add(uniqueKey)) {
                     continue
                 }
+
+                val score = evaluatedScore ?: run {
+                    if (isCanonicalAlias) {
+                        if (normGeneric == "acetaminophen" || normGeneric.contains("acetaminophen") || normIng.contains("acetaminophen")) 900 else 0
+                    } else {
+                        var best = 0
+                        for (term in searchTerms) {
+                            val s = calculateScore(normName, normGeneric, normBrand, normIng, term)
+                            if (s > best) best = s
+                        }
+                        best
+                    }
+                }
+
+                if (score <= 0) continue
 
                 val record = MedicineRecord(
                     name = name,
@@ -691,28 +914,14 @@ fun parseMedicineStreamFiltered(
                 )
 
                 if (isCanonicalAlias) {
-                    if (normGeneric == "acetaminophen" ||
-                        normGeneric.contains("acetaminophen") ||
-                        normIng.contains("acetaminophen")
-                    ) {
-                        acetaminophenCandidates.add(record)
+                    acetaminophenCandidates.add(record)
+                    if (acetaminophenCandidates.size >= limit * 2) {
+                        break
                     }
                 } else {
-                    var bestScore = 0
-                    for (term in searchTerms) {
-                        val score = calculateScore(
-                            name = normName,
-                            generic = normGeneric,
-                            brand = normBrand,
-                            ingredients = normIng,
-                            searchTerm = term
-                        )
-                        if (score > bestScore) {
-                            bestScore = score
-                        }
-                    }
-                    if (bestScore > 0) {
-                        scoredResults.add(Pair(record, bestScore))
+                    scoredResults.add(Pair(record, score))
+                    if (scoredResults.size >= limit * 5) {
+                        break
                     }
                 }
             }
@@ -868,31 +1077,53 @@ fun parseMedicineStreamFiltered(
 
         // Search verified medicines first for clean, human-readable results (Dolo, Crocin, Calpol, Paracetamol, etc.)
         val verifiedMatches = searchVerifiedMedicines(normalizedQuery, limit)
-        if (verifiedMatches.isNotEmpty()) {
-            synchronized(searchCache) {
-                if (searchCache.size > 50) searchCache.clear()
-                searchCache[normalizedQuery] = verifiedMatches
-            }
-            return verifiedMatches
-        }
+        val needed = limit - verifiedMatches.size
 
-        val inMemory = cachedMedicines
-        val results = if (inMemory != null) {
-            searchMedicinesFromList(inMemory, normalizedQuery, limit)
+        val results = if (needed <= 0) {
+            verifiedMatches.take(limit)
         } else {
-            context.assets.open("medicine_data.json").use { stream ->
-                searchMedicinesStream(stream, normalizedQuery, limit)
-            }
+            val verifiedKeys = verifiedMatches.map { normalizeSearchText(it.name) }.toHashSet()
+            val inMemory = cachedMedicines
+            val datasetMatches = if (inMemory != null) {
+                searchMedicinesFromList(inMemory, normalizedQuery, limit = needed * 2)
+            } else {
+                context.assets.open("medicine_data.json").use { stream ->
+                    searchMedicinesStream(stream, normalizedQuery, limit = needed * 2)
+                }
+            }.filter { verifiedKeys.add(normalizeSearchText(it.name)) }
+
+            (verifiedMatches + datasetMatches).take(limit)
         }
 
         synchronized(searchCache) {
-            if (searchCache.size > 50) {
-                searchCache.clear()
-            }
             searchCache[normalizedQuery] = results
         }
 
         return results
+    }
+
+    // ============================================================
+    // TARGETED MEDICINE LOOKUP (FAST & MEMORY-SAFE)
+    // ============================================================
+
+    fun findMedicine(
+        context: Context,
+        nameOrQuery: String
+    ): MedicineRecord? {
+        val norm = normalizeSearchText(nameOrQuery)
+        if (norm.isBlank()) return null
+
+        // 1. Check verified medicines first (instant, zero memory allocation)
+        verifiedMedicines.firstOrNull {
+            val n = normalizeSearchText(it.name)
+            val g = normalizeSearchText(it.generic)
+            val b = normalizeSearchText(it.brand)
+            n == norm || g == norm || b == norm || n.contains(norm) || norm.contains(n)
+        }?.let { return it }
+
+        // 2. Targeted search with limit = 1
+        val results = searchMedicines(context, norm, limit = 1)
+        return results.firstOrNull()
     }
 
     // ============================================================

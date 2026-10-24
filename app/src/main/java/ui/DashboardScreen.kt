@@ -550,7 +550,7 @@ fun DashboardScreen(
                         ) {
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = "Hello, $displayName",
+                                    text = t("greeting_hello").replace("%s", displayName),
                                     color = TextDark,
                                     fontSize = 21.sp,
                                     fontWeight = FontWeight.Bold,
@@ -577,10 +577,10 @@ fun DashboardScreen(
 
                             Spacer(modifier = Modifier.width(12.dp))
 
-                            // Profile action avatar with aligned dropdown options
+                            // Profile action avatar - opens Profile screen directly
                             Box {
                                 Surface(
-                                    onClick = { showProfileMenu = true },
+                                    onClick = onProfileClick,
                                     shape = CircleShape,
                                     color = PureWhite,
                                     border = BorderStroke(1.5.dp, Mint),
@@ -706,7 +706,7 @@ fun DashboardScreen(
                                         )
                                         Spacer(modifier = Modifier.height(2.dp))
                                         Text(
-                                            text = "Describe your symptoms for instant AI medical triage",
+                                            text = t("dashboard_bothering_sub"),
                                             color = TextMuted,
                                             fontSize = 12.sp
                                         )
@@ -796,7 +796,7 @@ fun DashboardScreen(
                                             )
                                             Spacer(modifier = Modifier.width(6.dp))
                                             Text(
-                                                text = "Verified Medical AI",
+                                                text = t("dashboard_verified_ai"),
                                                 color = DeepTeal,
                                                 fontSize = 11.sp,
                                                 fontWeight = FontWeight.SemiBold
@@ -1183,7 +1183,7 @@ fun DashboardScreen(
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
                                                 Text(
-                                                    text = "Prescriptions",
+                                                    text = t("dashboard_prescriptions_title"),
                                                     color = TextMuted,
                                                     fontSize = 11.sp,
                                                     fontWeight = FontWeight.Medium
@@ -1197,13 +1197,13 @@ fun DashboardScreen(
                                             }
                                             Spacer(modifier = Modifier.height(6.dp))
                                             Text(
-                                                text = "${savedPrescriptions.length()} Saved",
+                                                text = t("dashboard_prescriptions_saved").replace("%d", savedPrescriptions.length().toString()),
                                                 color = DarkTeal,
                                                 fontSize = 20.sp,
                                                 fontWeight = FontWeight.Bold
                                             )
                                             Text(
-                                                text = "Optical records",
+                                                text = t("dashboard_optical_records"),
                                                 color = TextDark,
                                                 fontSize = 11.sp,
                                                 maxLines = 1,

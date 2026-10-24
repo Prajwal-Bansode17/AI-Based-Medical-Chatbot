@@ -1,6 +1,8 @@
 package ui
 
 import android.content.Context
+import java.text.DecimalFormat
+import java.text.DecimalFormatSymbols
 import java.text.SimpleDateFormat
 import java.util.Calendar
 import java.util.Date
@@ -121,9 +123,17 @@ object BMIRepository {
     }
 
     /**
-     * Parses date of birth (either DD/MM/YYYY or YYYY-MM-DD) into Date object.
-     * Returns null if invalid or in the future.
+     * Formats height or weight for clean user display with at most 2 decimal places
+     * and without unnecessary trailing zeros (e.g. 182.37537 -> 182.38, 75.00 -> 75, 75.20 -> 75.2).
      */
+    fun formatMeasurement(value: Double): String {
+        if (value <= 0.0 || value.isNaN() || value.isInfinite()) return ""
+        val df = DecimalFormat("0.##", DecimalFormatSymbols(Locale.US))
+        return df.format(value)
+    }
+
+    fun formatMeasurement(value: Float): String = formatMeasurement(value.toDouble())
+
     fun parseDateOfBirth(value: String): Date? {
         val clean = value.trim()
         if (clean.length != 10) return null

@@ -1,3 +1,4 @@
+import base64
 import http.client
 import json
 import logging
@@ -955,7 +956,7 @@ def _gemini_generate(contents):
 # ------------------------------ public generators ----------------------------
 
 def generate_medical_response_with_provider(
-    user_text, language="en", medical_context="", conversation_context="", session_id=None
+    user_text, language="en", medical_context="", conversation_context="", session_id=None, image_bytes=None
 ):
     ollama_available = OLLAMA_ENABLED
     gemini_available = gemini_client is not None
@@ -989,6 +990,18 @@ def generate_medical_response_with_provider(
                 gemini_content = _format_messages_for_gemini(structured_messages)
             else:
                 gemini_content = system_instruction + "\n\n" + prompt
+            if image_bytes:
+                try:
+                    from google.genai import types
+                    part = types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg")
+                    if isinstance(gemini_content, list):
+                        multimodal_payload = [part] + gemini_content
+                    else:
+                        multimodal_payload = [part, str(gemini_content)]
+                    providers.append(("gemini", lambda: _gemini_generate(multimodal_payload)))
+                    return
+                except Exception as ex:
+                    logger.warning("Could not create multimodal part for Gemini: %s", ex)
             providers.append(("gemini", lambda: _gemini_generate(gemini_content)))
 
     def _add_ollama():
@@ -2611,6 +2624,15 @@ def predict():
     if not data:
         return jsonify({"status": "error", "message": "Request body is required"}), 400
 
+    image_base64 = data.get("image_base64")
+    image_bytes = None
+    if image_base64 and isinstance(image_base64, str):
+        try:
+            image_bytes = base64.b64decode(image_base64)
+        except Exception as ex:
+            logger.warning("Failed to decode image_base64: %s", ex)
+
+    ocr_text = data.get("ocr_text")
     text = data.get("text")
     if not text or not isinstance(text, str):
         return jsonify({"status": "error", "message": "text field is required"}), 400
@@ -2770,13 +2792,8 @@ def predict():
                     previous_symptoms, "assistance"
                 ) or ""
 
-            ai_answer, ai_provider = generate_medical_response_with_provider(
-                user_text=text,
-                language=final_language,
-                medical_context=followup_context,
-                conversation_context=conversation_context,
-                session_id=session_id,
-            )
+            ai_answer, ai_provider = generate_medical_response_with_provider(user_text=text, language=final_language, medical_context=followup_context, conversation_context=conversation_context, session_id=session_id
+            , image_bytes=image_bytes)
 
             if ai_answer:
                 followup_answer = ai_answer
@@ -2818,13 +2835,8 @@ def predict():
         # GENERAL (non-medical) QUERY
         # ----------------------------------------------------
         if not medical_query and not is_followup:
-            ai_answer, ai_provider = generate_medical_response_with_provider(
-                user_text=text,
-                language=final_language,
-                medical_context="",
-                conversation_context=conversation_context,
-                session_id=session_id,
-            )
+            ai_answer, ai_provider = generate_medical_response_with_provider(user_text=text, language=final_language, medical_context="", conversation_context=conversation_context, session_id=session_id
+            , image_bytes=image_bytes)
 
             if ai_answer:
                 save_chat_message(session_id, "user", text, symptoms)
@@ -2868,13 +2880,8 @@ def predict():
         # ----------------------------------------------------
         if measurements and not symptoms:
             measurement_context = build_measurement_response(measurements)
-            ai_measurement_answer, measurement_provider = generate_medical_response_with_provider(
-                user_text=text,
-                language=final_language,
-                medical_context=measurement_context,
-                conversation_context=conversation_context,
-                session_id=session_id,
-            )
+            ai_measurement_answer, measurement_provider = generate_medical_response_with_provider(user_text=text, language=final_language, medical_context=measurement_context, conversation_context=conversation_context, session_id=session_id
+            , image_bytes=image_bytes)
             final_answer = ai_measurement_answer or localize_answer(
                 measurement_context, final_language
             )
@@ -2915,13 +2922,8 @@ def predict():
             question_type = get_question_type(text)
             medical_answer = build_multi_symptom_response(combined_symptoms, question_type)
 
-            ai_medical_answer, symptom_provider = generate_medical_response_with_provider(
-                user_text=text,
-                language=final_language,
-                medical_context=medical_answer or "No specific knowledge-base entry was found. Give conservative general medical guidance.",
-                conversation_context=conversation_context,
-                session_id=session_id,
-            )
+            ai_medical_answer, symptom_provider = generate_medical_response_with_provider(user_text=text, language=final_language, medical_context=medical_answer or "No specific knowledge-base entry was found. Give conservative general medical guidance.", conversation_context=conversation_context, session_id=session_id
+            , image_bytes=image_bytes)
 
             if ai_medical_answer:
                 final_answer = localize_answer(ai_medical_answer, final_language)
@@ -2971,13 +2973,8 @@ def predict():
         if mediq_result is not None:
             answer = mediq_result["answer"]
 
-            ai_mediq_answer, mediq_provider = generate_medical_response_with_provider(
-                user_text=text,
-                language=final_language,
-                medical_context=answer,
-                conversation_context=conversation_context,
-                session_id=session_id,
-            )
+            ai_mediq_answer, mediq_provider = generate_medical_response_with_provider(user_text=text, language=final_language, medical_context=answer, conversation_context=conversation_context, session_id=session_id
+            , image_bytes=image_bytes)
 
             if ai_mediq_answer:
                 answer = localize_answer(ai_mediq_answer, final_language)

@@ -29,12 +29,17 @@ class AppLanguageController {
     constructor(context: Context) {
         val app = context.applicationContext ?: context
         preferences = app.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
+        val initial = normalizeAppLanguage(
+            preferences.getString(KEY_SELECTED_LANGUAGE, null)
+        )
         languageState = synchronized(stateLock) {
-            sharedLanguageState ?: mutableStateOf(
-                normalizeAppLanguage(
-                    preferences.getString(KEY_SELECTED_LANGUAGE, null)
-                )
-            ).also { sharedLanguageState = it }
+            val state = sharedLanguageState
+            if (state == null) {
+                mutableStateOf(initial).also { sharedLanguageState = it }
+            } else {
+                state.value = initial
+                state
+            }
         }
     }
 
@@ -51,7 +56,7 @@ class AppLanguageController {
         languageState.value = normalized
         preferences?.edit()
             ?.putString(KEY_SELECTED_LANGUAGE, normalized)
-            ?.apply()
+            ?.commit()
     }
 
     companion object {
@@ -80,6 +85,9 @@ fun ProvideAppLanguage(
     val controller = remember(context) {
         AppLanguageController(context)
     }
+    // Reading selectedLanguage forces ProvideAppLanguage to recompose
+    // whenever language changes, propagating across the entire tree.
+    val activeLanguage = controller.selectedLanguage
 
     CompositionLocalProvider(
         LocalAppLanguageController provides controller
