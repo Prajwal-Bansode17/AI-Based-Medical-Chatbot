@@ -52,15 +52,14 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import android.util.Log
 import com.example.ai_based_medical_chatbot.LocalAppLanguageController
 import com.example.ai_based_medical_chatbot.appText
 import com.example.ai_based_medical_chatbot.data.HealthProfile
@@ -70,7 +69,6 @@ import com.example.ai_based_medical_chatbot.ui.theme.DeepTeal
 import com.example.ai_based_medical_chatbot.ui.theme.Ivory
 import com.example.ai_based_medical_chatbot.ui.theme.Mint
 import com.example.ai_based_medical_chatbot.ui.theme.PureWhite
-import com.example.ai_based_medical_chatbot.ui.theme.SageGreen
 import com.example.ai_based_medical_chatbot.ui.theme.SoftMint
 import com.example.ai_based_medical_chatbot.ui.theme.StatusError
 import com.example.ai_based_medical_chatbot.ui.theme.StatusErrorBackground
@@ -80,7 +78,6 @@ import com.example.ai_based_medical_chatbot.ui.theme.TextDark
 import com.example.ai_based_medical_chatbot.ui.theme.TextMuted
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
@@ -131,24 +128,42 @@ fun HealthProfileScreen(
     /*
      * CLOUD SYNC HELPER (BACKGROUND FIRE-AND-FORGET)
      */
-    fun syncToCloudInBackground() {
-        val user = SupabaseClient.getSavedUser(context) ?: return
+    fun syncToCloudInBackground(
+        overrideGender: String? = null,
+        overrideBloodGroup: String? = null
+    ) {
+        val user = SupabaseClient.getSavedUser(context)
+        if (user == null) {
+            Log.w("HealthProfileScreen", "syncToCloudInBackground: User session is null (guest/unauthenticated). Skipping Supabase sync.")
+            return
+        }
+
+        val effectiveGender = (overrideGender ?: gender).trim().takeIf { it.isNotBlank() }
+        val effectiveBloodGroup = (overrideBloodGroup ?: bloodGroup).trim().takeIf { it.isNotBlank() }
         val cleanHeight = height.toDoubleOrNull()?.takeIf { it > 0 }
         val cleanWeight = weight.toDoubleOrNull()?.takeIf { it > 0 }
         val cleanBmi = bmi?.takeIf { it > 0 }
+
+        val maskedId = if (user.id.length >= 8) "${user.id.take(8)}***" else "***"
+        Log.d("HealthProfileScreen", "syncToCloudInBackground: Triggering remote sync for user $maskedId")
 
         scope.launch {
             val profile = HealthProfile(
                 id = user.id,
                 name = name.trim().takeIf { it.isNotBlank() },
-                gender = gender.trim().takeIf { it.isNotBlank() },
+                gender = effectiveGender,
                 dateOfBirth = BMIRepository.toIsoDate(dateOfBirth).takeIf { it.isNotBlank() },
-                bloodGroup = bloodGroup.trim().takeIf { it.isNotBlank() },
+                bloodGroup = effectiveBloodGroup,
                 heightCm = cleanHeight,
                 weightKg = cleanWeight,
                 bmi = cleanBmi
             )
-            SupabaseClient.saveHealthProfile(context = context, profile = profile)
+            val result = SupabaseClient.saveHealthProfile(context = context, profile = profile)
+            result.onSuccess {
+                Log.d("HealthProfileScreen", "syncToCloudInBackground: Successfully synced profile to Supabase.")
+            }.onFailure { error ->
+                Log.e("HealthProfileScreen", "syncToCloudInBackground: Remote sync failed: ${error.message}")
+            }
         }
     }
 
@@ -311,6 +326,8 @@ fun HealthProfileScreen(
             // 2. Persist to remote Supabase if logged in
             val user = SupabaseClient.getSavedUser(context)
             if (user != null) {
+                val maskedId = if (user.id.length >= 8) "${user.id.take(8)}***" else "***"
+                Log.d("HealthProfileScreen", "saveProfile: Saving profile to Supabase for user $maskedId")
                 val profile = HealthProfile(
                     id = user.id,
                     name = name.trim().takeIf { it.isNotBlank() },
@@ -330,13 +347,16 @@ fun HealthProfileScreen(
                 result.onSuccess {
                     isSaving = false
                     saveSuccessMessage = t("health_profile_updated")
+                    Log.d("HealthProfileScreen", "saveProfile: Supabase save succeeded")
                     if (continueAfterSave) {
                         onContinue()
                     }
-                }.onFailure {
-                    // Even if network fails, local update is secured
+                }.onFailure { error ->
+                    // Local data is saved, but make the cloud-sync failure visible.
                     isSaving = false
+                    errorMessage = error.message ?: t("health_profile_saved_locally")
                     saveSuccessMessage = t("health_profile_saved_locally")
+                    Log.e("HealthProfileScreen", "saveProfile: Supabase save failed: ${error.message}")
                     if (continueAfterSave) {
                         onContinue()
                     }
@@ -345,6 +365,7 @@ fun HealthProfileScreen(
                 // Guest / Local mode
                 isSaving = false
                 saveSuccessMessage = t("health_profile_updated")
+                Log.w("HealthProfileScreen", "saveProfile: User is in guest mode / not logged in to Supabase. Saved locally only.")
                 if (continueAfterSave) {
                     onContinue()
                 }
@@ -531,7 +552,7 @@ fun HealthProfileScreen(
                                 onClick = {
                                     gender = item
                                     BMIRepository.updateGender(context, item)
-                                    syncToCloudInBackground()
+                                    syncToCloudInBackground(overrideGender = item)
                                 },
                                 modifier = Modifier.weight(1f)
                             )
@@ -594,7 +615,7 @@ fun HealthProfileScreen(
                                     onClick = {
                                         bloodGroup = group
                                         BMIRepository.updateBloodGroup(context, group)
-                                        syncToCloudInBackground()
+                                        syncToCloudInBackground(overrideBloodGroup = group)
                                     },
                                     modifier = Modifier.weight(1f)
                                 )
@@ -612,7 +633,7 @@ fun HealthProfileScreen(
                                     onClick = {
                                         bloodGroup = group
                                         BMIRepository.updateBloodGroup(context, group)
-                                        syncToCloudInBackground()
+                                        syncToCloudInBackground(overrideBloodGroup = group)
                                     },
                                     modifier = Modifier.weight(1f)
                                 )
@@ -704,7 +725,7 @@ fun HealthProfileScreen(
                         keyboardActions = KeyboardActions(
                             onDone = {
                                 if (!isSaving) {
-                                    saveProfile(continueAfterSave = true)
+                                    saveProfile(continueAfterSave = false)
                                 }
                             }
                         ),
@@ -770,7 +791,7 @@ fun HealthProfileScreen(
                      * SAVE BUTTON
                      */
                     Button(
-                        onClick = { saveProfile(continueAfterSave = true) },
+                        onClick = { saveProfile(continueAfterSave = false) },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(50.dp),

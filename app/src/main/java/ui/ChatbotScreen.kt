@@ -115,6 +115,12 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Share
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.example.ai_based_medical_chatbot.ChatMemoryRepository
+import com.example.ai_based_medical_chatbot.MemoryExtractor
+import com.example.ai_based_medical_chatbot.MemoryRetriever
+import com.example.ai_based_medical_chatbot.data.SupabaseClient
 
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
@@ -630,6 +636,10 @@ fun ChatbotScreen(
         mutableStateOf(initialResolvedSessionId)
     }
 
+    var isTemporaryChat by rememberSaveable {
+        mutableStateOf(false)
+    }
+
 
     // =========================================================
     // STATE
@@ -888,7 +898,7 @@ fun ChatbotScreen(
     fun startNewChat() {
         voiceAssistant.stop()
         currentlySpeakingText = null
-        if (messages.isNotEmpty()) {
+        if (messages.isNotEmpty() && !isTemporaryChat) {
             ChatHistoryRepository.saveChat(context, currentSessionId, messages)
         }
         val newId = "android_" + System.currentTimeMillis()
@@ -914,7 +924,7 @@ fun ChatbotScreen(
         } else if (showAttachmentMenu) {
             showAttachmentMenu = false
         } else {
-            if (messages.isNotEmpty()) {
+            if (messages.isNotEmpty() && !isTemporaryChat) {
                 ChatHistoryRepository.saveChat(context, currentSessionId, messages)
                 ChatHistoryRepository.setActiveSessionId(context, currentSessionId)
             }
@@ -927,16 +937,18 @@ fun ChatbotScreen(
     }
 
     LaunchedEffect(currentSessionId) {
-        ChatHistoryRepository.setActiveSessionId(context, currentSessionId)
-        val existing = ChatHistoryRepository.getChats(context)
-            .firstOrNull { it.id == currentSessionId }
+        if (!isTemporaryChat) {
+            ChatHistoryRepository.setActiveSessionId(context, currentSessionId)
+            val existing = ChatHistoryRepository.getChats(context)
+                .firstOrNull { it.id == currentSessionId }
 
-        if (existing != null) {
-            messages.clear()
-            messages.addAll(existing.messages)
+            if (existing != null) {
+                messages.clear()
+                messages.addAll(existing.messages)
+            }
+
+            savedChats = ChatHistoryRepository.getChats(context)
         }
-
-        savedChats = ChatHistoryRepository.getChats(context)
     }
 
 
@@ -1098,8 +1110,10 @@ fun ChatbotScreen(
         voiceAssistant.stop()
         currentlySpeakingText = null
 
-        ChatHistoryRepository.saveChat(context, currentSessionId, messages)
-        savedChats = ChatHistoryRepository.getChats(context)
+        if (!isTemporaryChat) {
+            ChatHistoryRepository.saveChat(context, currentSessionId, messages)
+            savedChats = ChatHistoryRepository.getChats(context)
+        }
 
         message = ""
         attachmentLabel = ""
@@ -1131,6 +1145,17 @@ fun ChatbotScreen(
                         Dispatchers.IO
                     ) {
 
+                        val savedUser = SupabaseClient.getSavedUser(context)
+                        val currentUserId = savedUser?.id
+                        val isEligibleForMemory = !isTemporaryChat && ChatMemoryRepository.isMemoryPermitted(context, currentUserId, isTemporaryChat = false)
+
+                        val relevantMemories = if (isEligibleForMemory && !currentUserId.isNullOrBlank()) {
+                            val allMemories = ChatMemoryRepository.getMemories(context, currentUserId, isTemporaryChat = false)
+                            MemoryRetriever.retrieveRelevantMemories(cleanText, allMemories)
+                        } else {
+                            emptyList()
+                        }
+
                         val prescriptionMemory =
                             PrescriptionMemory.build(context)
 
@@ -1155,9 +1180,15 @@ fun ChatbotScreen(
                             basePrompt
                         }
 
+                        val promptWithMemory = if (relevantMemories.isNotEmpty()) {
+                            MemoryRetriever.formatPromptWithMemory(queryPrompt, relevantMemories)
+                        } else {
+                            queryPrompt
+                        }
+
                         val chatbotText =
                             if (prescriptionMemory.isBlank()) {
-                                queryPrompt
+                                promptWithMemory
                             } else {
                                 """
                                 USER'S SAVED PRESCRIPTION MEMORY:
@@ -1173,7 +1204,7 @@ fun ChatbotScreen(
                                 not available in the saved prescription.
 
                                 USER QUESTION:
-                                $queryPrompt
+                                $promptWithMemory
                                 """.trimIndent()
                             }
 
@@ -1274,26 +1305,44 @@ fun ChatbotScreen(
                         )
                     }
 
-                    val requestSessionId = currentSessionId
+                    val savedUser = SupabaseClient.getSavedUser(context)
+                    val currentUserId = savedUser?.id
+                    val isEligibleForMemory = !isTemporaryChat && ChatMemoryRepository.isMemoryPermitted(context, currentUserId, isTemporaryChat = false)
 
-                    // Adopt server-returned session ID if valid and non-blank.
-                    // If the server assigned a new canonical ID (e.g. from an empty or auto-generated session),
-                    // migrate the existing chat history under the adopted ID.
-                    val returnedSessionId = result.sessionId?.trim()
-                    val targetSessionId = if (!returnedSessionId.isNullOrBlank() && currentSessionId == requestSessionId) {
-                        if (returnedSessionId != currentSessionId) {
-                            val previousSessionId = currentSessionId
-                            currentSessionId = returnedSessionId
-                            ChatHistoryRepository.setActiveSessionId(context, returnedSessionId)
-                            ChatHistoryRepository.deleteChat(context, previousSessionId)
+                    if (isEligibleForMemory && !currentUserId.isNullOrBlank()) {
+                        val extracted = MemoryExtractor.extractFromUserMessage(currentUserId, cleanText)
+                        if (extracted != null) {
+                            ChatMemoryRepository.saveMemory(
+                                context = context,
+                                userId = currentUserId,
+                                item = extracted,
+                                isTemporaryChat = false
+                            )
                         }
-                        returnedSessionId
-                    } else {
-                        currentSessionId
                     }
 
-                    ChatHistoryRepository.saveChat(context, targetSessionId, messages)
-                    savedChats = ChatHistoryRepository.getChats(context)
+                    if (!isTemporaryChat) {
+                        val requestSessionId = currentSessionId
+
+                        // Adopt server-returned session ID if valid and non-blank.
+                        // If the server assigned a new canonical ID (e.g. from an empty or auto-generated session),
+                        // migrate the existing chat history under the adopted ID.
+                        val returnedSessionId = result.sessionId?.trim()
+                        val targetSessionId = if (!returnedSessionId.isNullOrBlank() && currentSessionId == requestSessionId) {
+                            if (returnedSessionId != currentSessionId) {
+                                val previousSessionId = currentSessionId
+                                currentSessionId = returnedSessionId
+                                ChatHistoryRepository.setActiveSessionId(context, returnedSessionId)
+                                ChatHistoryRepository.deleteChat(context, previousSessionId)
+                            }
+                            returnedSessionId
+                        } else {
+                            currentSessionId
+                        }
+
+                        ChatHistoryRepository.saveChat(context, targetSessionId, messages)
+                        savedChats = ChatHistoryRepository.getChats(context)
+                    }
 
                 } else {
 
@@ -1343,8 +1392,10 @@ fun ChatbotScreen(
                     )
                 )
 
-                ChatHistoryRepository.saveChat(context, currentSessionId, messages)
-                savedChats = ChatHistoryRepository.getChats(context)
+                if (!isTemporaryChat) {
+                    ChatHistoryRepository.saveChat(context, currentSessionId, messages)
+                    savedChats = ChatHistoryRepository.getChats(context)
+                }
 
             } finally {
 
@@ -1403,9 +1454,26 @@ fun ChatbotScreen(
                     basePrompt
                 }
 
+                val savedUser = SupabaseClient.getSavedUser(context)
+                val currentUserId = savedUser?.id
+                val isEligibleForMemory = !isTemporaryChat && ChatMemoryRepository.isMemoryPermitted(context, currentUserId, isTemporaryChat = false)
+
+                val relevantMemories = if (isEligibleForMemory && !currentUserId.isNullOrBlank()) {
+                    val allMemories = ChatMemoryRepository.getMemories(context, currentUserId, isTemporaryChat = false)
+                    MemoryRetriever.retrieveRelevantMemories(lastUserMessage.text, allMemories)
+                } else {
+                    emptyList()
+                }
+
+                val promptWithMemory = if (relevantMemories.isNotEmpty()) {
+                    MemoryRetriever.formatPromptWithMemory(retryPrompt, relevantMemories)
+                } else {
+                    retryPrompt
+                }
+
                 val prescriptionMemory = PrescriptionMemory.build(context)
                 val chatbotText = if (prescriptionMemory.isBlank()) {
-                    retryPrompt
+                    promptWithMemory
                 } else {
                     """
                     USER'S SAVED PRESCRIPTION MEMORY:
@@ -1421,7 +1489,7 @@ fun ChatbotScreen(
                     not available in the saved prescription.
 
                     USER QUESTION:
-                    $retryPrompt
+                    $promptWithMemory
                     """.trimIndent()
                 }
 
@@ -1464,24 +1532,42 @@ fun ChatbotScreen(
                         )
                     }
 
-                    val requestSessionId = currentSessionId
+                    val savedUser = SupabaseClient.getSavedUser(context)
+                    val currentUserId = savedUser?.id
+                    val isEligibleForMemory = !isTemporaryChat && ChatMemoryRepository.isMemoryPermitted(context, currentUserId, isTemporaryChat = false)
 
-                    // Adopt server-returned session ID if valid and non-blank.
-                    val returnedSessionId = result.sessionId?.trim()
-                    val targetSessionId = if (!returnedSessionId.isNullOrBlank() && currentSessionId == requestSessionId) {
-                        if (returnedSessionId != currentSessionId) {
-                            val previousSessionId = currentSessionId
-                            currentSessionId = returnedSessionId
-                            ChatHistoryRepository.setActiveSessionId(context, returnedSessionId)
-                            ChatHistoryRepository.deleteChat(context, previousSessionId)
+                    if (isEligibleForMemory && !currentUserId.isNullOrBlank()) {
+                        val extracted = MemoryExtractor.extractFromUserMessage(currentUserId, lastUserMessage.text)
+                        if (extracted != null) {
+                            ChatMemoryRepository.saveMemory(
+                                context = context,
+                                userId = currentUserId,
+                                item = extracted,
+                                isTemporaryChat = false
+                            )
                         }
-                        returnedSessionId
-                    } else {
-                        currentSessionId
                     }
 
-                    ChatHistoryRepository.saveChat(context, targetSessionId, messages)
-                    savedChats = ChatHistoryRepository.getChats(context)
+                    if (!isTemporaryChat) {
+                        val requestSessionId = currentSessionId
+
+                        // Adopt server-returned session ID if valid and non-blank.
+                        val returnedSessionId = result.sessionId?.trim()
+                        val targetSessionId = if (!returnedSessionId.isNullOrBlank() && currentSessionId == requestSessionId) {
+                            if (returnedSessionId != currentSessionId) {
+                                val previousSessionId = currentSessionId
+                                currentSessionId = returnedSessionId
+                                ChatHistoryRepository.setActiveSessionId(context, returnedSessionId)
+                                ChatHistoryRepository.deleteChat(context, previousSessionId)
+                            }
+                            returnedSessionId
+                        } else {
+                            currentSessionId
+                        }
+
+                        ChatHistoryRepository.saveChat(context, targetSessionId, messages)
+                        savedChats = ChatHistoryRepository.getChats(context)
+                    }
                 } else {
                     val code = response.code()
                     messages.add(
@@ -1491,8 +1577,10 @@ fun ChatbotScreen(
                             isError = true
                         )
                     )
-                    ChatHistoryRepository.saveChat(context, currentSessionId, messages)
-                    savedChats = ChatHistoryRepository.getChats(context)
+                    if (!isTemporaryChat) {
+                        ChatHistoryRepository.saveChat(context, currentSessionId, messages)
+                        savedChats = ChatHistoryRepository.getChats(context)
+                    }
                 }
             } catch (e: Exception) {
                 Log.e("MEDASSIST_API", "RETRY ERROR", e)
@@ -1726,6 +1814,35 @@ fun ChatbotScreen(
                     }
 
                     IconButton(
+                        onClick = {
+                            val next = !isTemporaryChat
+                            isTemporaryChat = next
+                            if (next) {
+                                messages.clear()
+                                currentSessionId = "temp_" + System.currentTimeMillis()
+                                message = ""
+                                isTyping = false
+                            } else {
+                                startNewChat()
+                            }
+                        },
+                        modifier = Modifier.size(40.dp),
+                        colors = IconButtonDefaults.iconButtonColors(
+                            containerColor = if (isTemporaryChat) Color(0xFFD97706) else PureWhite.copy(alpha = 0.16f),
+                            contentColor = PureWhite
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Lock,
+                            contentDescription = if (isTemporaryChat) "Temporary Chat Active" else "Toggle Temporary Chat",
+                            tint = PureWhite,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+
+                    Spacer(Modifier.width(6.dp))
+
+                    IconButton(
                         onClick = { startNewChat() },
                         modifier = Modifier.size(40.dp),
                         colors = IconButtonDefaults.iconButtonColors(
@@ -1747,7 +1864,7 @@ fun ChatbotScreen(
 
                     IconButton(
                         onClick = {
-                            if (messages.isNotEmpty()) {
+                            if (messages.isNotEmpty() && !isTemporaryChat) {
                                 ChatHistoryRepository.saveChat(context, currentSessionId, messages)
                             }
                             if (onViewTranscript != null) {
@@ -1791,6 +1908,36 @@ fun ChatbotScreen(
                         .fillMaxSize()
                         .imePadding()
                 ) {
+
+                    if (isTemporaryChat) {
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                            shape = RoundedCornerShape(8.dp),
+                            color = Color(0xFFFFF3CD),
+                            border = BorderStroke(1.dp, Color(0xFFFFEEBA))
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Lock,
+                                    contentDescription = null,
+                                    tint = Color(0xFF856404),
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(Modifier.width(8.dp))
+                                Text(
+                                    text = t("temporary_chat_banner"),
+                                    color = Color(0xFF856404),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.Medium
+                                )
+                            }
+                        }
+                    }
 
                     // 1. Message list container occupying available space above the composer
                     Box(
@@ -2565,7 +2712,7 @@ fun ChatbotScreen(
                 },
                 onViewTranscript = if (onViewTranscript != null) {
                     { targetId ->
-                        if (messages.isNotEmpty()) {
+                        if (messages.isNotEmpty() && !isTemporaryChat) {
                             ChatHistoryRepository.saveChat(context, currentSessionId, messages)
                         }
                         showChatSidebar = false
@@ -2573,7 +2720,7 @@ fun ChatbotScreen(
                     }
                 } else null,
                 onSelectChat = { chat ->
-                    if (messages.isNotEmpty()) {
+                    if (messages.isNotEmpty() && !isTemporaryChat) {
                         ChatHistoryRepository.saveChat(context, currentSessionId, messages)
                     }
                     currentSessionId = chat.id

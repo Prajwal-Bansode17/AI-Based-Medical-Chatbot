@@ -562,6 +562,18 @@ private fun marathiText(key: String): String? = when (key) {
     "bmi_calculated_label" -> "गणना केलेला BMI"
     "camera_permission_required" -> "प्रिस्क्रिप्शन स्कॅन करण्यासाठी कॅमेरा परवानगी आवश्यक आहे."
     "reminder_deleted_success" -> "आठवण यशस्वीपणे हटवली."
+    "memory_title" -> "चॅटबॉट दीर्घकालीन मेमरी"
+    "memory_subtitle" -> "वैयक्तिक संदर्भ आणि जीवनशैली प्राधान्ये"
+    "memory_consent_label" -> "वैयक्तिकृत मेमरी"
+    "memory_consent_desc" -> "MedAssist AI ला तुमच्या संभाषणांमधून गैर-संवेदनशील प्राधान्ये (जसे संवाद शैली किंवा आहाराच्या सवयी) लक्षात ठेवण्याची अनुमती द्या. निदान, औषधे आणि ॲलर्जी कधीही जतन केल्या जात नाहीत."
+    "memory_guest_notice" -> "गेस्ट मोडमध्ये मेमरी उपलब्ध नाही. वैयक्तिकृत मेमरी सक्षम करण्यासाठी कृपया लॉगिन करा."
+    "memory_clear_all" -> "सर्व मेमरी साफ करा"
+    "memory_clear_all_confirm" -> "तुम्हाला नक्की सर्व जतन केलेल्या मेमरी हटवायच्या आहेत का? ही क्रिया पूर्ववत करता येणार नाही."
+    "memory_no_items" -> "अद्याप कोणतीही मेमरी जतन केलेली नाही. जसे तुम्ही चॅट कराल, MedAssist AI सुरक्षित प्राधान्ये लक्षात ठेवेल."
+    "memory_deleted" -> "मेमरी हटवली."
+    "memory_all_cleared" -> "सर्व मेमरी साफ केल्या."
+    "temporary_chat_title" -> "तात्पुरती चॅट"
+    "temporary_chat_banner" -> "तात्पुरती चॅट सक्रिय — या सत्रासाठी इतिहास आणि मेमरी बंद आहेत."
     else -> null
 }
 
@@ -1043,6 +1055,18 @@ private fun hindiText(key: String): String? = when (key) {
     "bmi_calculated_label" -> "गणना किया गया BMI"
     "camera_permission_required" -> "प्रिस्क्रिप्शन स्कैन करने के लिए कैमरा अनुमति आवश्यक है."
     "reminder_deleted_success" -> "रिमाइंडर सफलतापूर्वक हटा दिया गया."
+    "memory_title" -> "चैटबॉट दीर्घकालिक मेमोरी"
+    "memory_subtitle" -> "व्यक्तिगत संदर्भ और जीवनशैली प्राथमिकताएं"
+    "memory_consent_label" -> "व्यक्तिगत मेमोरी"
+    "memory_consent_desc" -> "MedAssist AI को आपकी बातचीत से गैर-संवेदनशील प्राथमिकताओं (जैसे संचार शैली या खान-पान) को याद रखने की अनुमति दें। निदान, दवाएं और एलर्जी कभी भी सहेजी नहीं जाती हैं।"
+    "memory_guest_notice" -> "अतिथि मोड में मेमोरी उपलब्ध नहीं है। व्यक्तिगत मेमोरी सक्षम करने के लिए कृपया लॉगिन करें।"
+    "memory_clear_all" -> "सभी मेमोरी हटाएं"
+    "memory_clear_all_confirm" -> "क्या आप निश्चित रूप से सभी सहेजी गई मेमोरी हटाना चाहते हैं? इसे वापस नहीं लाया जा सकता।"
+    "memory_no_items" -> "अभी तक कोई मेमोरी सहेजी नहीं गई है। जैसे-जैसे आप चैट करेंगे, MedAssist AI सुरक्षित प्राथमिकताएं सीखेगा।"
+    "memory_deleted" -> "मेमोरी हटा दी गई।"
+    "memory_all_cleared" -> "सभी मेमोरी हटा दी गईं।"
+    "temporary_chat_title" -> "अस्थायी चैट"
+    "temporary_chat_banner" -> "अस्थायी चैट सक्रिय — इस सत्र के लिए इतिहास और मेमोरी अक्षम हैं।"
     else -> null
 }
 
@@ -1524,5 +1548,17 @@ private fun englishText(key: String): String? = when (key) {
     "bmi_calculated_label" -> "Calculated BMI"
     "camera_permission_required" -> "Camera permission is required to scan prescriptions."
     "reminder_deleted_success" -> "Reminder deleted successfully."
+    "memory_title" -> "Chatbot Long-Term Memory"
+    "memory_subtitle" -> "Personalized Context & Lifestyle Preferences"
+    "memory_consent_label" -> "Personalized Memory"
+    "memory_consent_desc" -> "Allow MedAssist AI to remember your non-sensitive preferences (like communication style or dietary habits) across conversations. Diagnoses, medications, and allergies are never saved."
+    "memory_guest_notice" -> "Long-term memory is unavailable in guest mode. Please log in to enable personalized memory."
+    "memory_clear_all" -> "Clear All Memories"
+    "memory_clear_all_confirm" -> "Are you sure you want to delete all saved memories? This cannot be undone."
+    "memory_no_items" -> "No memories saved yet. MedAssist AI will learn safe preferences as you chat."
+    "memory_deleted" -> "Memory removed."
+    "memory_all_cleared" -> "All memories cleared."
+    "temporary_chat_title" -> "Temporary Chat"
+    "temporary_chat_banner" -> "Temporary Chat active — History and long-term memory are disabled for this session."
     else -> null
 }

@@ -54,7 +54,13 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
+import com.example.ai_based_medical_chatbot.ChatMemoryItem
+import com.example.ai_based_medical_chatbot.ChatMemoryRepository
+import com.example.ai_based_medical_chatbot.MemoryCategory
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -177,10 +183,26 @@ fun ProfileScreen(
         savedPrescriptions = PrescriptionRepository.getSavedPrescriptions(context).toString()
     }
 
+    val currentUser = SupabaseClient.getSavedUser(context)
+    val isGuest = currentUser == null
+    val memoryUserId = currentUser?.id.orEmpty()
+    var memoryConsentEnabled by remember {
+        mutableStateOf(if (!isGuest && memoryUserId.isNotBlank()) ChatMemoryRepository.isMemoryConsentEnabled(context, memoryUserId) else false)
+    }
+    var savedMemories by remember {
+        mutableStateOf<List<ChatMemoryItem>>(
+            if (!isGuest && memoryUserId.isNotBlank()) ChatMemoryRepository.getMemories(context, memoryUserId) else emptyList()
+        )
+    }
+
     LaunchedEffect(Unit) {
         refreshPrescriptions()
         savedReminders = MedicineReminderRepository.getAll(context)
         bmiData = BMIRepository.getBMIData(context)
+        if (!isGuest && memoryUserId.isNotBlank()) {
+            memoryConsentEnabled = ChatMemoryRepository.isMemoryConsentEnabled(context, memoryUserId)
+            savedMemories = ChatMemoryRepository.getMemories(context, memoryUserId)
+        }
     }
 
     // -------------------------------------------------------------
@@ -190,6 +212,7 @@ fun ProfileScreen(
     var healthSummaryExpanded by rememberSaveable { mutableStateOf(true) }
     var remindersExpanded by rememberSaveable { mutableStateOf(true) }
     var prescriptionsExpanded by rememberSaveable { mutableStateOf(true) }
+    var memoryExpanded by rememberSaveable { mutableStateOf(false) }
 
     // User values
     val displayName = userName.trim().ifBlank { "MedAssist User" }
@@ -1383,7 +1406,255 @@ fun ProfileScreen(
             }
 
             // =========================================================
-            // 7. SIGN OUT (REDESIGNED LUXURY CARD)
+            // 7. AI CHATBOT LONG-TERM MEMORY (EXPANDABLE)
+            // =========================================================
+            Spacer(modifier = Modifier.height(20.dp))
+
+            SectionHeaderWithToggle(
+                title = "${appText("memory_title", selectedLanguage)} (${if (isGuest) 0 else savedMemories.size})",
+                isExpanded = memoryExpanded,
+                onToggle = {
+                    memoryExpanded = !memoryExpanded
+                    if (!isGuest && memoryUserId.isNotBlank()) {
+                        savedMemories = ChatMemoryRepository.getMemories(context, memoryUserId)
+                    }
+                }
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            AnimatedVisibility(
+                visible = memoryExpanded,
+                enter = fadeIn() + expandVertically(),
+                exit = fadeOut() + shrinkVertically()
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    if (isGuest) {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(20.dp),
+                            colors = CardDefaults.cardColors(containerColor = PureWhite),
+                            border = BorderStroke(1.dp, Mint),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(20.dp),
+                                horizontalAlignment = Alignment.CenterHorizontally
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Info,
+                                    contentDescription = null,
+                                    tint = DeepTeal,
+                                    modifier = Modifier.size(36.dp)
+                                )
+                                Spacer(modifier = Modifier.height(8.dp))
+                                Text(
+                                    text = appText("memory_guest_notice", selectedLanguage),
+                                    color = TextMuted,
+                                    fontSize = 13.sp,
+                                    textAlign = TextAlign.Center
+                                )
+                            }
+                        }
+                    } else {
+                        // Consent Switch Card
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(20.dp),
+                            colors = CardDefaults.cardColors(containerColor = PureWhite),
+                            border = BorderStroke(1.dp, Mint),
+                            elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(16.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = appText("memory_consent_label", selectedLanguage),
+                                            color = TextDark,
+                                            fontSize = 14.sp,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        Text(
+                                            text = appText("memory_consent_desc", selectedLanguage),
+                                            color = TextMuted,
+                                            fontSize = 11.sp,
+                                            lineHeight = 15.sp
+                                        )
+                                    }
+                                    Spacer(modifier = Modifier.width(12.dp))
+                                    Switch(
+                                        checked = memoryConsentEnabled,
+                                        onCheckedChange = { isChecked ->
+                                            memoryConsentEnabled = isChecked
+                                            ChatMemoryRepository.setMemoryConsentEnabled(context, memoryUserId, isChecked)
+                                            savedMemories = ChatMemoryRepository.getMemories(context, memoryUserId)
+                                            Toast.makeText(
+                                                context,
+                                                if (isChecked) "Personalized memory enabled" else "Personalized memory disabled",
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                        },
+                                        colors = SwitchDefaults.colors(
+                                            checkedThumbColor = PureWhite,
+                                            checkedTrackColor = DeepTeal,
+                                            uncheckedThumbColor = PureWhite,
+                                            uncheckedTrackColor = Mint
+                                        )
+                                    )
+                                }
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.height(10.dp))
+
+                        // Memory List or Empty State
+                        if (savedMemories.isEmpty()) {
+                            Card(
+                                modifier = Modifier.fillMaxWidth(),
+                                shape = RoundedCornerShape(20.dp),
+                                colors = CardDefaults.cardColors(containerColor = PureWhite),
+                                border = BorderStroke(1.dp, Mint),
+                                elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                            ) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(20.dp),
+                                    horizontalAlignment = Alignment.CenterHorizontally
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Info,
+                                        contentDescription = null,
+                                        tint = DeepTeal,
+                                        modifier = Modifier.size(32.dp)
+                                    )
+                                    Spacer(modifier = Modifier.height(6.dp))
+                                    Text(
+                                        text = appText("memory_no_items", selectedLanguage),
+                                        color = TextDark,
+                                        fontSize = 14.sp,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Text(
+                                        text = appText("memory_subtitle", selectedLanguage),
+                                        color = TextMuted,
+                                        fontSize = 11.sp,
+                                        textAlign = TextAlign.Center
+                                    )
+                                }
+                            }
+                        } else {
+                            savedMemories.forEach { memoryItem ->
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(bottom = 8.dp),
+                                    shape = RoundedCornerShape(16.dp),
+                                    colors = CardDefaults.cardColors(containerColor = PureWhite),
+                                    border = BorderStroke(1.dp, Mint),
+                                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(14.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .background(SoftMint, RoundedCornerShape(6.dp))
+                                                    .padding(horizontal = 8.dp, vertical = 2.dp)
+                                            ) {
+                                                Text(
+                                                    text = memoryItem.category.name,
+                                                    color = DeepTeal,
+                                                    fontSize = 10.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                            Spacer(modifier = Modifier.height(6.dp))
+                                            Text(
+                                                text = memoryItem.content,
+                                                color = TextDark,
+                                                fontSize = 13.sp,
+                                                fontWeight = FontWeight.Medium
+                                            )
+                                        }
+
+                                        IconButton(
+                                            onClick = {
+                                                ChatMemoryRepository.deleteMemory(context, memoryUserId, memoryItem.id)
+                                                savedMemories = ChatMemoryRepository.getMemories(context, memoryUserId)
+                                                Toast.makeText(
+                                                    context,
+                                                    appText("memory_deleted", selectedLanguage),
+                                                    Toast.LENGTH_SHORT
+                                                ).show()
+                                            },
+                                            modifier = Modifier.size(36.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.Delete,
+                                                contentDescription = "Delete memory",
+                                                tint = StatusError,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.height(6.dp))
+
+                            OutlinedButton(
+                                onClick = {
+                                    ChatMemoryRepository.clearAllMemories(context, memoryUserId)
+                                    savedMemories = emptyList()
+                                    Toast.makeText(
+                                        context,
+                                        appText("memory_all_cleared", selectedLanguage),
+                                        Toast.LENGTH_SHORT
+                                    ).show()
+                                },
+                                modifier = Modifier.fillMaxWidth().height(42.dp),
+                                shape = RoundedCornerShape(12.dp),
+                                border = BorderStroke(1.dp, StatusErrorBorder),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    contentColor = StatusError
+                                )
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Delete,
+                                    contentDescription = null,
+                                    tint = StatusError,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = appText("memory_clear_all", selectedLanguage),
+                                    fontSize = 12.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // =========================================================
+            // 8. SIGN OUT (REDESIGNED LUXURY CARD)
             // =========================================================
             Spacer(modifier = Modifier.height(24.dp))
 
