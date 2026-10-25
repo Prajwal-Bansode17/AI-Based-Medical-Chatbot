@@ -24,3 +24,13 @@ ml/data/raw/mediq/
 ml/data/raw/mediq.zip
 
 ml/data/raw/medicines/
+venv/
+ml/venv/
+__pycache__/
+*.pyc
+.env
+venv/
+ml/venv/
+__pycache__/
+*.pyc
+.env

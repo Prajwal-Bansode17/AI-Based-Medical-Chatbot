@@ -16,11 +16,12 @@ object RetrofitClient {
     private const val TAG = "RetrofitClient"
 
     /**
-     * Default URL for the Android Studio emulator.
-     * 10.0.2.2 maps to the host machine's localhost.
+     * Default URL for testing on a physical phone connected to the same Wi-Fi
+     * as the laptop running the Flask API.
+     * Update this IP if the laptop's local IP changes.
      */
-    private const val DEFAULT_EMULATOR_BASE_URL =
-        "http://10.0.2.2:5000/"
+    private const val DEFAULT_PHONE_BASE_URL =
+        "http://192.168.1.13:5000/"
 
     // =========================================================
     // RETRY INTERCEPTOR
@@ -141,7 +142,7 @@ object RetrofitClient {
         val trimmed = rawUrl.trim()
 
         if (trimmed.isEmpty()) {
-            return DEFAULT_EMULATOR_BASE_URL
+            return DEFAULT_PHONE_BASE_URL
         }
 
         val cleaned = when {
@@ -218,9 +219,10 @@ object RetrofitClient {
         if (
             configuredUrl.isBlank() ||
             configuredUrl.contains("<YOUR_IP>") ||
-            configuredUrl.contains(STALE_IP_MARKER)
+            configuredUrl.contains(STALE_IP_MARKER) ||
+            configuredUrl.contains("10.0.2.2")
         ) {
-            return DEFAULT_EMULATOR_BASE_URL
+            return DEFAULT_PHONE_BASE_URL
         }
 
         return normalizeUrl(configuredUrl)
