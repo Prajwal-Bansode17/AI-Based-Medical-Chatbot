@@ -13,7 +13,19 @@ data class PredictionRequest(
     val imageBase64: String? = null,
 
     @SerializedName("ocr_text")
-    val ocrText: String? = null
+    val ocrText: String? = null,
+
+    @SerializedName("user_id")
+    val userId: String? = null,
+
+    @SerializedName("conversation_id")
+    val conversationId: String? = null,
+
+    @SerializedName("is_temporary")
+    val isTemporary: Boolean = false,
+
+    @SerializedName("correlation_id")
+    val correlationId: String? = null
 )
 
 data class PredictionResponse(
@@ -57,7 +69,10 @@ data class PredictionResponse(
     val measurements: List<Measurement> = emptyList(),
 
     @SerializedName("session_id")
-    val sessionId: String? = null
+    val sessionId: String? = null,
+
+    @SerializedName("correlation_id")
+    val correlationId: String? = null
 )
 
 data class Measurement(
@@ -112,4 +127,119 @@ data class ChatHistoryMessage(
 
     @SerializedName("timestamp")
     val timestamp: String? = null
+)
+
+/*
+ * ============================================================
+ * USER LONG-TERM MEMORY & CONVERSATIONS (C1-C8, H1)
+ * ============================================================
+ */
+
+data class UserMemoryItem(
+    @SerializedName("id")
+    val id: String = "",
+
+    @SerializedName("user_id")
+    val userId: String = "",
+
+    @SerializedName("memory_key")
+    val memoryKey: String = "",
+
+    @SerializedName("content")
+    val content: String = "",
+
+    @SerializedName("category")
+    val category: String = "PREFERENCE",
+
+    @SerializedName("source")
+    val source: String = "user_chat",
+
+    @SerializedName("status")
+    val status: String = "user-reported",
+
+    @SerializedName("created_at")
+    val createdAt: String = "",
+
+    @SerializedName("updated_at")
+    val updatedAt: String = ""
+)
+
+data class UserMemoriesResponse(
+    @SerializedName("status")
+    val status: String = "",
+
+    @SerializedName("user_id")
+    val userId: String? = null,
+
+    @SerializedName("count")
+    val count: Int = 0,
+
+    @SerializedName("memories")
+    val memories: List<UserMemoryItem> = emptyList(),
+
+    @SerializedName("message")
+    val message: String? = null
+)
+
+data class AddMemoryRequest(
+    @SerializedName("key")
+    val key: String? = null,
+
+    @SerializedName("content")
+    val content: String,
+
+    @SerializedName("category")
+    val category: String = "PREFERENCE"
+)
+
+data class UpdateMemoryRequest(
+    @SerializedName("content")
+    val content: String
+)
+
+data class MemoryConsentResponse(
+    @SerializedName("status")
+    val status: String = "",
+
+    @SerializedName("user_id")
+    val userId: String? = null,
+
+    @SerializedName("consent")
+    val consent: Boolean = false
+)
+
+data class MemoryConsentRequest(
+    @SerializedName("consent")
+    val consent: Boolean
+)
+
+data class ConversationSummary(
+    @SerializedName("session_id")
+    val sessionId: String = "",
+
+    @SerializedName("conversation_id")
+    val conversationId: String = "",
+
+    @SerializedName("last_message")
+    val lastMessage: String = "",
+
+    @SerializedName("created_at")
+    val createdAt: String = ""
+)
+
+data class ConversationsResponse(
+    @SerializedName("status")
+    val status: String = "",
+
+    @SerializedName("user_id")
+    val userId: String? = null,
+
+    @SerializedName("count")
+    val count: Int = 0,
+
+    @SerializedName("conversations")
+    val conversations: List<ConversationSummary> = emptyList(),
+
+    @SerializedName("message")
+    val message: String? = null
 )

@@ -73,7 +73,8 @@ object SupabaseClient {
         accessToken: String? = null,
         refreshToken: String? = null
     ) {
-        val editor = context
+        val appContext = context.applicationContext
+        val editor = appContext
             .getSharedPreferences(
                 PREFS_NAME,
                 Context.MODE_PRIVATE
@@ -136,7 +137,7 @@ object SupabaseClient {
         )
     }
 
-    private fun getAccessToken(
+    fun getAccessToken(
         context: Context
     ): String? {
         return context
@@ -200,7 +201,7 @@ object SupabaseClient {
 
                 if (newAccessToken.isNotBlank() && savedUser != null) {
                     saveUser(
-                        context = context,
+                        context = context.applicationContext,
                         user = savedUser,
                         accessToken = newAccessToken,
                         refreshToken = newRefreshToken.takeIf { it.isNotBlank() } ?: refreshToken
@@ -209,7 +210,8 @@ object SupabaseClient {
                     return@withContext Result.success(newAccessToken)
                 }
 
-                Result.failure(Exception("Invalid session refresh response."))
+                Log.w("SupabaseClient", "refreshSession: response did not contain a usable session.")
+                Result.failure(Exception("Invalid session refresh response. Please login again."))
             }
         } catch (e: Exception) {
             Log.e("SupabaseClient", "refreshSession error: ${e.message}")

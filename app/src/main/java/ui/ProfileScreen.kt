@@ -200,8 +200,12 @@ fun ProfileScreen(
         savedReminders = MedicineReminderRepository.getAll(context)
         bmiData = BMIRepository.getBMIData(context)
         if (!isGuest && memoryUserId.isNotBlank()) {
-            memoryConsentEnabled = ChatMemoryRepository.isMemoryConsentEnabled(context, memoryUserId)
-            savedMemories = ChatMemoryRepository.getMemories(context, memoryUserId)
+            memoryConsentEnabled = ChatMemoryRepository.syncConsentFromCloud(context, memoryUserId)
+            savedMemories = if (memoryConsentEnabled) {
+                ChatMemoryRepository.syncMemoriesFromCloud(context, memoryUserId)
+            } else {
+                ChatMemoryRepository.getMemories(context, memoryUserId)
+            }
         }
     }
 
@@ -1417,6 +1421,9 @@ fun ProfileScreen(
                     memoryExpanded = !memoryExpanded
                     if (!isGuest && memoryUserId.isNotBlank()) {
                         savedMemories = ChatMemoryRepository.getMemories(context, memoryUserId)
+                        scope.launch {
+                            savedMemories = ChatMemoryRepository.syncMemoriesFromCloud(context, memoryUserId)
+                        }
                     }
                 }
             )
@@ -1496,8 +1503,10 @@ fun ProfileScreen(
                                         checked = memoryConsentEnabled,
                                         onCheckedChange = { isChecked ->
                                             memoryConsentEnabled = isChecked
-                                            ChatMemoryRepository.setMemoryConsentEnabled(context, memoryUserId, isChecked)
-                                            savedMemories = ChatMemoryRepository.getMemories(context, memoryUserId)
+                                            scope.launch {
+                                                ChatMemoryRepository.setConsentWithCloudSync(context, memoryUserId, isChecked)
+                                                savedMemories = ChatMemoryRepository.getMemories(context, memoryUserId)
+                                            }
                                             Toast.makeText(
                                                 context,
                                                 if (isChecked) "Personalized memory enabled" else "Personalized memory disabled",
@@ -1595,8 +1604,10 @@ fun ProfileScreen(
 
                                         IconButton(
                                             onClick = {
-                                                ChatMemoryRepository.deleteMemory(context, memoryUserId, memoryItem.id)
-                                                savedMemories = ChatMemoryRepository.getMemories(context, memoryUserId)
+                                                scope.launch {
+                                                    ChatMemoryRepository.deleteMemoryWithCloudSync(context, memoryUserId, memoryItem.id)
+                                                    savedMemories = ChatMemoryRepository.getMemories(context, memoryUserId)
+                                                }
                                                 Toast.makeText(
                                                     context,
                                                     appText("memory_deleted", selectedLanguage),
@@ -1620,8 +1631,10 @@ fun ProfileScreen(
 
                             OutlinedButton(
                                 onClick = {
-                                    ChatMemoryRepository.clearAllMemories(context, memoryUserId)
-                                    savedMemories = emptyList()
+                                    scope.launch {
+                                        ChatMemoryRepository.clearAllMemoriesWithCloudSync(context, memoryUserId)
+                                        savedMemories = emptyList()
+                                    }
                                     Toast.makeText(
                                         context,
                                         appText("memory_all_cleared", selectedLanguage),

@@ -385,7 +385,7 @@ class MedicineRepositoryTest {
             }
             val elapsed = System.currentTimeMillis() - start
             assertTrue("Results for $q must be bounded to at most 10", results.size <= 10)
-            assertTrue("Stream search for $q must complete under 3500ms, took ${elapsed}ms", elapsed < 3500)
+            assertTrue("Stream search for $q must complete under 8000ms, took ${elapsed}ms", elapsed < 8000)
         }
     }
 

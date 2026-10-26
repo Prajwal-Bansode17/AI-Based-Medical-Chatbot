@@ -3,6 +3,7 @@ package com.example.ai_based_medical_chatbot.data.api
 import android.content.Context
 import android.util.Log
 import com.example.ai_based_medical_chatbot.BuildConfig
+import kotlinx.coroutines.runBlocking
 import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Response
@@ -142,7 +143,7 @@ object RetrofitClient {
         val trimmed = rawUrl.trim()
 
         if (trimmed.isEmpty()) {
-            return DEFAULT_PHONE_BASE_URL
+            return "http://10.0.2.2:5000/"
         }
 
         val cleaned = when {
@@ -314,16 +315,130 @@ object RetrofitClient {
     }
 
     // =========================================================
+    // AUTH INTERCEPTOR (H1)
+    // =========================================================
+
+    private class AuthInterceptor : Interceptor {
+        override fun intercept(chain: Interceptor.Chain): Response {
+            val original = chain.request()
+            val ctx = appContext
+
+            // Extract existing correlation ID or generate a new tracking ID
+            val correlationId = original.header("X-Correlation-ID")
+                ?: ("req_" + java.util.UUID.randomUUID().toString().take(8))
+
+            // Read the currently saved Supabase access token.
+            var token: String? = try {
+                if (ctx != null) {
+                    com.example.ai_based_medical_chatbot.data.SupabaseClient
+                        .getAccessToken(ctx)
+                } else {
+                    null
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "[$correlationId] Could not read saved access token")
+                null
+            }
+
+            // If the token is missing but a refresh token exists, try to restore
+            // the session before sending the API request.
+            if (token.isNullOrBlank() && ctx != null) {
+                token = try {
+                    runBlocking {
+                        com.example.ai_based_medical_chatbot.data.SupabaseClient
+                            .refreshSession(ctx)
+                            .getOrNull()
+                    }
+                } catch (e: Exception) {
+                    Log.w(TAG, "[$correlationId] Session refresh before request failed")
+                    null
+                }
+            }
+
+            val requestBuilder = original.newBuilder()
+                .header("X-Correlation-ID", correlationId)
+
+            if (!token.isNullOrBlank()) {
+                requestBuilder.header("Authorization", "Bearer $token")
+            }
+
+            val requestWithToken = requestBuilder.build()
+            val startTime = System.currentTimeMillis()
+
+            Log.d(TAG, "[$correlationId] Sending ${original.method} ${original.url.encodedPath}")
+
+            val firstResponse = try {
+                chain.proceed(requestWithToken)
+            } catch (e: IOException) {
+                val elapsed = System.currentTimeMillis() - startTime
+                Log.w(TAG, "[$correlationId] Request failed after ${elapsed}ms: ${e.message}")
+                throw e
+            }
+
+            val elapsed = System.currentTimeMillis() - startTime
+            Log.d(TAG, "[$correlationId] Received HTTP ${firstResponse.code} in ${elapsed}ms")
+
+            // A 401 can mean the stored access token expired. Refresh once and
+            // retry once; never loop indefinitely.
+            if (firstResponse.code != 401 || ctx == null) {
+                return firstResponse
+            }
+
+            Log.i(TAG, "[$correlationId] HTTP 401 received; attempting token refresh...")
+
+            val refreshedToken = try {
+                runBlocking {
+                    com.example.ai_based_medical_chatbot.data.SupabaseClient
+                        .refreshSession(ctx)
+                        .getOrNull()
+                }
+            } catch (e: Exception) {
+                Log.w(TAG, "[$correlationId] Session refresh after HTTP 401 failed")
+                null
+            }
+
+            if (refreshedToken.isNullOrBlank()) {
+                // Keep the original response open so the caller receives the
+                // actual server response and its status/body.
+                return firstResponse
+            }
+
+            firstResponse.close()
+
+            val retryRequest = original.newBuilder()
+                .header("Authorization", "Bearer $refreshedToken")
+                .header("X-Correlation-ID", correlationId)
+                .build()
+
+            val retryStartTime = System.currentTimeMillis()
+            Log.d(TAG, "[$correlationId] Retrying request with refreshed token")
+
+            val retryResponse = try {
+                chain.proceed(retryRequest)
+            } catch (e: IOException) {
+                val retryElapsed = System.currentTimeMillis() - retryStartTime
+                Log.w(TAG, "[$correlationId] Retry request failed after ${retryElapsed}ms: ${e.message}")
+                throw e
+            }
+
+            val retryElapsed = System.currentTimeMillis() - retryStartTime
+            Log.d(TAG, "[$correlationId] Retry received HTTP ${retryResponse.code} in ${retryElapsed}ms")
+            return retryResponse
+        }
+    }
+
+    // =========================================================
     // HTTP CLIENT
     // =========================================================
 
     val okHttpClient: OkHttpClient =
         OkHttpClient.Builder()
+            .addInterceptor(AuthInterceptor())
             .addInterceptor(RetryInterceptor())
-            .connectTimeout(20, TimeUnit.SECONDS)
-            .readTimeout(90, TimeUnit.SECONDS)
+            .connectTimeout(15, TimeUnit.SECONDS)
+            .readTimeout(45, TimeUnit.SECONDS)
             .writeTimeout(30, TimeUnit.SECONDS)
-            .callTimeout(120, TimeUnit.SECONDS)
+            .callTimeout(60, TimeUnit.SECONDS)
             .build()
 
     // =========================================================

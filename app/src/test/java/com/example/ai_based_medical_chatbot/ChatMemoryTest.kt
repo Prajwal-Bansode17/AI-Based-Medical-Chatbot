@@ -9,81 +9,37 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
-
-private class TestSharedPreferences : SharedPreferences {
-    val map = mutableMapOf<String, Any?>()
-
-    override fun getAll(): MutableMap<String, *> = map
-    override fun getString(key: String?, defValue: String?): String? = (map[key] as? String) ?: defValue
-    override fun getStringSet(key: String?, defValues: MutableSet<String>?): MutableSet<String>? = defValues
-    override fun getInt(key: String?, defValue: Int): Int = (map[key] as? Int) ?: defValue
-    override fun getLong(key: String?, defValue: Long): Long = (map[key] as? Long) ?: defValue
-    override fun getFloat(key: String?, defValue: Float): Float = (map[key] as? Float) ?: defValue
-    override fun getBoolean(key: String?, defValue: Boolean): Boolean = (map[key] as? Boolean) ?: defValue
-    override fun contains(key: String?): Boolean = map.containsKey(key)
-    override fun edit(): SharedPreferences.Editor = TestEditor(this)
-    override fun registerOnSharedPreferenceChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener?) {}
-    override fun unregisterOnSharedPreferenceChangeListener(listener: SharedPreferences.OnSharedPreferenceChangeListener?) {}
-
-    class TestEditor(private val prefs: TestSharedPreferences) : SharedPreferences.Editor {
-        private val temp = mutableMapOf<String, Any?>()
-        private val removed = mutableSetOf<String>()
-        private var clear = false
-
-        override fun putString(key: String?, value: String?): SharedPreferences.Editor {
-            if (key != null) temp[key] = value
-            return this
-        }
-        override fun putStringSet(key: String?, values: MutableSet<String>?): SharedPreferences.Editor = this
-        override fun putInt(key: String?, value: Int): SharedPreferences.Editor {
-            if (key != null) temp[key] = value
-            return this
-        }
-        override fun putLong(key: String?, value: Long): SharedPreferences.Editor {
-            if (key != null) temp[key] = value
-            return this
-        }
-        override fun putFloat(key: String?, value: Float): SharedPreferences.Editor {
-            if (key != null) temp[key] = value
-            return this
-        }
-        override fun putBoolean(key: String?, value: Boolean): SharedPreferences.Editor {
-            if (key != null) temp[key] = value
-            return this
-        }
-        override fun remove(key: String?): SharedPreferences.Editor {
-            if (key != null) removed.add(key)
-            return this
-        }
-        override fun clear(): SharedPreferences.Editor {
-            clear = true
-            return this
-        }
-        override fun commit(): Boolean {
-            apply()
-            return true
-        }
-        override fun apply() {
-            if (clear) prefs.map.clear()
-            removed.forEach { prefs.map.remove(it) }
-            prefs.map.putAll(temp)
-        }
-    }
-}
+import com.example.ai_based_medical_chatbot.helpers.FakeSharedPreferences
+import com.example.ai_based_medical_chatbot.helpers.FakeMedicalApiService
+import com.example.ai_based_medical_chatbot.data.api.AddMemoryRequest
+import com.example.ai_based_medical_chatbot.data.api.ChatHistoryResponse
+import com.example.ai_based_medical_chatbot.data.api.ConversationsResponse
+import com.example.ai_based_medical_chatbot.data.api.MedicalApiService
+import com.example.ai_based_medical_chatbot.data.api.MemoryConsentRequest
+import com.example.ai_based_medical_chatbot.data.api.MemoryConsentResponse
+import com.example.ai_based_medical_chatbot.data.api.PredictionRequest
+import com.example.ai_based_medical_chatbot.data.api.PredictionResponse
+import com.example.ai_based_medical_chatbot.data.api.UpdateMemoryRequest
+import com.example.ai_based_medical_chatbot.data.api.UserMemoriesResponse
+import com.example.ai_based_medical_chatbot.data.api.UserMemoryItem
+import kotlinx.coroutines.runBlocking
+import retrofit2.Response
+import java.io.IOException
 
 class ChatMemoryTest {
 
-    private lateinit var fakePrefs: TestSharedPreferences
+    private lateinit var fakePrefs: FakeSharedPreferences
 
     @Before
     fun setUp() {
-        fakePrefs = TestSharedPreferences()
+        fakePrefs = FakeSharedPreferences()
         ChatMemoryRepository.customPrefs = fakePrefs
     }
 
     @After
     fun tearDown() {
         ChatMemoryRepository.customPrefs = null
+        ChatMemoryRepository.customApiService = null
     }
 
     // =========================================================================
@@ -528,5 +484,186 @@ class ChatMemoryTest {
 
         list = ChatMemoryRepository.getMemories(context = null, userId = userId)
         assertTrue("getMemories must be empty after clearAll", list.isEmpty())
+    }
+
+    // =========================================================================
+    // 10. CLOUD SYNCHRONIZATION & OFFLINE RESILIENCE (Priority 1)
+    // =========================================================================
+
+    @Test
+    fun testCloudSync_mergesRemoteMemories() = runBlocking {
+        val userId = "user_cloud_sync_1"
+        val fakeApi = FakeMedicalApiService()
+        fakeApi.cloudConsent = true
+        fakeApi.remoteMemories.add(
+            UserMemoryItem(
+                id = "rem_1",
+                userId = userId,
+                memoryKey = "diet_vegan",
+                content = "Follows a vegan diet",
+                category = "DIET"
+            )
+        )
+        ChatMemoryRepository.customApiService = fakeApi
+        ChatMemoryRepository.setMemoryConsentEnabled(context = null, userId = userId, enabled = true)
+
+        // Pre-save local memory
+        val localItem = ChatMemoryItem(
+            userId = userId,
+            key = "comm_concise",
+            content = "Prefers concise answers",
+            category = MemoryCategory.COMMUNICATION
+        )
+        ChatMemoryRepository.saveMemory(context = null, userId = userId, item = localItem)
+
+        // Run sync
+        val synced = ChatMemoryRepository.syncMemoriesFromCloud(context = null, userId = userId)
+        assertEquals(2, synced.size)
+        assertTrue(synced.any { it.key == "diet_vegan" && it.content == "Follows a vegan diet" })
+        assertTrue(synced.any { it.key == "comm_concise" && it.content == "Prefers concise answers" })
+
+        // Check local persistence updated
+        val localStored = ChatMemoryRepository.getMemories(context = null, userId = userId)
+        assertEquals(2, localStored.size)
+    }
+
+    @Test
+    fun testCloudSync_networkFailure_preservesLocalData() = runBlocking {
+        val userId = "user_offline_resilience"
+        val fakeApi = FakeMedicalApiService()
+        fakeApi.shouldFailWithNetworkError = true
+        ChatMemoryRepository.customApiService = fakeApi
+        ChatMemoryRepository.setMemoryConsentEnabled(context = null, userId = userId, enabled = true)
+
+        // Pre-save local memory
+        val localItem = ChatMemoryItem(
+            userId = userId,
+            key = "lifestyle_yoga",
+            content = "Practices daily morning yoga",
+            category = MemoryCategory.LIFESTYLE
+        )
+        ChatMemoryRepository.saveMemory(context = null, userId = userId, item = localItem)
+
+        // Network fails during sync: must NOT crash, must preserve local item
+        val synced = ChatMemoryRepository.syncMemoriesFromCloud(context = null, userId = userId)
+        assertEquals(1, synced.size)
+        assertEquals("lifestyle_yoga", synced[0].key)
+
+        val localStored = ChatMemoryRepository.getMemories(context = null, userId = userId)
+        assertEquals(1, localStored.size)
+        assertEquals("lifestyle_yoga", localStored[0].key)
+    }
+
+    @Test
+    fun testCloudConsentSync_updatesLocalPreference() = runBlocking {
+        val userId = "user_consent_sync"
+        val fakeApi = FakeMedicalApiService()
+        fakeApi.cloudConsent = true
+        ChatMemoryRepository.customApiService = fakeApi
+
+        assertFalse(ChatMemoryRepository.isMemoryConsentEnabled(context = null, userId = userId))
+
+        val consent = ChatMemoryRepository.syncConsentFromCloud(context = null, userId = userId)
+        assertTrue("syncConsentFromCloud must return remote consent", consent)
+        assertTrue("Local preference must be updated from cloud", ChatMemoryRepository.isMemoryConsentEnabled(context = null, userId = userId))
+    }
+
+    @Test
+    fun testSaveMemoryWithCloudSync_offlineFallback() = runBlocking {
+        val userId = "user_save_offline"
+        val fakeApi = FakeMedicalApiService()
+        fakeApi.shouldFailWithNetworkError = true
+        ChatMemoryRepository.customApiService = fakeApi
+        ChatMemoryRepository.setMemoryConsentEnabled(context = null, userId = userId, enabled = true)
+
+        val item = ChatMemoryItem(
+            userId = userId,
+            key = "hydration",
+            content = "Goal: drink 2L water daily",
+            category = MemoryCategory.GOAL
+        )
+
+        // Even with network failure, local save must succeed
+        val saved = ChatMemoryRepository.saveMemoryWithCloudSync(context = null, userId = userId, item = item)
+        assertTrue("saveMemoryWithCloudSync must succeed locally when offline", saved)
+
+        val localStored = ChatMemoryRepository.getMemories(context = null, userId = userId)
+        assertEquals(1, localStored.size)
+        assertEquals("hydration", localStored[0].key)
+    }
+
+    @Test
+    fun testDeleteMemoryWithCloudSync_removesFromLocalAndCloud() = runBlocking {
+        val userId = "user_delete_sync"
+        val fakeApi = FakeMedicalApiService()
+        ChatMemoryRepository.customApiService = fakeApi
+        ChatMemoryRepository.setMemoryConsentEnabled(context = null, userId = userId, enabled = true)
+
+        val item = ChatMemoryItem(
+            id = "mem_to_del",
+            userId = userId,
+            key = "del_key",
+            content = "To be deleted",
+            category = MemoryCategory.PREFERENCE
+        )
+        ChatMemoryRepository.saveMemory(context = null, userId = userId, item = item)
+        assertEquals(1, ChatMemoryRepository.getMemories(context = null, userId = userId).size)
+
+        val deleted = ChatMemoryRepository.deleteMemoryWithCloudSync(context = null, userId = userId, memoryId = "mem_to_del")
+        assertTrue(deleted)
+        assertTrue(ChatMemoryRepository.getMemories(context = null, userId = userId).isEmpty())
+        assertTrue(fakeApi.deletedIds.contains("mem_to_del"))
+    }
+
+    @Test
+    fun testClearAllMemoriesWithCloudSync_removesFromLocalAndCloud() = runBlocking {
+        val userId = "user_clear_all_sync"
+        val fakeApi = FakeMedicalApiService()
+        ChatMemoryRepository.customApiService = fakeApi
+        ChatMemoryRepository.setMemoryConsentEnabled(context = null, userId = userId, enabled = true)
+
+        ChatMemoryRepository.saveMemory(
+            context = null,
+            userId = userId,
+            item = ChatMemoryItem(userId = userId, key = "k1", content = "Content 1")
+        )
+        ChatMemoryRepository.saveMemory(
+            context = null,
+            userId = userId,
+            item = ChatMemoryItem(userId = userId, key = "k2", content = "Content 2")
+        )
+        assertEquals(2, ChatMemoryRepository.getMemories(context = null, userId = userId).size)
+
+        val cleared = ChatMemoryRepository.clearAllMemoriesWithCloudSync(context = null, userId = userId)
+        assertTrue(cleared)
+        assertTrue(ChatMemoryRepository.getMemories(context = null, userId = userId).isEmpty())
+        assertTrue(fakeApi.clearedAll)
+    }
+
+    @Test
+    fun testNewChatMemoryRecall_injectsBackgroundContext() {
+        val userId = "user_new_chat_recall"
+        ChatMemoryRepository.setMemoryConsentEnabled(context = null, userId = userId, enabled = true)
+
+        val item = ChatMemoryItem(
+            userId = userId,
+            key = "diet_veg",
+            content = "Follows a strict vegetarian diet",
+            category = MemoryCategory.DIET
+        )
+        ChatMemoryRepository.saveMemory(context = null, userId = userId, item = item)
+
+        // Starting a new conversation: query about meals
+        val newChatQuery = "What should I make for lunch?"
+        val userMemories = ChatMemoryRepository.getMemories(context = null, userId = userId)
+        val relevant = MemoryRetriever.retrieveRelevantMemories(newChatQuery, userMemories)
+
+        assertEquals(1, relevant.size)
+        assertEquals("diet_veg", relevant[0].key)
+
+        val prompt = MemoryRetriever.formatPromptWithMemory(newChatQuery, relevant)
+        assertTrue(prompt.contains("[USER PREFERENCES & CONTEXT (LONG-TERM MEMORY)]"))
+        assertTrue(prompt.contains("Follows a strict vegetarian diet"))
+        assertTrue(prompt.contains(newChatQuery))
     }
 }

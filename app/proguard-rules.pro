@@ -1,21 +1,44 @@
-# Add project specific ProGuard rules here.
-# You can control the set of applied configuration files using the
-# proguardFiles setting in build.gradle.
-#
-# For more details, see
-#   http://developer.android.com/guide/developing/tools/proguard.html
+# =======================================================================
+# MEDASSIST AI - PROGUARD / R8 RELEASE OPTIMIZATION RULES
+# =======================================================================
 
-# If your project uses WebView with JS, uncomment the following
-# and specify the fully qualified class name to the JavaScript interface
-# class:
-#-keepclassmembers class fqcn.of.javascript.interface.for.webview {
-#   public *;
-#}
+# 1. Retrofit & OkHttp
+-keepattributes Signature, InnerClasses, EnclosingMethod
+-keepattributes RuntimeVisibleAnnotations, RuntimeVisibleParameterAnnotations
+-keepclassmembers,allowobfuscation interface * {
+    @retrofit2.http.* <methods>;
+}
+-dontwarn retrofit2.**
+-keep class retrofit2.** { *; }
+-dontwarn okhttp3.**
+-dontwarn okio.**
+-keep class okhttp3.** { *; }
 
-# Uncomment this to preserve the line number information for
-# debugging stack traces.
-#-keepattributes SourceFile,LineNumberTable
+# 2. Gson Serialization & Data Models
+-keepattributes *Annotation*
+-keepclassmembers class * {
+    @com.google.gson.annotations.SerializedName <fields>;
+}
+-keep class com.google.gson.** { *; }
 
-# If you keep the line number information, uncomment this to
-# hide the original source file name.
-#-renamesourcefileattribute SourceFile
+# Keep all project API models and data classes to prevent field stripping/obfuscation
+-keep class com.example.ai_based_medical_chatbot.data.api.** { *; }
+-keep class com.example.ai_based_medical_chatbot.ChatMemoryItem { *; }
+-keep class com.example.ai_based_medical_chatbot.MemoryCategory { *; }
+-keep class com.example.ai_based_medical_chatbot.ChatMessage { *; }
+-keep class data.** { *; }
+-keep class model.** { *; }
+
+# 3. Kotlin Coroutines & Reflection
+-dontwarn kotlinx.coroutines.**
+-keep class kotlinx.coroutines.** { *; }
+
+# 4. MLKit Text Recognition & Translation
+-keep class com.google.mlkit.** { *; }
+-dontwarn com.google.mlkit.**
+-keep class com.google.android.gms.** { *; }
+-dontwarn com.google.android.gms.**
+
+# 5. Supabase
+-keep class io.github.jan.supabase.** { *; }
+-dontwarn io.github.jan.supabase.**

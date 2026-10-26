@@ -3,8 +3,16 @@ package com.example.ai_based_medical_chatbot
 import android.content.Context
 import android.content.SharedPreferences
 import android.util.Log
+import com.example.ai_based_medical_chatbot.data.api.AddMemoryRequest
+import com.example.ai_based_medical_chatbot.data.api.MedicalApiService
+import com.example.ai_based_medical_chatbot.data.api.MemoryConsentRequest
+import com.example.ai_based_medical_chatbot.data.api.RetrofitClient
+import com.example.ai_based_medical_chatbot.data.api.UpdateMemoryRequest
+import com.example.ai_based_medical_chatbot.data.api.UserMemoryItem
 import com.google.gson.Gson
 import com.google.gson.reflect.TypeToken
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import java.util.Locale
 import java.util.UUID
 
@@ -31,6 +39,25 @@ data class ChatMemoryItem(
     val category: MemoryCategory = MemoryCategory.PREFERENCE,
     val timestamp: Long = System.currentTimeMillis()
 )
+
+/**
+ * Converts a backend UserMemoryItem from REST API into local ChatMemoryItem.
+ */
+fun UserMemoryItem.toChatMemoryItem(fallbackUserId: String): ChatMemoryItem {
+    val cat = try {
+        MemoryCategory.valueOf(category.uppercase(Locale.ROOT))
+    } catch (_: Exception) {
+        MemoryCategory.PREFERENCE
+    }
+    return ChatMemoryItem(
+        id = id.ifBlank { UUID.randomUUID().toString() },
+        userId = userId.ifBlank { fallbackUserId },
+        key = memoryKey.ifBlank { "pref_${UUID.randomUUID().toString().take(8)}" },
+        content = content,
+        category = cat,
+        timestamp = System.currentTimeMillis()
+    )
+}
 
 /**
  * Strict safety filter ensuring only safe, non-sensitive contextual information is saved.
@@ -293,8 +320,7 @@ object MemoryRetriever {
 }
 
 /**
- * Repository responsible for user-isolated persistence, consent management,
- * and retrieval of long-term conversational memories.
+ * Safe logging utility that does not crash in test environments where android.util.Log is unmocked.
  */
 internal object SafeMemoryLog {
     fun d(tag: String, msg: String) {
@@ -308,6 +334,13 @@ internal object SafeMemoryLog {
     }
 }
 
+/**
+ * Repository responsible for user-isolated persistence, consent management,
+ * and retrieval of long-term conversational memories.
+ *
+ * Supports offline-first SharedPreferences persistence with asynchronous
+ * cloud synchronization via the authenticated MedicalApiService.
+ */
 object ChatMemoryRepository {
 
     private const val PREFS_NAME = "medassist_chatbot_memory"
@@ -320,10 +353,16 @@ object ChatMemoryRepository {
     @androidx.annotation.VisibleForTesting
     var customPrefs: SharedPreferences? = null
 
+    @androidx.annotation.VisibleForTesting
+    var customApiService: MedicalApiService? = null
+
     private fun prefs(context: Context?): SharedPreferences {
         return customPrefs ?: context?.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
             ?: error("Context or customPrefs must be provided")
     }
+
+    private fun getApiService(): MedicalApiService =
+        customApiService ?: RetrofitClient.apiService
 
     /**
      * Determines whether long-term memory operations (read/write) are permitted.
@@ -368,7 +407,7 @@ object ChatMemoryRepository {
     }
 
     /**
-     * Retrieves all memories for the authenticated user.
+     * Retrieves all memories for the authenticated user from local storage.
      * Returns empty list if not permitted, guest mode, or temporary chat.
      */
     fun getMemories(
@@ -395,7 +434,7 @@ object ChatMemoryRepository {
     }
 
     /**
-     * Saves or updates a memory item for the authenticated user.
+     * Saves or updates a memory item for the authenticated user in local storage.
      * Rejects items that fail the safety filter, guest users, or temporary chat.
      */
     fun saveMemory(
@@ -441,7 +480,7 @@ object ChatMemoryRepository {
     }
 
     /**
-     * Deletes a specific memory item by ID for the authenticated user.
+     * Deletes a specific memory item by ID for the authenticated user locally.
      */
     fun deleteMemory(context: Context?, userId: String?, memoryId: String): Boolean {
         if (isGuestUser(userId)) return false
@@ -455,7 +494,7 @@ object ChatMemoryRepository {
     }
 
     /**
-     * Clears all stored memories for the authenticated user.
+     * Clears all stored memories for the authenticated user locally.
      */
     fun clearAllMemories(context: Context?, userId: String?): Boolean {
         if (isGuestUser(userId)) return false
@@ -467,5 +506,176 @@ object ChatMemoryRepository {
     private fun persistMemories(context: Context?, userId: String, items: List<ChatMemoryItem>) {
         val jsonString = gson.toJson(items)
         prefs(context).edit().putString(KEY_MEMORIES_PREFIX + userId, jsonString).apply()
+    }
+
+    // =========================================================================
+    // CLOUD SYNCHRONIZATION METHODS (Priority 1)
+    // =========================================================================
+
+    /**
+     * Synchronizes memories from the Flask API into local storage.
+     * Preserves offline behavior: if the network request fails, returns the local cache.
+     */
+    suspend fun syncMemoriesFromCloud(
+        context: Context?,
+        userId: String?,
+        isTemporaryChat: Boolean = false
+    ): List<ChatMemoryItem> = withContext(Dispatchers.IO) {
+        if (!isMemoryPermitted(context, userId, isTemporaryChat)) {
+            return@withContext emptyList()
+        }
+        val cleanUserId = userId!!.trim()
+        try {
+            val response = getApiService().getUserMemories()
+            if (response.isSuccessful && response.body()?.status == "success") {
+                val remoteItems = response.body()?.memories ?: emptyList()
+                val converted = remoteItems.map { it.toChatMemoryItem(cleanUserId) }
+
+                // Merge remote items with local items, key-deduped
+                val localMemories = getMemories(context, cleanUserId, isTemporaryChat = false)
+                val mergedMap = mutableMapOf<String, ChatMemoryItem>()
+                for (item in localMemories) {
+                    mergedMap[item.key.lowercase(Locale.ROOT)] = item
+                }
+                for (item in converted) {
+                    mergedMap[item.key.lowercase(Locale.ROOT)] = item
+                }
+                val mergedList = mergedMap.values.sortedByDescending { it.timestamp }.take(MAX_SAVED_MEMORIES_PER_USER)
+                persistMemories(context, cleanUserId, mergedList)
+                return@withContext mergedList
+            } else {
+                SafeMemoryLog.w("ChatMemory", "Cloud memory sync response: ${response.code()}")
+            }
+        } catch (e: Exception) {
+            SafeMemoryLog.w("ChatMemory", "Cloud memory sync network error (falling back to local cache): ${e.message}")
+        }
+        return@withContext getMemories(context, cleanUserId, isTemporaryChat = false)
+    }
+
+    /**
+     * Synchronizes memory consent status from the cloud.
+     * Falls back to local consent on network failure.
+     */
+    suspend fun syncConsentFromCloud(
+        context: Context?,
+        userId: String?
+    ): Boolean = withContext(Dispatchers.IO) {
+        if (isGuestUser(userId)) return@withContext false
+        val cleanUserId = userId!!.trim()
+        try {
+            val response = getApiService().getMemoryConsent()
+            if (response.isSuccessful && response.body()?.status == "success") {
+                val remoteConsent = response.body()?.consent ?: false
+                setMemoryConsentEnabled(context, cleanUserId, remoteConsent)
+                return@withContext remoteConsent
+            }
+        } catch (e: Exception) {
+            SafeMemoryLog.w("ChatMemory", "Cloud consent sync network error: ${e.message}")
+        }
+        return@withContext isMemoryConsentEnabled(context, cleanUserId)
+    }
+
+    /**
+     * Updates memory consent both locally and on the backend.
+     */
+    suspend fun setConsentWithCloudSync(
+        context: Context?,
+        userId: String?,
+        enabled: Boolean
+    ): Boolean = withContext(Dispatchers.IO) {
+        if (isGuestUser(userId)) return@withContext false
+        val cleanUserId = userId!!.trim()
+        setMemoryConsentEnabled(context, cleanUserId, enabled)
+        try {
+            getApiService().setMemoryConsent(MemoryConsentRequest(consent = enabled))
+        } catch (e: Exception) {
+            SafeMemoryLog.w("ChatMemory", "Cloud set consent error (local saved): ${e.message}")
+        }
+        return@withContext true
+    }
+
+    /**
+     * Saves a memory item locally and synchronizes it to the cloud backend.
+     * If the cloud call fails, the local memory is still saved.
+     */
+    suspend fun saveMemoryWithCloudSync(
+        context: Context?,
+        userId: String?,
+        item: ChatMemoryItem,
+        isTemporaryChat: Boolean = false
+    ): Boolean = withContext(Dispatchers.IO) {
+        val localSaved = saveMemory(context, userId, item, isTemporaryChat)
+        if (!localSaved) return@withContext false
+
+        try {
+            val req = AddMemoryRequest(
+                key = item.key,
+                content = item.content,
+                category = item.category.name
+            )
+            getApiService().addUserMemory(req)
+        } catch (e: Exception) {
+            SafeMemoryLog.w("ChatMemory", "Cloud save error (local saved): ${e.message}")
+        }
+        return@withContext true
+    }
+
+    /**
+     * Updates a memory item locally and on the cloud backend.
+     */
+    suspend fun updateMemoryWithCloudSync(
+        context: Context?,
+        userId: String?,
+        memoryId: String,
+        newContent: String
+    ): Boolean = withContext(Dispatchers.IO) {
+        if (isGuestUser(userId)) return@withContext false
+        if (!MemorySafetyFilter.isSafeForLongTermMemory(newContent)) return@withContext false
+        val cleanUserId = userId!!.trim()
+        val current = getMemories(context, cleanUserId, isTemporaryChat = false).toMutableList()
+        val index = current.indexOfFirst { it.id == memoryId }
+        if (index >= 0) {
+            current[index] = current[index].copy(content = newContent, timestamp = System.currentTimeMillis())
+            persistMemories(context, cleanUserId, current)
+        }
+        try {
+            getApiService().updateUserMemory(memoryId, UpdateMemoryRequest(content = newContent))
+        } catch (e: Exception) {
+            SafeMemoryLog.w("ChatMemory", "Cloud update error (local updated): ${e.message}")
+        }
+        return@withContext true
+    }
+
+    /**
+     * Deletes a memory item locally and on the cloud backend.
+     */
+    suspend fun deleteMemoryWithCloudSync(
+        context: Context?,
+        userId: String?,
+        memoryId: String
+    ): Boolean = withContext(Dispatchers.IO) {
+        val localDeleted = deleteMemory(context, userId, memoryId)
+        try {
+            getApiService().deleteUserMemory(memoryId)
+        } catch (e: Exception) {
+            SafeMemoryLog.w("ChatMemory", "Cloud delete error (local deleted): ${e.message}")
+        }
+        return@withContext localDeleted
+    }
+
+    /**
+     * Clears all memories locally and on the cloud backend.
+     */
+    suspend fun clearAllMemoriesWithCloudSync(
+        context: Context?,
+        userId: String?
+    ): Boolean = withContext(Dispatchers.IO) {
+        val localCleared = clearAllMemories(context, userId)
+        try {
+            getApiService().clearAllUserMemories()
+        } catch (e: Exception) {
+            SafeMemoryLog.w("ChatMemory", "Cloud clear all error (local cleared): ${e.message}")
+        }
+        return@withContext localCleared
     }
 }

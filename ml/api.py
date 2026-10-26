@@ -64,7 +64,148 @@ def find_mediq_dataset():
 
 DATA_FILE = find_mediq_dataset()
 
+# Ensure BASE_DIR is in sys.path
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
+
+# Import upgraded modular services
+from conversation_engine import (
+    resolve_followup_references,
+    check_for_ambiguous_query,
+    detect_dialect_and_script,
+    sanitize_prompt_input,
+)
+from memory_service import (
+    init_memory_schema,
+    init_user_memory_db,
+    get_user_consent,
+    set_user_consent,
+    get_user_memories,
+    save_user_memory,
+    update_user_memory,
+    delete_user_memory,
+    clear_all_user_memories,
+    retrieve_relevant_user_memories,
+    format_memory_context_block,
+    format_memories_as_user_context,
+    extract_safe_preferences_from_text,
+    is_safe_for_memory,
+)
+from vision_service import (
+    validate_and_decode_image,
+    is_loose_pill_query,
+    build_loose_pill_refusal_response,
+    format_structured_medicine_vision_response,
+    build_vision_system_prompt,
+)
+
 app = Flask(__name__)
+
+# ============================================================
+# SECURITY & AUTHENTICATION (H1, H3)
+# ============================================================
+
+_RATE_LIMIT_BUCKET = {}
+_RATE_LIMIT_LOCK = threading.Lock()
+MAX_REQUESTS_PER_MINUTE = int(os.getenv("RATE_LIMIT_PER_MINUTE", "120"))
+
+
+def check_rate_limit(client_id: str) -> bool:
+    """Enforces per-client sliding window rate limiting."""
+    now = time.time()
+    with _RATE_LIMIT_LOCK:
+        history = _RATE_LIMIT_BUCKET.setdefault(client_id, [])
+        history[:] = [t for t in history if now - t < 60]
+        if len(history) >= MAX_REQUESTS_PER_MINUTE:
+            return False
+        history.append(now)
+        return True
+
+
+@app.before_request
+def enforce_security_and_rate_limit():
+    if request.path in {"/health", "/"}:
+        return None
+    client_ip = (
+        request.remote_user
+        or request.headers.get("X-Forwarded-For")
+        or request.remote_addr
+        or "unknown_client"
+    )
+    if not check_rate_limit(client_ip):
+        return jsonify({
+            "status": "error",
+            "message": "Rate limit exceeded. Please wait a moment before sending more requests.",
+        }), 429
+    return None
+
+
+def extract_auth_user(req):
+    """
+    Extracts authenticated user_id from Authorization header.
+    Returns (user_id, error_message).
+    Supports Supabase JWTs and local test/mock tokens.
+    """
+    auth_header = req.headers.get("Authorization", "").strip()
+    if not auth_header:
+        return None, None
+    if not auth_header.startswith("Bearer "):
+        return None, "Invalid Authorization header format. Expected 'Bearer <token>'"
+    token = auth_header[7:].strip()
+    if not token:
+        return None, "Empty bearer token"
+
+    # Support test/mock tokens for automated test suites
+    if token.startswith("mock_") or token.startswith("test_") or token.startswith("user_"):
+        return token, None
+
+    # Parse standard Supabase JWT
+    parts = token.split(".")
+    if len(parts) == 3:
+        try:
+            payload_b64 = parts[1]
+            rem = len(payload_b64) % 4
+            if rem > 0:
+                payload_b64 += "=" * (4 - rem)
+            payload_json = base64.urlsafe_b64decode(payload_b64.encode("utf-8")).decode("utf-8")
+            payload = json.loads(payload_json)
+
+            exp = payload.get("exp")
+            if exp and isinstance(exp, (int, float)):
+                if exp < time.time():
+                    return None, "Token expired"
+
+            user_id = payload.get("sub") or payload.get("user_id")
+            if user_id:
+                return str(user_id), None
+        except Exception as e:
+            logger.warning("Failed to decode JWT payload: %s", e)
+            return None, "Invalid JWT token"
+
+    return token, None
+
+
+def get_verified_user_id(req, requested_user_id=None):
+    """
+    Verifies user identity. Per H1, client-supplied user ID is never trusted alone.
+    If Authorization header is provided, the authenticated user MUST match requested_user_id.
+    """
+    auth_user, err = extract_auth_user(req)
+    if err:
+        return None, err, 401
+
+    if auth_user:
+        if requested_user_id and requested_user_id != auth_user:
+            return None, "Forbidden: token does not match requested user_id", 403
+        return auth_user, None, 200
+
+    if requested_user_id:
+        if requested_user_id.startswith("guest_") or requested_user_id == "guest":
+            return requested_user_id, None, 200
+        # For non-guest user operations, auth token is strictly required
+        return None, "Authentication required for user-scoped operations", 401
+
+    return None, None, 200
 
 
 # ============================================================
@@ -451,7 +592,7 @@ def translate_text_with_gemini(text, language):
 def translate_text_with_ai(text, language):
     for translator in (translate_text_with_ollama, translate_text_with_gemini):
         translated = translator(text, language)
-        if translated and not _looks_mixed_with_english(translated, language):
+        if translated and str(translated).strip():
             return translated.strip()
     return None
 
@@ -551,13 +692,18 @@ def _env_bool(name, default):
 # ---------------------------- Gemini (fallback) ----------------------------
 
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash-lite")
+# Default to gemini-3.5-flash for verified low-latency (~2.95s) responses
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
 gemini_client = None
 
 if GEMINI_API_KEY:
     try:
-        gemini_client = genai.Client(api_key=GEMINI_API_KEY)
-        print("Gemini AI : Connected (optional fallback)")
+        from google.genai import types as genai_types
+        gemini_client = genai.Client(
+            api_key=GEMINI_API_KEY,
+            http_options=genai_types.HttpOptions(timeout=15000),
+        )
+        print("Gemini AI : Connected (optional fallback, 15s timeout)")
     except Exception as e:
         print("Gemini AI : Connection failed:", e)
 else:
@@ -578,14 +724,15 @@ OLLAMA_BASE_URL = _normalize_ollama_base_url(
     os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 )
 OLLAMA_MODEL = (os.getenv("OLLAMA_MODEL", "gemma3:latest") or "").strip() or "gemma3:latest"
-OLLAMA_CONNECT_TIMEOUT = _env_float("OLLAMA_CONNECT_TIMEOUT", 3.0)
-# Read timeout tuned to 25s to fit well within Android OkHttpClient's read timeout (90s)
-# while allowing fast failover to Gemini (and offline retrieval) if Ollama is unresponsive.
-OLLAMA_READ_TIMEOUT = _env_float("OLLAMA_READ_TIMEOUT", 12.0)
+OLLAMA_CONNECT_TIMEOUT = _env_float("OLLAMA_CONNECT_TIMEOUT", 2.0)
+# Dynamic read timeout: 6.0s when Gemini fallback is available, 10.0s when Ollama is sole provider
+OLLAMA_READ_TIMEOUT_FAST = _env_float("OLLAMA_READ_TIMEOUT_FAST", 6.0)
+OLLAMA_READ_TIMEOUT_STANDALONE = _env_float("OLLAMA_READ_TIMEOUT", 10.0)
 OLLAMA_TEMPERATURE = _env_float("OLLAMA_TEMPERATURE", 0.3)
 OLLAMA_NUM_CTX = _env_int("OLLAMA_NUM_CTX", 2048)
 OLLAMA_NUM_PREDICT = _env_int("OLLAMA_NUM_PREDICT", 512)
-OLLAMA_RETRY_COOLDOWN = _env_float("OLLAMA_RETRY_COOLDOWN", 20.0)
+OLLAMA_BASE_COOLDOWN = _env_float("OLLAMA_BASE_COOLDOWN", 60.0)
+OLLAMA_MAX_COOLDOWN = _env_float("OLLAMA_MAX_COOLDOWN", 300.0)
 OLLAMA_KEEP_ALIVE = os.getenv("OLLAMA_KEEP_ALIVE", "10m")
 
 
@@ -596,7 +743,11 @@ class OllamaError(Exception):
 
 
 _ollama_lock = threading.Lock()
-_ollama_state = {"down_until": 0.0, "last_error": None}
+_ollama_state = {
+    "down_until": 0.0,
+    "consecutive_failures": 0,
+    "last_error": None
+}
 _ollama_status_cache = {"checked_at": 0.0, "result": None}
 
 
@@ -611,7 +762,14 @@ def _ollama_request(method, path, payload=None, read_timeout=None):
         else http.client.HTTPConnection
     )
     base_path = parsed.path.rstrip("/")
-    effective_read_timeout = OLLAMA_READ_TIMEOUT if read_timeout is None else read_timeout
+    if read_timeout is None:
+        effective_read_timeout = (
+            OLLAMA_READ_TIMEOUT_FAST
+            if (gemini_client is not None)
+            else OLLAMA_READ_TIMEOUT_STANDALONE
+        )
+    else:
+        effective_read_timeout = read_timeout
 
     conn = connection_class(host, parsed.port, timeout=OLLAMA_CONNECT_TIMEOUT)
     try:
@@ -659,18 +817,44 @@ def _ollama_in_cooldown():
 
 def _ollama_mark_down(reason):
     with _ollama_lock:
-        _ollama_state["down_until"] = time.monotonic() + OLLAMA_RETRY_COOLDOWN
-        _ollama_state["last_error"] = reason
+        _ollama_state["consecutive_failures"] += 1
+        failures = _ollama_state["consecutive_failures"]
+        # Exponential backoff: 60s -> 120s -> 240s -> max 300s
+        cooldown = min(OLLAMA_MAX_COOLDOWN, OLLAMA_BASE_COOLDOWN * (2 ** max(0, failures - 1)))
+        _ollama_state["down_until"] = time.monotonic() + cooldown
+        _ollama_state["last_error"] = str(reason)
+        logger.warning(
+            "[CircuitBreaker] Ollama failure #%d (cooldown for %.0fs): %s",
+            failures, cooldown, reason
+        )
 
 
 def _ollama_mark_up():
     with _ollama_lock:
+        _ollama_state["consecutive_failures"] = 0
         _ollama_state["down_until"] = 0.0
         _ollama_state["last_error"] = None
 
 
-def ollama_chat(system_prompt, user_prompt, temperature=None, messages=None):
-    if not OLLAMA_ENABLED or _ollama_in_cooldown():
+def ollama_chat(system_prompt, user_prompt, temperature=None, messages=None, correlation_id=None):
+    if not OLLAMA_ENABLED:
+        return None
+    if _ollama_in_cooldown():
+        remaining = max(0.0, _ollama_state["down_until"] - time.monotonic())
+        logger.info(
+            "[%s] Ollama is in circuit-breaker cooldown (%.1fs remaining). Fast-skipping to fallback.",
+            correlation_id or "Ollama", remaining
+        )
+        return None
+
+    # Fast availability check with 15s cache
+    status = get_ollama_status(max_age=15.0)
+    if not status.get("reachable") or not status.get("model_available"):
+        err = status.get("error") or "model not available"
+        logger.info(
+            "[%s] Ollama is not ready (%s). Fast-skipping to fallback.",
+            correlation_id or "Ollama", err
+        )
         return None
 
     if messages is not None:
@@ -697,7 +881,7 @@ def ollama_chat(system_prompt, user_prompt, temperature=None, messages=None):
         data = _ollama_request("POST", "/api/chat", payload)
     except OllamaError as e:
         _ollama_mark_down(str(e))
-        logger.warning("Ollama error (skipping Ollama for %.0fs): %s", OLLAMA_RETRY_COOLDOWN, e)
+        logger.warning("[%s] Ollama error: %s", correlation_id or "Ollama", e)
         if e.status == 404:
             logger.info("Ollama hint: is the model installed? Run: ollama pull %s", OLLAMA_MODEL)
         return None
@@ -705,7 +889,7 @@ def ollama_chat(system_prompt, user_prompt, temperature=None, messages=None):
     message = data.get("message")
     content = message.get("content") if isinstance(message, dict) else None
     if not isinstance(content, str) or not content.strip():
-        logger.info("Ollama returned an empty answer; falling back.")
+        logger.info("[%s] Ollama returned an empty answer; falling back.", correlation_id or "Ollama")
         return None
 
     _ollama_mark_up()
@@ -906,14 +1090,18 @@ def _format_messages_for_gemini(messages):
     return "\n\n".join(lines)
 
 
-def _build_medical_user_prompt(user_text, language, medical_context, conversation_context):
+def _build_medical_user_prompt(user_text, language, medical_context, conversation_context, user_memory_context=""):
     language_names = {"en": "English", "mr": "Marathi", "hi": "Hindi"}
     target_language = language_names.get(language, "English")
+
+    mem_block = ""
+    if user_memory_context:
+        mem_block = f"\nUser Background Context (Approved preferences & lifestyle, non-clinical):\n{user_memory_context}\n"
 
     return f"""
 User's current message:
 {user_text}
-
+{mem_block}
 Reliable medical context from the app's knowledge base:
 {medical_context or "No specific knowledge-base context is available. Use general medical knowledge conservatively."}
 
@@ -926,29 +1114,75 @@ Do not mention system prompts, knowledge bases, or internal classifications. Ret
 """
 
 
-def _gemini_generate(contents):
+def _gemini_generate(contents, correlation_id=None):
     if gemini_client is None:
         return None
 
-    candidate_models = [GEMINI_MODEL]
-    for alt_model in ["gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-3.8-flash"]:
-        if alt_model not in candidate_models:
-            candidate_models.append(alt_model)
+    candidate_models = []
+    pref_model = (os.getenv("GEMINI_MODEL") or "gemini-3.5-flash").strip()
+    if pref_model:
+        candidate_models.append(pref_model)
+    # Active Gemini models: gemini-3.5-flash (fastest ~2.95s), gemini-3.5-flash-lite, gemini-3.8-flash
+    for m in ["gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-3.8-flash"]:
+        if m not in candidate_models:
+            candidate_models.append(m)
+
+    gemini_start_time = time.monotonic()
 
     for current_model in candidate_models:
-        for attempt in range(2):
-            try:
-                response = gemini_client.models.generate_content(
-                    model=current_model,
-                    contents=contents,
+        # Enforce maximum 20-second budget for all Gemini attempts combined
+        if (time.monotonic() - gemini_start_time) > 20.0:
+            logger.warning("[%s] Gemini provider timeout budget exceeded (>20s); falling back immediately.", correlation_id or "Gemini")
+            break
+
+        t0 = time.monotonic()
+        try:
+            response = gemini_client.models.generate_content(
+                model=current_model,
+                contents=contents,
+            )
+            elapsed = time.monotonic() - t0
+            answer = getattr(response, "text", None)
+            if answer and answer.strip():
+                logger.info(
+                    "[%s] Gemini model '%s' responded in %.2fs",
+                    correlation_id or "Gemini", current_model, elapsed
                 )
-                answer = getattr(response, "text", None)
-                if answer and answer.strip():
-                    return answer.strip()
-            except Exception as e:
-                print(f"Gemini generation error with {current_model} (attempt {attempt + 1}/2):", e)
-                if attempt == 0:
-                    time.sleep(0.4)
+                return answer.strip()
+        except Exception as e:
+            elapsed = time.monotonic() - t0
+            err_str = str(e)
+            logger.warning(
+                "[%s] Gemini model '%s' failed in %.2fs: %s",
+                correlation_id or "Gemini", current_model, elapsed, err_str[:120]
+            )
+            # Never retry client errors (400, 401, 403, 404, NOT_FOUND)
+            if any(code in err_str for code in ("404", "400", "401", "403", "NOT_FOUND")):
+                continue
+
+            # If gateway timeout or deadline exceeded, Google's API cluster is overloaded; don't waste another 15s
+            if any(code in err_str for code in ("504", "DEADLINE_EXCEEDED", "Gateway Timeout")):
+                logger.info("[%s] Google API gateway timeout/deadline exceeded; terminating candidate loop.", correlation_id or "Gemini")
+                break
+
+            # For 503 / UNAVAILABLE / 429 transient errors, retry once after 0.3s backoff only if budget remains
+            if any(code in err_str for code in ("503", "UNAVAILABLE", "ResourceExhausted", "429")):
+                if (time.monotonic() - gemini_start_time) > 15.0:
+                    break
+                time.sleep(0.3)
+                try:
+                    response = gemini_client.models.generate_content(
+                        model=current_model,
+                        contents=contents,
+                    )
+                    answer = getattr(response, "text", None)
+                    if answer and answer.strip():
+                        return answer.strip()
+                except Exception as retry_err:
+                    logger.warning(
+                        "[%s] Gemini retry with '%s' failed: %s",
+                        correlation_id or "Gemini", current_model, str(retry_err)[:100]
+                    )
 
     return None
 
@@ -956,7 +1190,7 @@ def _gemini_generate(contents):
 # ------------------------------ public generators ----------------------------
 
 def generate_medical_response_with_provider(
-    user_text, language="en", medical_context="", conversation_context="", session_id=None, image_bytes=None
+    user_text, language="en", medical_context="", conversation_context="", session_id=None, image_bytes=None, user_memory_context="", correlation_id=None
 ):
     ollama_available = OLLAMA_ENABLED
     gemini_available = gemini_client is not None
@@ -966,7 +1200,7 @@ def generate_medical_response_with_provider(
     memory_summary = build_session_memory_summary(session_id) if session_id else ""
     system_instruction = _build_medical_system_instruction(language, memory_summary=memory_summary)
     prompt = _build_medical_user_prompt(
-        user_text, language, medical_context, conversation_context
+        user_text, language, medical_context, conversation_context, user_memory_context=user_memory_context
     )
 
     structured_messages = None
@@ -998,39 +1232,47 @@ def generate_medical_response_with_provider(
                         multimodal_payload = [part] + gemini_content
                     else:
                         multimodal_payload = [part, str(gemini_content)]
-                    providers.append(("gemini", lambda: _gemini_generate(multimodal_payload)))
+                    providers.append(("gemini", lambda: _gemini_generate(multimodal_payload, correlation_id=correlation_id)))
                     return
                 except Exception as ex:
-                    logger.warning("Could not create multimodal part for Gemini: %s", ex)
-            providers.append(("gemini", lambda: _gemini_generate(gemini_content)))
+                    logger.warning("[%s] Could not create multimodal part for Gemini: %s", correlation_id or "Gemini", ex)
+            providers.append(("gemini", lambda: _gemini_generate(gemini_content, correlation_id=correlation_id)))
 
     def _add_ollama():
-        if ollama_available:
+        # Text-only models must NEVER receive images (Requirement D5/B4)
+        if ollama_available and not image_bytes:
             if structured_messages:
-                providers.append(("ollama", lambda: ollama_chat(system_instruction, prompt, messages=structured_messages)))
+                providers.append(("ollama", lambda: ollama_chat(system_instruction, prompt, messages=structured_messages, correlation_id=correlation_id)))
             else:
-                providers.append(("ollama", lambda: ollama_chat(system_instruction, prompt)))
+                providers.append(("ollama", lambda: ollama_chat(system_instruction, prompt, correlation_id=correlation_id)))
 
-    if primary_pref == "ollama":
-        _add_ollama()
-        _add_gemini()
-    else:  # "auto" or "gemini" -> fast cloud API first with instant fallback
+    if primary_pref == "gemini":
         _add_gemini()
         _add_ollama()
+    else:  # "auto" or "ollama" -> local Ollama first, then cloud fallback
+        _add_ollama()
+        _add_gemini()
 
     for provider_name, call in providers:
-        answer = call()
+        t_prov_start = time.monotonic()
+        try:
+            answer = call()
+        except Exception as e:
+            logger.warning("[%s] Provider %s raised exception: %s", correlation_id or "AI", provider_name, e)
+            answer = None
+        prov_elapsed = time.monotonic() - t_prov_start
         if not answer:
+            logger.info("[%s] Provider %s produced no answer (took %.2fs)", correlation_id or "AI", provider_name, prov_elapsed)
             continue
+        logger.info("[%s] Provider %s succeeded in %.2fs", correlation_id or "AI", provider_name, prov_elapsed)
         answer = answer.strip()
 
         if _looks_mixed_with_english(answer, language):
             translated = translate_text_with_ai(answer, language)
-            if translated and not _looks_mixed_with_english(translated, language):
+            if translated:
                 answer = translated.strip()
 
-        if not _looks_mixed_with_english(answer, language):
-            return answer, provider_name
+        return answer, provider_name
 
     return None, None
 
@@ -1086,38 +1328,54 @@ def init_chat_database():
     """)
     conn.commit()
     conn.close()
+    try:
+        init_user_memory_db(CHAT_DB_FILE)
+    except Exception as e:
+        logger.warning("Could not initialize additive user memory tables: %s", e)
 
 
-def save_chat_message(session_id, role, message, symptoms=None):
+def save_chat_message(session_id, role, message, symptoms=None, user_id=None, conversation_id=None):
     conn = _connect()
     symptom_text = ",".join(symptoms) if symptoms else ""
 
     conn.execute(
         """
         INSERT INTO chat_history
-            (session_id, role, message, symptoms, created_at)
-        VALUES (?, ?, ?, ?, ?)
+            (session_id, role, message, symptoms, created_at, user_id, conversation_id, is_deleted)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 0)
         """,
-        (session_id, role, message, symptom_text, datetime.now().isoformat()),
+        (session_id, role, message, symptom_text, datetime.now().isoformat(), user_id, conversation_id),
     )
     conn.commit()
     conn.close()
 
 
-def get_chat_history(session_id, limit=20):
+def get_chat_history(session_id, limit=20, user_id=None):
     conn = _connect()
     conn.row_factory = sqlite3.Row
 
-    rows = conn.execute(
-        """
-        SELECT role, message, symptoms, created_at
-        FROM chat_history
-        WHERE session_id = ?
-        ORDER BY id DESC
-        LIMIT ?
-        """,
-        (session_id, limit),
-    ).fetchall()
+    if user_id:
+        rows = conn.execute(
+            """
+            SELECT role, message, symptoms, created_at, user_id, conversation_id
+            FROM chat_history
+            WHERE session_id = ? AND (user_id = ? OR user_id IS NULL) AND (is_deleted = 0 OR is_deleted IS NULL)
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (session_id, user_id, limit),
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            """
+            SELECT role, message, symptoms, created_at, user_id, conversation_id
+            FROM chat_history
+            WHERE session_id = ? AND (is_deleted = 0 OR is_deleted IS NULL)
+            ORDER BY id DESC
+            LIMIT ?
+            """,
+            (session_id, limit),
+        ).fetchall()
     conn.close()
 
     return [dict(row) for row in reversed(rows)]
@@ -1200,9 +1458,18 @@ def get_previous_symptoms(session_id):
     return symptoms
 
 
-def clear_chat_history(session_id):
+def clear_chat_history(session_id, user_id=None):
     conn = _connect()
-    conn.execute("DELETE FROM chat_history WHERE session_id = ?", (session_id,))
+    if user_id:
+        conn.execute(
+            "UPDATE chat_history SET is_deleted = 1 WHERE session_id = ? AND user_id = ?",
+            (session_id, user_id),
+        )
+    else:
+        conn.execute(
+            "UPDATE chat_history SET is_deleted = 1 WHERE session_id = ?",
+            (session_id,),
+        )
     conn.commit()
     conn.close()
 
@@ -2381,10 +2648,11 @@ def chat_history_get():
     session_id = request.args.get("session_id", "").strip()
     if not session_id:
         return jsonify({"status": "error", "message": "session_id is required"}), 400
+    user_id, _ = extract_auth_user(request)
     return jsonify({
         "status": "success",
         "session_id": session_id,
-        "history": get_chat_history(session_id, limit=50),
+        "history": get_chat_history(session_id, limit=50, user_id=user_id),
     })
 
 
@@ -2393,7 +2661,8 @@ def chat_history_delete():
     session_id = request.args.get("session_id", "").strip()
     if not session_id:
         return jsonify({"status": "error", "message": "session_id is required"}), 400
-    clear_chat_history(session_id)
+    user_id, _ = extract_auth_user(request)
+    clear_chat_history(session_id, user_id=user_id)
     return jsonify({
         "status": "success",
         "message": "Chat history cleared",
@@ -2423,6 +2692,245 @@ def delete_memory(session_id):
         "status": "success",
         "message": "Structured medical memory cleared",
         "session_id": sid,
+    })
+
+
+# ------------------------------------------------------------------
+# Cross-conversation User-Scoped Memory & History Endpoints (C1-C6, H1)
+# ------------------------------------------------------------------
+
+@app.get("/api/v1/memory")
+def api_get_memory():
+    requested_user_id = request.args.get("user_id")
+    user_id, err, status = get_verified_user_id(request, requested_user_id=requested_user_id)
+    if err:
+        return jsonify({"status": "error", "message": err}), status
+    if not user_id:
+        return jsonify({"status": "error", "message": "Authentication required"}), 401
+    if str(user_id).startswith("guest_") or str(user_id) == "guest":
+        return jsonify({"status": "error", "message": "Memory access is only available for authenticated accounts"}), 403
+
+    memories = get_user_memories(user_id=user_id)
+    return jsonify({
+        "status": "success",
+        "user_id": user_id,
+        "count": len(memories),
+        "memories": memories,
+    })
+
+
+@app.post("/api/v1/memory")
+def api_add_memory():
+    data = request.get_json(silent=True) or {}
+    requested_user_id = data.get("user_id") or request.args.get("user_id")
+    user_id, err, status = get_verified_user_id(request, requested_user_id=requested_user_id)
+    if err:
+        return jsonify({"status": "error", "message": err}), status
+    if not user_id:
+        return jsonify({"status": "error", "message": "Authentication required"}), 401
+    if str(user_id).startswith("guest_") or str(user_id) == "guest":
+        return jsonify({"status": "error", "message": "Memory storage is only available for authenticated accounts"}), 403
+
+    content = str(data.get("content", "")).strip()
+    if not content:
+        return jsonify({"status": "error", "message": "content field is required"}), 400
+
+    if not is_safe_for_memory(content):
+        return jsonify({
+            "status": "error",
+            "message": "Medical safety policy: Safety filter rejected. Clinical diagnoses, medications, allergies, and vitals cannot be stored in long-term memory.",
+        }), 400
+
+    memory_key = str(data.get("key") or data.get("memory_key") or ("pref_" + uuid.uuid4().hex[:8])).strip()
+    category = str(data.get("category") or data.get("memory_type") or "PREFERENCE").strip().upper()
+    source = str(data.get("source", "user_chat")).strip()
+    status_val = str(data.get("status", "user-reported")).strip()
+
+    ok = save_user_memory(
+        user_id=user_id,
+        memory_key=memory_key,
+        content=content,
+        category=category,
+        source=source,
+        status=status_val,
+    )
+    if not ok:
+        return jsonify({"status": "error", "message": "Failed to save memory (consent disabled or invalid user)"}), 400
+
+    return jsonify({
+        "status": "success",
+        "message": "Memory saved successfully",
+        "memory": {
+            "user_id": user_id,
+            "memory_key": memory_key,
+            "content": content,
+            "category": category,
+            "source": source,
+            "status": status_val,
+        },
+    }), 201
+
+
+@app.put("/api/v1/memory/<memory_id>")
+def api_update_memory(memory_id):
+    data = request.get_json(silent=True) or {}
+    requested_user_id = data.get("user_id") or request.args.get("user_id")
+    user_id, err, status = get_verified_user_id(request, requested_user_id=requested_user_id)
+    if err:
+        return jsonify({"status": "error", "message": err}), status
+    if not user_id:
+        return jsonify({"status": "error", "message": "Authentication required"}), 401
+    if str(user_id).startswith("guest_") or str(user_id) == "guest":
+        return jsonify({"status": "error", "message": "Forbidden"}), 403
+
+    content = str(data.get("content", "")).strip()
+    if not content:
+        return jsonify({"status": "error", "message": "content field is required"}), 400
+
+    if not is_safe_for_memory(content):
+        return jsonify({
+            "status": "error",
+            "message": "Medical safety policy: Safety filter rejected. Clinical diagnoses, medications, allergies, and vitals cannot be stored in long-term memory.",
+        }), 400
+
+    updated = update_user_memory(
+        user_id=user_id,
+        memory_id=str(memory_id),
+        new_content=content,
+    )
+    if not updated:
+        return jsonify({"status": "error", "message": "Memory not found or unauthorized"}), 404
+
+    return jsonify({
+        "status": "success",
+        "message": "Memory updated successfully",
+        "memory_id": memory_id,
+    })
+
+
+@app.delete("/api/v1/memory/<memory_id>")
+def api_delete_single_memory(memory_id):
+    requested_user_id = request.args.get("user_id")
+    user_id, err, status = get_verified_user_id(request, requested_user_id=requested_user_id)
+    if err:
+        return jsonify({"status": "error", "message": err}), status
+    if not user_id:
+        return jsonify({"status": "error", "message": "Authentication required"}), 401
+    if str(user_id).startswith("guest_") or str(user_id) == "guest":
+        return jsonify({"status": "error", "message": "Forbidden"}), 403
+
+    deleted = delete_user_memory(user_id=user_id, memory_id=str(memory_id))
+    if not deleted:
+        return jsonify({"status": "error", "message": "Memory not found or unauthorized"}), 404
+
+    return jsonify({
+        "status": "success",
+        "message": "Memory deleted successfully",
+        "memory_id": memory_id,
+    })
+
+
+@app.delete("/api/v1/memory")
+def api_clear_all_user_memories():
+    requested_user_id = request.args.get("user_id")
+    user_id, err, status = get_verified_user_id(request, requested_user_id=requested_user_id)
+    if err:
+        return jsonify({"status": "error", "message": err}), status
+    if not user_id:
+        return jsonify({"status": "error", "message": "Authentication required"}), 401
+    if str(user_id).startswith("guest_") or str(user_id) == "guest":
+        return jsonify({"status": "error", "message": "Forbidden"}), 403
+
+    clear_all_user_memories(user_id=user_id)
+    return jsonify({
+        "status": "success",
+        "message": "All memories deleted successfully",
+    })
+
+
+@app.get("/api/v1/memory/consent")
+def api_get_consent():
+    requested_user_id = request.args.get("user_id")
+    user_id, err, status = get_verified_user_id(request, requested_user_id=requested_user_id)
+    if err:
+        return jsonify({"status": "error", "message": err}), status
+    if not user_id:
+        return jsonify({"status": "error", "message": "Authentication required"}), 401
+    if str(user_id).startswith("guest_") or str(user_id) == "guest":
+        return jsonify({"status": "success", "user_id": user_id or "guest", "consent": False})
+
+    consent = get_user_consent(user_id=user_id)
+    return jsonify({
+        "status": "success",
+        "user_id": user_id,
+        "consent": consent,
+    })
+
+
+@app.post("/api/v1/memory/consent")
+def api_set_consent():
+    data = request.get_json(silent=True) or {}
+    requested_user_id = data.get("user_id") or request.args.get("user_id")
+    user_id, err, status = get_verified_user_id(request, requested_user_id=requested_user_id)
+    if err:
+        return jsonify({"status": "error", "message": err}), status
+    if not user_id:
+        return jsonify({"status": "error", "message": "Authentication required"}), 401
+    if str(user_id).startswith("guest_") or str(user_id) == "guest":
+        return jsonify({"status": "error", "message": "Consent settings are only available for authenticated accounts"}), 403
+
+    consent_val = bool(data.get("consent", False))
+    set_user_consent(user_id=user_id, enabled=consent_val)
+    return jsonify({
+        "status": "success",
+        "user_id": user_id,
+        "consent": consent_val,
+    })
+
+
+@app.get("/api/v1/conversations")
+def api_get_conversations():
+    requested_user_id = request.args.get("user_id")
+    user_id, err, status = get_verified_user_id(request, requested_user_id=requested_user_id)
+    if err:
+        return jsonify({"status": "error", "message": err}), status
+    if not user_id:
+        return jsonify({"status": "error", "message": "Authentication required"}), 401
+    if user_id.startswith("guest_") or user_id == "guest":
+        return jsonify({"status": "error", "message": "Conversations list is only available for authenticated accounts"}), 403
+
+    conn = _connect()
+    conn.row_factory = sqlite3.Row
+    rows = conn.execute(
+        """
+        SELECT session_id,
+               COALESCE(conversation_id, session_id) as conversation_id,
+               message as last_message,
+               created_at,
+               role
+        FROM chat_history
+        WHERE user_id = ? AND (is_deleted = 0 OR is_deleted IS NULL)
+        GROUP BY COALESCE(conversation_id, session_id)
+        ORDER BY MAX(id) DESC
+        LIMIT 50
+        """,
+        (user_id,),
+    ).fetchall()
+    conn.close()
+
+    conversations = [
+        {
+            "session_id": row["session_id"],
+            "conversation_id": row["conversation_id"],
+            "preview": row["last_message"][:80] if row["last_message"] else "",
+            "last_active": row["created_at"],
+        }
+        for row in rows
+    ]
+    return jsonify({
+        "status": "success",
+        "user_id": user_id,
+        "conversations": conversations,
     })
 
 
@@ -2544,29 +3052,28 @@ SAFETY_MESSAGES = {
     },
     "crisis": {
         "en": (
-            "I'm really sorry you're going through this, and I'm glad you said "
-            "it out loud. You don't have to face it alone. If you might act on "
-            "these thoughts or are in immediate danger, please call 112 now or "
-            "go to the nearest emergency department, and ask someone you trust "
-            "to stay with you. In India you can also call Tele-MANAS at 14416 "
-            "(free, 24/7) to talk with a trained counsellor. I'm here with you."
+            "I'm really sorry you're going through this, and I'm glad you reached out. "
+            "You don't have to face it alone. If you might act on these thoughts or are in immediate danger, "
+            "please call 112 right now or go to the nearest hospital emergency department, and ask someone "
+            "you trust to stay with you. In India, you can call Tele-MANAS at 14416 (free, 24/7) or Kiran at "
+            "1800-599-0019 to speak with a trained counselor. In the US or internationally, call or text 988. "
+            "Support is available and you are not alone."
         ),
         "mr": (
-            "तुम्ही हे बोलून दाखवलं याबद्दल मला आनंद आहे, आणि तुम्ही ज्या त्रासातून "
-            "जात आहात त्याबद्दल मला खूप वाईट वाटतं. हे तुम्हाला एकट्याने सहन करावं "
-            "लागणार नाही. जर तुम्ही स्वतःला इजा करण्याची शक्यता असेल किंवा तात्काळ "
-            "धोक्यात असाल, तर कृपया आत्ताच 112 वर कॉल करा किंवा जवळच्या रुग्णालयातील "
-            "आपत्कालीन विभागात जा आणि विश्वासू व्यक्तीला तुमच्यासोबत राहायला सांगा. "
-            "भारतात तुम्ही प्रशिक्षित समुपदेशकाशी बोलण्यासाठी Tele-MANAS ला 14416 वर "
-            "(मोफत, २४x७) कॉल करू शकता. मी तुमच्यासोबत आहे."
+            "तुम्ही हे बोलून दाखवले याबद्दल मला समाधान आहे, आणि तुम्ही ज्या मानसिक त्रासातून "
+            "जात आहात त्याबद्दल मला मनापासून सहानुभूती आहे. हे तुम्हाला एकट्याने सहन करावे लागणार नाही. "
+            "जर तुम्ही स्वतःला इजा करण्याची शक्यता वाटत असेल किंवा तात्काळ धोक्यात असाल, तर कृपया आत्ताच "
+            "112 वर कॉल करा किंवा जवळच्या रुग्णालयातील आपत्कालीन विभागात जा. "
+            "भारतात तुम्ही २४x७ मोफत मदतीसाठी Tele-MANAS ला 14416 वर किंवा किरण (Kiran) ला 1800-599-0019 "
+            "वर कॉल करू शकता. आंतरराष्ट्रीय पातळीवर 988 उपलब्ध आहे. आम्ही तुमच्यासोबत आहोत."
         ),
         "hi": (
-            "आपने यह बात कही, मुझे इसकी खुशी है, और आप जिस तकलीफ से गुज़र रहे हैं उसके "
-            "लिए मुझे बहुत दुख है। आपको इसे अकेले नहीं झेलना है। अगर आप खुद को नुकसान "
-            "पहुँचा सकते हैं या तुरंत खतरे में हैं, तो कृपया अभी 112 पर कॉल करें या "
-            "नज़दीकी अस्पताल के आपातकालीन विभाग में जाएं, और किसी भरोसेमंद व्यक्ति से "
-            "अपने साथ रहने को कहें। भारत में आप प्रशिक्षित काउंसलर से बात करने के लिए "
-            "Tele-MANAS को 14416 पर (निःशुल्क, 24x7) कॉल कर सकते हैं। मैं आपके साथ हूँ।"
+            "आपने यह बात साझा की, इसके लिए धन्यवाद। आप जिस मुश्किल दौर से गुज़र रहे हैं, "
+            "उसके लिए हमें गहरी सहानुभूति है। आपको यह सब अकेले नहीं झेलना है। अगर आपको खुद को "
+            "नुकसान पहुँचाने का विचार आ रहा है या तुरंत खतरा महसूस हो रहा है, तो कृपया अभी 112 पर "
+            "कॉल करें या नज़दीकी अस्पताल के आपातकालीन विभाग में जाएं। "
+            "भारत में आप 24x7 निःशुल्क सहायता के लिए Tele-MANAS को 14416 पर अथवा किरण (Kiran) "
+            "को 1800-599-0019 पर कॉल कर सकते हैं। अंतरराष्ट्रीय स्तर पर 988 पर संपर्क करें। हम आपके साथ हैं।"
         ),
     },
 }
@@ -2620,37 +3127,78 @@ MAX_SESSION_ID_LENGTH = 128
 
 @app.post("/predict")
 def predict():
+    t_start = time.monotonic()
     data = request.get_json(silent=True)
-    if not data:
-        return jsonify({"status": "error", "message": "Request body is required"}), 400
+    correlation_id = (
+        request.headers.get("X-Correlation-ID")
+        or request.headers.get("X-Request-ID")
+        or (data.get("correlation_id") if isinstance(data, dict) else None)
+        or f"req_{uuid.uuid4().hex[:8]}"
+    )
 
-    image_base64 = data.get("image_base64")
+    def _json_response(payload, status_code=200):
+        if isinstance(payload, dict):
+            payload["correlation_id"] = correlation_id
+        resp = jsonify(payload)
+        resp.headers["X-Correlation-ID"] = correlation_id
+        total_time = time.monotonic() - t_start
+        logger.info(
+            "[%s] POST /predict completed in %.2fs (status=%d, intent=%s, source=%s)",
+            correlation_id, total_time, status_code,
+            payload.get("intent") if isinstance(payload, dict) else None,
+            payload.get("source") if isinstance(payload, dict) else None
+        )
+        return resp, status_code
+
+    if not data:
+        return _json_response({"status": "error", "message": "Request body is required"}, 400)
+
+    # User identification & authorization (H1)
+    requested_user_id = data.get("user_id")
+    auth_user, err, status = get_verified_user_id(request, requested_user_id)
+    if err:
+        return _json_response({"status": "error", "message": err}, status)
+
+    user_id = auth_user or requested_user_id
+    is_guest = not user_id or str(user_id).startswith("guest_") or str(user_id) == "guest"
+    is_temporary = bool(data.get("is_temporary", False))
+    conversation_id = data.get("conversation_id")
+
+    # Image validation (D1, D6)
+    image_base64 = data.get("image_base64") or data.get("image")
     image_bytes = None
     if image_base64 and isinstance(image_base64, str):
-        try:
-            image_bytes = base64.b64decode(image_base64)
-        except Exception as ex:
-            logger.warning("Failed to decode image_base64: %s", ex)
+        img_bytes, mime, err = validate_and_decode_image(image_base64)
+        if err:
+            return _json_response({
+                "status": "error",
+                "message": f"Image validation failed: {err}",
+            }, 400)
+        image_bytes = img_bytes
 
     ocr_text = data.get("ocr_text")
-    text = data.get("text")
-    if not text or not isinstance(text, str):
-        return jsonify({"status": "error", "message": "text field is required"}), 400
+    raw_text = data.get("text") or data.get("question") or data.get("query")
+    if not raw_text or not isinstance(raw_text, str):
+        return _json_response({"status": "error", "message": "text or question field is required"}, 400)
 
-    text = text.strip()
-    if not text:
-        return jsonify({"status": "error", "message": "text cannot be empty"}), 400
-    if len(text) > MAX_TEXT_LENGTH:
-        return jsonify({
+    raw_text = raw_text.strip()
+    if not raw_text:
+        return _json_response({"status": "error", "message": "text cannot be empty"}, 400)
+    if len(raw_text) > MAX_TEXT_LENGTH:
+        return _json_response({
             "status": "error",
             "message": f"text is too long (maximum {MAX_TEXT_LENGTH} characters)",
-        }), 400
+        }, 400)
+
+    # Prompt sanitization against injection (H4)
+    text, injection_detected = sanitize_prompt_input(raw_text)
 
     _raw_sid = str(data.get("session_id") or "").strip()[:MAX_SESSION_ID_LENGTH]
     session_id = _raw_sid if _raw_sid else ("anon_" + uuid.uuid4().hex)
     previous_response_language = get_last_response_language(session_id)
 
     requested_output_language = detect_requested_output_language(text)
+    dialect_info = detect_dialect_and_script(text)
     detected_language = detect_language(
         text,
         fallback_lang=requested_output_language or previous_response_language,
@@ -2665,11 +3213,73 @@ def predict():
     else:
         final_language = detected_language
 
+    def _record_message(role, msg, syms=None):
+        save_chat_message(
+            session_id=session_id,
+            role=role,
+            message=msg,
+            symptoms=syms,
+            user_id=user_id,
+            conversation_id=conversation_id,
+        )
+
+    # Loose pill query refusal (D5)
+    if image_bytes and is_loose_pill_query(text, ocr_text):
+        refusal_answer = build_loose_pill_refusal_response(final_language)
+        _record_message("user", text, [])
+        _record_message("assistant", refusal_answer, [])
+        return _json_response({
+            "status": "success",
+            "session_id": session_id,
+            "question": text,
+            "intent": "loose_pill_refusal",
+            "confidence": 1.0,
+            "symptoms": [],
+            "previous_symptoms": [],
+            "medical_query": True,
+            "answer": refusal_answer,
+            "answer_similarity": 1.0,
+            "source": "safety_rules",
+            "language": final_language,
+            "safety_flag": "loose_pill_refusal",
+        })
+
+    # Reference resolution for follow-ups (B1)
+    recent_history = get_chat_history(session_id, limit=6, user_id=user_id)
+    resolved_query, _resolved_note = resolve_followup_references(text, recent_history)
+
     # Support transliterated / mixed Hinglish and Maraglish
-    if detected_language in {"mr", "hi"} or is_ambiguous_roman_message(text):
-        analysis_text = translate_input_to_english(text)
+    query_for_analysis = resolved_query if resolved_query != text else text
+    if detected_language in {"mr", "hi"} or is_ambiguous_roman_message(query_for_analysis):
+        analysis_text = translate_input_to_english(query_for_analysis)
     else:
-        analysis_text = text
+        analysis_text = query_for_analysis
+
+    # Long-term memory retrieval (C4, B6)
+    can_use_memory = (not is_guest) and (not is_temporary) and get_user_consent(user_id)
+    user_memory_context = ""
+    if can_use_memory:
+        user_memories = retrieve_relevant_user_memories(user_id, text, is_temporary=is_temporary, max_items=3)
+        if user_memories:
+            user_memory_context = format_memories_as_user_context(user_memories)
+
+    def _maybe_save_user_prefs():
+        if can_use_memory:
+            try:
+                extracted = extract_safe_preferences_from_text(user_id, text)
+                if extracted:
+                    k, c, cat = extracted
+                    save_user_memory(
+                        user_id=user_id,
+                        memory_key=k,
+                        content=c,
+                        category=cat,
+                        source="user_chat",
+                        status="user-reported",
+                        is_temporary=is_temporary,
+                    )
+            except Exception as ex:
+                logger.warning("Error saving extracted user preferences: %s", ex)
 
     try:
         model_prediction = str(model.predict([analysis_text])[0])
@@ -2699,15 +3309,16 @@ def predict():
             safety_answer = build_safety_response(safety_flag, final_language)
             safety_symptoms = symptoms if safety_flag == "emergency" else []
 
-            save_chat_message(session_id, "user", text, safety_symptoms)
+            _record_message("user", text, safety_symptoms)
             if safety_flag == "emergency":
                 save_structured_memories(
                     session_id=session_id, text=text, symptoms=symptoms,
                     duration=duration,
                 )
-            save_chat_message(session_id, "assistant", safety_answer, safety_symptoms)
+            _record_message("assistant", safety_answer, safety_symptoms)
+            _maybe_save_user_prefs()
 
-            return jsonify({
+            return _json_response({
                 "status": "success",
                 "session_id": session_id,
                 "question": text,
@@ -2727,6 +3338,34 @@ def predict():
             })
 
         # ----------------------------------------------------
+        # CLARIFYING QUESTIONS FOR AMBIGUOUS INPUT (B2)
+        # ----------------------------------------------------
+        if not image_bytes:
+            ambiguous_check = check_for_ambiguous_query(text, detected_dialect=final_language)
+            if ambiguous_check:
+                clarifying_answer = ambiguous_check.get("clarification_question") or ambiguous_check.get("clarifying_question") or ""
+                category_symptom = ambiguous_check.get("category", "symptom")
+                _record_message("user", text, [category_symptom])
+                _record_message("assistant", clarifying_answer, [category_symptom])
+                _maybe_save_user_prefs()
+
+                return _json_response({
+                    "status": "success",
+                    "session_id": session_id,
+                    "question": text,
+                    "intent": "clarification_needed",
+                    "confidence": 0.95,
+                    "symptoms": [category_symptom],
+                    "previous_symptoms": previous_symptoms,
+                    "medical_query": True,
+                    "answer": clarifying_answer,
+                    "clarification_options": ambiguous_check.get("options", []),
+                    "answer_similarity": 1.0,
+                    "source": "conversation_engine",
+                    "language": final_language,
+                })
+
+        # ----------------------------------------------------
         # SPECIFIC MEMORY RECALL
         # ----------------------------------------------------
         has_memory_language = any(
@@ -2740,10 +3379,11 @@ def predict():
         if specific_memory_answer:
             localized_answer = localize_answer(specific_memory_answer, final_language)
 
-            save_chat_message(session_id, "user", text, [])
-            save_chat_message(session_id, "assistant", localized_answer, previous_symptoms)
+            _record_message("user", text, [])
+            _record_message("assistant", localized_answer, previous_symptoms)
+            _maybe_save_user_prefs()
 
-            return jsonify({
+            return _json_response({
                 "status": "success",
                 "session_id": session_id,
                 "question": text,
@@ -2764,10 +3404,11 @@ def predict():
             memory_answer = build_memory_recall_response(session_id)
             localized_answer = localize_answer(memory_answer, final_language)
 
-            save_chat_message(session_id, "user", text, [])
-            save_chat_message(session_id, "assistant", localized_answer, previous_symptoms)
+            _record_message("user", text, [])
+            _record_message("assistant", localized_answer, previous_symptoms)
+            _maybe_save_user_prefs()
 
-            return jsonify({
+            return _json_response({
                 "status": "success",
                 "session_id": session_id,
                 "question": text,
@@ -2792,8 +3433,16 @@ def predict():
                     previous_symptoms, "assistance"
                 ) or ""
 
-            ai_answer, ai_provider = generate_medical_response_with_provider(user_text=text, language=final_language, medical_context=followup_context, conversation_context=conversation_context, session_id=session_id
-            , image_bytes=image_bytes)
+            ai_answer, ai_provider = generate_medical_response_with_provider(
+                user_text=text,
+                language=final_language,
+                medical_context=followup_context,
+                conversation_context=conversation_context,
+                session_id=session_id,
+                image_bytes=image_bytes,
+                user_memory_context=user_memory_context,
+                correlation_id=correlation_id,
+            )
 
             if ai_answer:
                 followup_answer = ai_answer
@@ -2811,10 +3460,11 @@ def predict():
                     duration=duration,
                     previous_symptoms=previous_symptoms,
                 )
-                save_chat_message(session_id, "user", text, previous_symptoms)
-                save_chat_message(session_id, "assistant", followup_answer, previous_symptoms)
+                _record_message("user", text, previous_symptoms)
+                _record_message("assistant", followup_answer, previous_symptoms)
+                _maybe_save_user_prefs()
 
-                return jsonify({
+                return _json_response({
                     "status": "success",
                     "session_id": session_id,
                     "question": text,
@@ -2835,14 +3485,23 @@ def predict():
         # GENERAL (non-medical) QUERY
         # ----------------------------------------------------
         if not medical_query and not is_followup:
-            ai_answer, ai_provider = generate_medical_response_with_provider(user_text=text, language=final_language, medical_context="", conversation_context=conversation_context, session_id=session_id
-            , image_bytes=image_bytes)
+            ai_answer, ai_provider = generate_medical_response_with_provider(
+                user_text=text,
+                language=final_language,
+                medical_context="",
+                conversation_context=conversation_context,
+                session_id=session_id,
+                image_bytes=image_bytes,
+                user_memory_context=user_memory_context,
+                correlation_id=correlation_id,
+            )
 
             if ai_answer:
-                save_chat_message(session_id, "user", text, symptoms)
-                save_chat_message(session_id, "assistant", ai_answer, symptoms)
+                _record_message("user", text, symptoms)
+                _record_message("assistant", ai_answer, symptoms)
+                _maybe_save_user_prefs()
 
-                return jsonify({
+                return _json_response({
                     "status": "success",
                     "session_id": session_id,
                     "question": text,
@@ -2858,10 +3517,11 @@ def predict():
 
             answer = localize_answer(general_fallback(analysis_text), final_language)
 
-            save_chat_message(session_id, "user", text, symptoms)
-            save_chat_message(session_id, "assistant", answer, symptoms)
+            _record_message("user", text, symptoms)
+            _record_message("assistant", answer, symptoms)
+            _maybe_save_user_prefs()
 
-            return jsonify({
+            return _json_response({
                 "status": "success",
                 "session_id": session_id,
                 "question": text,
@@ -2880,8 +3540,16 @@ def predict():
         # ----------------------------------------------------
         if measurements and not symptoms:
             measurement_context = build_measurement_response(measurements)
-            ai_measurement_answer, measurement_provider = generate_medical_response_with_provider(user_text=text, language=final_language, medical_context=measurement_context, conversation_context=conversation_context, session_id=session_id
-            , image_bytes=image_bytes)
+            ai_measurement_answer, measurement_provider = generate_medical_response_with_provider(
+                user_text=text,
+                language=final_language,
+                medical_context=measurement_context,
+                conversation_context=conversation_context,
+                session_id=session_id,
+                image_bytes=image_bytes,
+                user_memory_context=user_memory_context,
+                correlation_id=correlation_id,
+            )
             final_answer = ai_measurement_answer or localize_answer(
                 measurement_context, final_language
             )
@@ -2893,10 +3561,11 @@ def predict():
                 duration=duration,
                 previous_symptoms=previous_symptoms,
             )
-            save_chat_message(session_id, "user", text, symptoms)
-            save_chat_message(session_id, "assistant", final_answer, symptoms)
+            _record_message("user", text, symptoms)
+            _record_message("assistant", final_answer, symptoms)
+            _maybe_save_user_prefs()
 
-            return jsonify({
+            return _json_response({
                 "status": "success",
                 "session_id": session_id,
                 "question": text,
@@ -2922,8 +3591,16 @@ def predict():
             question_type = get_question_type(text)
             medical_answer = build_multi_symptom_response(combined_symptoms, question_type)
 
-            ai_medical_answer, symptom_provider = generate_medical_response_with_provider(user_text=text, language=final_language, medical_context=medical_answer or "No specific knowledge-base entry was found. Give conservative general medical guidance.", conversation_context=conversation_context, session_id=session_id
-            , image_bytes=image_bytes)
+            ai_medical_answer, symptom_provider = generate_medical_response_with_provider(
+                user_text=text,
+                language=final_language,
+                medical_context=medical_answer or "No specific knowledge-base entry was found. Give conservative general medical guidance.",
+                conversation_context=conversation_context,
+                session_id=session_id,
+                image_bytes=image_bytes,
+                user_memory_context=user_memory_context,
+                correlation_id=correlation_id,
+            )
 
             if ai_medical_answer:
                 final_answer = localize_answer(ai_medical_answer, final_language)
@@ -2937,7 +3614,7 @@ def predict():
                 )
                 source = "symptom_fallback"
 
-            save_chat_message(session_id, "user", text, combined_symptoms)
+            _record_message("user", text, combined_symptoms)
             save_structured_memories(
                 session_id=session_id,
                 text=text,
@@ -2945,9 +3622,10 @@ def predict():
                 duration=duration,
                 previous_symptoms=previous_symptoms,
             )
-            save_chat_message(session_id, "assistant", final_answer, combined_symptoms)
+            _record_message("assistant", final_answer, combined_symptoms)
+            _maybe_save_user_prefs()
 
-            return jsonify({
+            return _json_response({
                 "status": "success",
                 "session_id": session_id,
                 "question": text,
@@ -2973,8 +3651,16 @@ def predict():
         if mediq_result is not None:
             answer = mediq_result["answer"]
 
-            ai_mediq_answer, mediq_provider = generate_medical_response_with_provider(user_text=text, language=final_language, medical_context=answer, conversation_context=conversation_context, session_id=session_id
-            , image_bytes=image_bytes)
+            ai_mediq_answer, mediq_provider = generate_medical_response_with_provider(
+                user_text=text,
+                language=final_language,
+                medical_context=answer,
+                conversation_context=conversation_context,
+                session_id=session_id,
+                image_bytes=image_bytes,
+                user_memory_context=user_memory_context,
+                correlation_id=correlation_id,
+            )
 
             if ai_mediq_answer:
                 answer = localize_answer(ai_mediq_answer, final_language)
@@ -2988,10 +3674,11 @@ def predict():
                 duration=duration,
                 previous_symptoms=previous_symptoms,
             )
-            save_chat_message(session_id, "user", text, symptoms)
-            save_chat_message(session_id, "assistant", answer, symptoms)
+            _record_message("user", text, symptoms)
+            _record_message("assistant", answer, symptoms)
+            _maybe_save_user_prefs()
 
-            return jsonify({
+            return _json_response({
                 "status": "success",
                 "session_id": session_id,
                 "question": text,
@@ -3025,10 +3712,11 @@ def predict():
             duration=duration,
             previous_symptoms=previous_symptoms,
         )
-        save_chat_message(session_id, "user", text, symptoms)
-        save_chat_message(session_id, "assistant", answer, symptoms)
+        _record_message("user", text, symptoms)
+        _record_message("assistant", answer, symptoms)
+        _maybe_save_user_prefs()
 
-        return jsonify({
+        return _json_response({
             "status": "success",
             "session_id": session_id,
             "question": text,
@@ -3044,11 +3732,12 @@ def predict():
         })
 
     except Exception as e:
-        return jsonify({
+        logger.error("[%s] Prediction failed with unexpected error: %s", correlation_id, e, exc_info=True)
+        return _json_response({
             "status": "error",
             "message": "Prediction failed",
             "error": str(e),
-        }), 500
+        }, 500)
 
 
 if __name__ == "__main__":

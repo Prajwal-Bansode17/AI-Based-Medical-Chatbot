@@ -948,6 +948,18 @@ fun ChatbotScreen(
             }
 
             savedChats = ChatHistoryRepository.getChats(context)
+
+            // Background cloud sync of long-term memory for authenticated users
+            val savedUser = SupabaseClient.getSavedUser(context)
+            val currentUserId = savedUser?.id
+            if (!currentUserId.isNullOrBlank() && !ChatMemoryRepository.isGuestUser(currentUserId)) {
+                try {
+                    ChatMemoryRepository.syncConsentFromCloud(context, currentUserId)
+                    if (ChatMemoryRepository.isMemoryConsentEnabled(context, currentUserId)) {
+                        ChatMemoryRepository.syncMemoriesFromCloud(context, currentUserId, isTemporaryChat = false)
+                    }
+                } catch (_: Exception) {}
+            }
         }
     }
 
@@ -1208,6 +1220,8 @@ fun ChatbotScreen(
                                 """.trimIndent()
                             }
 
+                        val requestCorrelationId = "req_" + java.util.UUID.randomUUID().toString().take(8)
+
                         RetrofitClient
                             .apiService
                             .predict(
@@ -1215,7 +1229,11 @@ fun ChatbotScreen(
                                     sessionId = currentSessionId,
                                     text = chatbotText,
                                     imageBase64 = imageBase64,
-                                    ocrText = ocrText.ifBlank { null }
+                                    ocrText = ocrText.ifBlank { null },
+                                    userId = savedUser?.id,
+                                    conversationId = currentSessionId,
+                                    isTemporary = isTemporaryChat,
+                                    correlationId = requestCorrelationId
                                 )
                             )
                     }
@@ -1312,7 +1330,7 @@ fun ChatbotScreen(
                     if (isEligibleForMemory && !currentUserId.isNullOrBlank()) {
                         val extracted = MemoryExtractor.extractFromUserMessage(currentUserId, cleanText)
                         if (extracted != null) {
-                            ChatMemoryRepository.saveMemory(
+                            ChatMemoryRepository.saveMemoryWithCloudSync(
                                 context = context,
                                 userId = currentUserId,
                                 item = extracted,
@@ -1349,11 +1367,16 @@ fun ChatbotScreen(
                     // =============================================
                     // API ERROR
                     // =============================================
-
                     val code = response.code()
+                    val errorText = when (code) {
+                        401 -> "Login session expired. Please sign in again."
+                        429 -> "Server is handling high traffic. Please tap Retry in a moment."
+                        in 500..599 -> "Server error (HTTP $code). Tap Retry to try again."
+                        else -> "Server returned error (HTTP $code). Tap Retry to try again."
+                    }
                     messages.add(
                         ChatMessage(
-                            text = "Server returned error (HTTP $code). Please verify the backend logs and tap Retry.",
+                            text = errorText,
                             isUser = false,
                             isError = true
                         )
@@ -1375,7 +1398,7 @@ fun ChatbotScreen(
 
                 val errText = when (e) {
                     is java.net.SocketTimeoutException ->
-                        "The connection to MedAssist AI timed out. The medical model may still be generating or the server is busy. Tap Retry to try again."
+                        "The connection to MedAssist AI timed out while waiting for a response. Tap Retry to try again." 
                     is java.net.ConnectException ->
                         "Unable to connect to the MedAssist server at ${RetrofitClient.getBaseUrl(context)}.\n\nPlease verify that Flask is running and that your phone and computer are on the same Wi-Fi network."
                     is java.net.UnknownHostException ->
@@ -1493,13 +1516,19 @@ fun ChatbotScreen(
                     """.trimIndent()
                 }
 
+                val retryCorrelationId = "req_" + java.util.UUID.randomUUID().toString().take(8)
+
                 val response = withContext(Dispatchers.IO) {
                     RetrofitClient.apiService.predict(
                         PredictionRequest(
                             sessionId = currentSessionId,
                             text = chatbotText,
                             imageBase64 = imageBase64,
-                            ocrText = ocrText.ifBlank { null }
+                            ocrText = ocrText.ifBlank { null },
+                            userId = savedUser?.id,
+                            conversationId = currentSessionId,
+                            isTemporary = isTemporaryChat,
+                            correlationId = retryCorrelationId
                         )
                     )
                 }
@@ -1539,7 +1568,7 @@ fun ChatbotScreen(
                     if (isEligibleForMemory && !currentUserId.isNullOrBlank()) {
                         val extracted = MemoryExtractor.extractFromUserMessage(currentUserId, lastUserMessage.text)
                         if (extracted != null) {
-                            ChatMemoryRepository.saveMemory(
+                            ChatMemoryRepository.saveMemoryWithCloudSync(
                                 context = context,
                                 userId = currentUserId,
                                 item = extracted,
@@ -1570,9 +1599,15 @@ fun ChatbotScreen(
                     }
                 } else {
                     val code = response.code()
+                    val errorText = when (code) {
+                        401 -> "Login session expired. Please sign in again."
+                        429 -> "Server is handling high traffic. Please tap Retry in a moment."
+                        in 500..599 -> "Server error (HTTP $code). Tap Retry to try again."
+                        else -> "Server returned error (HTTP $code). Tap Retry to try again."
+                    }
                     messages.add(
                         ChatMessage(
-                            text = "Server returned error (HTTP $code). Tap Retry to try again.",
+                            text = errorText,
                             isUser = false,
                             isError = true
                         )
@@ -1586,7 +1621,7 @@ fun ChatbotScreen(
                 Log.e("MEDASSIST_API", "RETRY ERROR", e)
                 val errText = when (e) {
                     is java.net.SocketTimeoutException ->
-                        "The connection to MedAssist AI timed out. Tap Retry to try again."
+                        "The connection to MedAssist AI timed out while waiting for a response. Tap Retry to try again." 
                     is java.net.ConnectException ->
                         "Unable to connect to the MedAssist server at ${RetrofitClient.getBaseUrl(context)}. Please check that Flask is running."
                     is java.net.UnknownHostException ->
