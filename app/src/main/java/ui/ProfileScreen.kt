@@ -37,7 +37,10 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Email
+import androidx.compose.material.icons.filled.Settings
+import com.example.ai_based_medical_chatbot.data.api.RetrofitClient
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.Lock
@@ -178,6 +181,9 @@ fun ProfileScreen(
     var selectedPrescriptionId by remember { mutableStateOf<String?>(null) }
     var savedReminders by remember { mutableStateOf(MedicineReminderRepository.getAll(context)) }
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var currentServerUrl by remember { mutableStateOf(RetrofitClient.getBaseUrl(context)) }
+    var showServerUrlDialog by remember { mutableStateOf(false) }
+    var editedServerUrl by remember { mutableStateOf(currentServerUrl) }
 
     fun refreshPrescriptions() {
         savedPrescriptions = PrescriptionRepository.getSavedPrescriptions(context).toString()
@@ -672,6 +678,60 @@ fun ProfileScreen(
                                     )
                                 }
                             }
+                        }
+
+                        ProfileDivider()
+
+                        // Server URL Configuration Row
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    editedServerUrl = RetrofitClient.getBaseUrl(context)
+                                    showServerUrlDialog = true
+                                }
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .background(SoftMint, RoundedCornerShape(12.dp)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Settings,
+                                    contentDescription = "Server URL",
+                                    tint = DeepTeal,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(12.dp))
+
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "Backend Server URL",
+                                    color = TextDark,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = currentServerUrl,
+                                    color = TextMuted,
+                                    fontSize = 11.sp,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+
+                            Icon(
+                                imageVector = Icons.Default.Edit,
+                                contentDescription = "Edit Server URL",
+                                tint = DeepTeal,
+                                modifier = Modifier.size(18.dp)
+                            )
                         }
                     }
                 }
@@ -1738,6 +1798,99 @@ fun ProfileScreen(
             )
 
             Spacer(modifier = Modifier.height(12.dp))
+        }
+    }
+
+    // =============================================================
+    // EMBEDDED DIALOG: CONFIGURE SERVER URL
+    // =============================================================
+    if (showServerUrlDialog) {
+        Dialog(
+            onDismissRequest = { showServerUrlDialog = false }
+        ) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 14.dp)
+                    .imePadding(),
+                shape = RoundedCornerShape(20.dp),
+                colors = CardDefaults.cardColors(containerColor = PureWhite),
+                border = BorderStroke(1.dp, Mint),
+                elevation = CardDefaults.cardElevation(defaultElevation = 6.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp)
+                ) {
+                    Text(
+                        text = "Configure Backend Server",
+                        color = DarkTeal,
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.height(6.dp))
+                    Text(
+                        text = "Set your Flask backend IP and port (e.g. http://192.168.1.13:5000/):",
+                        color = TextMuted,
+                        fontSize = 12.sp
+                    )
+
+                    Spacer(modifier = Modifier.height(14.dp))
+
+                    OutlinedTextField(
+                        value = editedServerUrl,
+                        onValueChange = { editedServerUrl = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = DeepTeal,
+                            unfocusedBorderColor = Mint,
+                            focusedTextColor = TextDark,
+                            unfocusedTextColor = TextDark,
+                            cursorColor = DeepTeal
+                        ),
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    Spacer(modifier = Modifier.height(18.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        TextButton(
+                            onClick = {
+                                RetrofitClient.clearCustomServerUrl(context)
+                                currentServerUrl = RetrofitClient.getBaseUrl(context)
+                                editedServerUrl = currentServerUrl
+                                showServerUrlDialog = false
+                                android.widget.Toast.makeText(context, "Server URL reset to default", android.widget.Toast.LENGTH_SHORT).show()
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text(text = "Reset", color = TextMuted, fontSize = 13.sp)
+                        }
+
+                        Button(
+                            onClick = {
+                                val trimmed = editedServerUrl.trim()
+                                if (trimmed.isNotBlank()) {
+                                    RetrofitClient.setCustomServerUrl(context, trimmed)
+                                    currentServerUrl = RetrofitClient.getBaseUrl(context)
+                                    showServerUrlDialog = false
+                                    android.widget.Toast.makeText(context, "Server URL updated", android.widget.Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(12.dp),
+                            colors = ButtonDefaults.buttonColors(containerColor = DeepTeal)
+                        ) {
+                            Text(text = "Save", color = PureWhite, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                        }
+                    }
+                }
+            }
         }
     }
 

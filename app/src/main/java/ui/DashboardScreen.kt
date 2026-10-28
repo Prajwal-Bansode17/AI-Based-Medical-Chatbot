@@ -477,6 +477,8 @@ fun DashboardScreen(
     DisposableEffect(lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
+                isSubmittingSymptom = false
+                symptomError = ""
                 refreshDashboardData()
             }
         }
@@ -756,7 +758,9 @@ fun DashboardScreen(
                                                 symptomError = t("dashboard_symptom_empty_error")
                                             } else {
                                                 keyboardController?.hide()
-                                                isSubmittingSymptom = true
+                                                symptomText = ""
+                                                symptomError = ""
+                                                isSubmittingSymptom = false
                                                 onSymptomSubmit(query)
                                             }
                                         }
@@ -811,7 +815,9 @@ fun DashboardScreen(
                                                 symptomError = t("dashboard_symptom_empty_error")
                                             } else {
                                                 keyboardController?.hide()
-                                                isSubmittingSymptom = true
+                                                symptomText = ""
+                                                symptomError = ""
+                                                isSubmittingSymptom = false
                                                 onSymptomSubmit(query)
                                             }
                                         },

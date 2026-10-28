@@ -90,12 +90,32 @@ from memory_service import (
     format_memories_as_user_context,
     extract_safe_preferences_from_text,
     is_safe_for_memory,
+    extract_medical_entity,
+    save_or_update_medical_entity,
+    get_user_medical_entities,
+    detect_memory_query_intent,
+    build_cross_chat_memory_response,
+    format_medical_entities_context,
+    save_user_medical_document,
+    get_active_session_document,
+    get_user_medical_documents,
+    delete_user_medical_document,
+    clear_all_user_medical_documents,
 )
 from vision_service import (
     validate_and_decode_image,
+    detect_image_mime,
+    extract_text_from_image,
+    classify_medical_document,
     is_loose_pill_query,
     build_loose_pill_refusal_response,
     format_structured_medicine_vision_response,
+    format_10_point_medicine_response,
+    format_laboratory_report_response,
+    format_prescription_response,
+    parse_lab_parameters_from_text,
+    parse_prescription_items_from_text,
+    answer_document_followup,
     build_vision_system_prompt,
 )
 
@@ -291,6 +311,11 @@ def detect_language(text, fallback_lang=None):
         "bgh", "bagh", "bhai", "yar", "phile", "pahile", "punha",
         "toch", "tyach", "kr", "kru", "kraycha", "kraychi", "krtoy", "krte",
         "yetoy", "yeto", "hotoy", "hot", "disat", "dist", "distoy", "nahi",
+        "la", "cha", "chi", "che", "chya", "konta", "konti", "konte",
+        "mitra", "mitrala", "sangitla", "sangitle", "bolla", "bolle",
+        "adhi", "adhich", "mag", "maghe", "kahi", "tras", "kami",
+        "bara", "bare", "bar", "vichar", "vichara", "sang", "sanga",
+        "tabyet", "tabiyet", "koni", "kashamule", "jast", "khup",
     }
     roman_hindi_words = {
         "mujhe", "mujhko", "mera", "meri", "mere", "kya", "kaise", "kaisa",
@@ -311,7 +336,9 @@ def detect_language(text, fallback_lang=None):
         "majha pot", "majhe pot", "mala tap", "mala taap", "mala khokla",
         "mala sardi", "mala chakkar", "mala kamjori", "mala dukh",
         "mala dukhat", "mi kay", "mi kay karu", "pasun", "karu",
-        "karaycha", "karaychi",
+        "karaycha", "karaychi", "konta problem", "konta tras", "la konta",
+        "kami zala", "kami zali", "bara zala", "bari zali", "adhi kay",
+        "kay sangitla", "kashi aahe", "kasa aahe",
     ]
     for phrase in roman_marathi_phrases:
         if phrase in lower:
@@ -701,9 +728,9 @@ if GEMINI_API_KEY:
         from google.genai import types as genai_types
         gemini_client = genai.Client(
             api_key=GEMINI_API_KEY,
-            http_options=genai_types.HttpOptions(timeout=15000),
+            http_options=genai_types.HttpOptions(timeout=25000),
         )
-        print("Gemini AI : Connected (optional fallback, 15s timeout)")
+        print("Gemini AI : Connected (optional fallback, 25s timeout)")
     except Exception as e:
         print("Gemini AI : Connection failed:", e)
 else:
@@ -851,6 +878,7 @@ def ollama_chat(system_prompt, user_prompt, temperature=None, messages=None, cor
     status = get_ollama_status(max_age=15.0)
     if not status.get("reachable") or not status.get("model_available"):
         err = status.get("error") or "model not available"
+        _ollama_mark_down(err)
         logger.info(
             "[%s] Ollama is not ready (%s). Fast-skipping to fallback.",
             correlation_id or "Ollama", err
@@ -1130,9 +1158,9 @@ def _gemini_generate(contents, correlation_id=None):
     gemini_start_time = time.monotonic()
 
     for current_model in candidate_models:
-        # Enforce maximum 20-second budget for all Gemini attempts combined
-        if (time.monotonic() - gemini_start_time) > 20.0:
-            logger.warning("[%s] Gemini provider timeout budget exceeded (>20s); falling back immediately.", correlation_id or "Gemini")
+        # Enforce maximum 25-second budget for all Gemini attempts combined
+        if (time.monotonic() - gemini_start_time) > 25.0:
+            logger.warning("[%s] Gemini provider timeout budget exceeded (>25s); falling back immediately.", correlation_id or "Gemini")
             break
 
         t0 = time.monotonic()
@@ -1190,7 +1218,7 @@ def _gemini_generate(contents, correlation_id=None):
 # ------------------------------ public generators ----------------------------
 
 def generate_medical_response_with_provider(
-    user_text, language="en", medical_context="", conversation_context="", session_id=None, image_bytes=None, user_memory_context="", correlation_id=None
+    user_text, language="en", medical_context="", conversation_context="", session_id=None, image_bytes=None, user_memory_context="", correlation_id=None, system_instruction=None
 ):
     ollama_available = OLLAMA_ENABLED
     gemini_available = gemini_client is not None
@@ -1198,7 +1226,8 @@ def generate_medical_response_with_provider(
         return None, None
 
     memory_summary = build_session_memory_summary(session_id) if session_id else ""
-    system_instruction = _build_medical_system_instruction(language, memory_summary=memory_summary)
+    if not system_instruction:
+        system_instruction = _build_medical_system_instruction(language, memory_summary=memory_summary)
     prompt = _build_medical_user_prompt(
         user_text, language, medical_context, conversation_context, user_memory_context=user_memory_context
     )
@@ -1227,7 +1256,8 @@ def generate_medical_response_with_provider(
             if image_bytes:
                 try:
                     from google.genai import types
-                    part = types.Part.from_bytes(data=image_bytes, mime_type="image/jpeg")
+                    detected_mime = detect_image_mime(image_bytes) or "image/jpeg"
+                    part = types.Part.from_bytes(data=image_bytes, mime_type=detected_mime)
                     if isinstance(gemini_content, list):
                         multimodal_payload = [part] + gemini_content
                     else:
@@ -3223,26 +3253,230 @@ def predict():
             conversation_id=conversation_id,
         )
 
-    # Loose pill query refusal (D5)
-    if image_bytes and is_loose_pill_query(text, ocr_text):
-        refusal_answer = build_loose_pill_refusal_response(final_language)
-        _record_message("user", text, [])
-        _record_message("assistant", refusal_answer, [])
-        return _json_response({
-            "status": "success",
-            "session_id": session_id,
-            "question": text,
-            "intent": "loose_pill_refusal",
-            "confidence": 1.0,
-            "symptoms": [],
-            "previous_symptoms": [],
-            "medical_query": True,
-            "answer": refusal_answer,
-            "answer_similarity": 1.0,
-            "source": "safety_rules",
-            "language": final_language,
-            "safety_flag": "loose_pill_refusal",
-        })
+    # ----------------------------------------------------
+    # MULTIMODAL MEDICAL IMAGE & DOCUMENT UNDERSTANDING
+    # ----------------------------------------------------
+    if image_bytes:
+        if not ocr_text:
+            try:
+                ocr_text = extract_text_from_image(image_bytes)
+            except Exception as ocr_err:
+                logger.warning("[%s] OCR extraction error: %s", correlation_id, ocr_err)
+                ocr_text = ""
+
+        # Loose pill check (appearance/color/shape only without packaging)
+        if is_loose_pill_query(text, ocr_text):
+            refusal_answer = build_loose_pill_refusal_response(final_language)
+            _record_message("user", text, [])
+            _record_message("assistant", refusal_answer, [])
+            return _json_response({
+                "status": "success",
+                "session_id": session_id,
+                "question": text,
+                "intent": "loose_pill_refusal",
+                "confidence": 1.0,
+                "symptoms": [],
+                "previous_symptoms": [],
+                "medical_query": True,
+                "answer": refusal_answer,
+                "answer_similarity": 1.0,
+                "source": "safety_rules",
+                "language": final_language,
+                "safety_flag": "loose_pill_refusal",
+            })
+
+        doc_type = classify_medical_document(image_bytes=image_bytes, ocr_text=ocr_text, user_query=text)
+
+        if doc_type == "loose_pill":
+            refusal_answer = build_loose_pill_refusal_response(final_language)
+            _record_message("user", text, [])
+            _record_message("assistant", refusal_answer, [])
+            return _json_response({
+                "status": "success",
+                "session_id": session_id,
+                "question": text,
+                "intent": "loose_pill_refusal",
+                "confidence": 1.0,
+                "symptoms": [],
+                "previous_symptoms": [],
+                "medical_query": True,
+                "answer": refusal_answer,
+                "answer_similarity": 1.0,
+                "source": "safety_rules",
+                "language": final_language,
+                "safety_flag": "loose_pill_refusal",
+            })
+
+        if doc_type == "lab_report":
+            parsed_params = parse_lab_parameters_from_text(ocr_text)
+            ai_answer, prov = generate_medical_response_with_provider(
+                user_text=text,
+                language=final_language,
+                medical_context=ocr_text or "Laboratory blood or diagnostic test report",
+                conversation_context="",
+                session_id=session_id,
+                image_bytes=image_bytes,
+                user_memory_context="",
+                correlation_id=correlation_id,
+                system_instruction=build_vision_system_prompt("lab_report", final_language)
+            )
+            if not ai_answer or is_bad_answer(ai_answer):
+                lab_response = format_laboratory_report_response(
+                    report_title="Laboratory Diagnostic Report",
+                    parameters=parsed_params,
+                    uncertainties=[],
+                    language=final_language
+                )
+                source = "clinical_lab_analyzer"
+            else:
+                lab_response = ai_answer
+                source = prov or "gemini_vision"
+
+            abnormal_list = [p for p in parsed_params if p.get("status") in ("High", "Low")]
+            doc_data = {
+                "parameters": parsed_params,
+                "abnormal_parameters": abnormal_list,
+                "summary": lab_response
+            }
+            save_user_medical_document(
+                user_id=user_id,
+                document_type="lab_report",
+                extracted_text=ocr_text,
+                summary=lab_response,
+                extracted_data_json=json.dumps(doc_data),
+                session_id=session_id,
+                is_temporary=is_temporary
+            )
+            _record_message("user", text, [])
+            _record_message("assistant", lab_response, [])
+            return _json_response({
+                "status": "success",
+                "session_id": session_id,
+                "question": text,
+                "intent": "lab_report_analysis",
+                "confidence": 1.0,
+                "symptoms": [],
+                "previous_symptoms": [],
+                "medical_query": True,
+                "answer": lab_response,
+                "answer_similarity": 1.0,
+                "source": source,
+                "language": final_language,
+            })
+
+        if doc_type == "prescription":
+            parsed_items = parse_prescription_items_from_text(ocr_text)
+            ai_answer, prov = generate_medical_response_with_provider(
+                user_text=text,
+                language=final_language,
+                medical_context=ocr_text or "Doctor prescription document",
+                conversation_context="",
+                session_id=session_id,
+                image_bytes=image_bytes,
+                user_memory_context="",
+                correlation_id=correlation_id,
+                system_instruction=build_vision_system_prompt("prescription", final_language)
+            )
+            if not ai_answer or is_bad_answer(ai_answer):
+                rx_response = format_prescription_response(
+                    items=parsed_items,
+                    prescriber_info="Consulting Physician",
+                    language=final_language
+                )
+                source = "prescription_analyzer"
+            else:
+                rx_response = ai_answer
+                source = prov or "gemini_vision"
+
+            doc_data = {
+                "prescription_items": parsed_items,
+                "summary": rx_response
+            }
+            save_user_medical_document(
+                user_id=user_id,
+                document_type="prescription",
+                extracted_text=ocr_text,
+                summary=rx_response,
+                extracted_data_json=json.dumps(doc_data),
+                session_id=session_id,
+                is_temporary=is_temporary
+            )
+            _record_message("user", text, [])
+            _record_message("assistant", rx_response, [])
+            return _json_response({
+                "status": "success",
+                "session_id": session_id,
+                "question": text,
+                "intent": "prescription_analysis",
+                "confidence": 1.0,
+                "symptoms": [],
+                "previous_symptoms": [],
+                "medical_query": True,
+                "answer": rx_response,
+                "answer_similarity": 1.0,
+                "source": source,
+                "language": final_language,
+            })
+
+        if doc_type in ("medicine_packaging", "general_document"):
+            ai_answer, prov = generate_medical_response_with_provider(
+                user_text=text,
+                language=final_language,
+                medical_context=ocr_text or "Medicine packaging or pharmacy label",
+                conversation_context="",
+                session_id=session_id,
+                image_bytes=image_bytes,
+                user_memory_context="",
+                correlation_id=correlation_id,
+                system_instruction=build_vision_system_prompt("medicine_packaging", final_language)
+            )
+            if not ai_answer or is_bad_answer(ai_answer):
+                b_name = "Inspected Medication"
+                g_name = "Active Ingredients (Check Packaging)"
+                str_val = "As stated on packaging"
+                m_brand = re.search(r"\b([a-zA-Z]{3,20})\s*([0-9]+(?:\.[0-9]+)?\s*(?:mg|ml|mcg|gm))?", ocr_text or "", re.IGNORECASE)
+                if m_brand:
+                    cand = m_brand.group(1).title()
+                    if cand.lower() not in ["tablet", "capsule", "syrup", "medicine", "strip", "pharmacy"]:
+                        b_name = cand
+                        if m_brand.group(2):
+                            str_val = m_brand.group(2)
+                pkg_response = format_10_point_medicine_response(
+                    brand_name=b_name,
+                    generic_name=g_name,
+                    strength=str_val,
+                    language=final_language
+                )
+                source = "packaging_analyzer"
+            else:
+                pkg_response = ai_answer
+                source = prov or "gemini_vision"
+
+            save_user_medical_document(
+                user_id=user_id,
+                document_type="medicine_packaging",
+                extracted_text=ocr_text,
+                summary=pkg_response,
+                extracted_data_json=json.dumps({"summary": pkg_response}),
+                session_id=session_id,
+                is_temporary=is_temporary
+            )
+            _record_message("user", text, [])
+            _record_message("assistant", pkg_response, [])
+            return _json_response({
+                "status": "success",
+                "session_id": session_id,
+                "question": text,
+                "intent": "medicine_packaging_analysis",
+                "confidence": 1.0,
+                "symptoms": [],
+                "previous_symptoms": [],
+                "medical_query": True,
+                "answer": pkg_response,
+                "answer_similarity": 1.0,
+                "source": source,
+                "language": final_language,
+            })
 
     # Reference resolution for follow-ups (B1)
     recent_history = get_chat_history(session_id, limit=6, user_id=user_id)
@@ -3263,6 +3497,10 @@ def predict():
         if user_memories:
             user_memory_context = format_memories_as_user_context(user_memories)
 
+        entity_ctx = format_medical_entities_context(user_id, is_temporary=is_temporary)
+        if entity_ctx:
+            user_memory_context = f"{user_memory_context}\n\n{entity_ctx}".strip() if user_memory_context else entity_ctx
+
     def _maybe_save_user_prefs():
         if can_use_memory:
             try:
@@ -3280,6 +3518,25 @@ def predict():
                     )
             except Exception as ex:
                 logger.warning("Error saving extracted user preferences: %s", ex)
+
+            try:
+                med_ent = extract_medical_entity(text)
+                if med_ent and med_ent.get("concern"):
+                    ent_duration = extract_duration(text)
+                    save_or_update_medical_entity(
+                        user_id=user_id,
+                        subject=med_ent["subject"],
+                        subject_relation=med_ent["relation"],
+                        concern=med_ent["concern"],
+                        raw_condition=text,
+                        duration=ent_duration,
+                        status=med_ent["status"],
+                        source_session_id=session_id,
+                        source_message=text,
+                        is_temporary=is_temporary
+                    )
+            except Exception as ex:
+                logger.warning("Error saving extracted medical entity: %s", ex)
 
     try:
         model_prediction = str(model.predict([analysis_text])[0])
@@ -3366,6 +3623,73 @@ def predict():
                 })
 
         # ----------------------------------------------------
+        # CROSS-CHAT PERSISTENT ENTITY MEMORY RECALL & UPDATE
+        # ----------------------------------------------------
+        cross_chat_memory_answer = None
+        if can_use_memory:
+            try:
+                cross_chat_memory_answer = build_cross_chat_memory_response(
+                    user_id=user_id,
+                    query_text=text,
+                    language=final_language,
+                    is_temporary=is_temporary
+                )
+            except Exception as e:
+                logger.warning("Error in build_cross_chat_memory_response: %s", e)
+
+        if cross_chat_memory_answer:
+            _record_message("user", text, [])
+            _record_message("assistant", cross_chat_memory_answer, previous_symptoms)
+            _maybe_save_user_prefs()
+
+            return _json_response({
+                "status": "success",
+                "session_id": session_id,
+                "question": text,
+                "intent": "memory_recall",
+                "confidence": round(confidence, 4),
+                "symptoms": previous_symptoms,
+                "medical_query": True,
+                "answer": cross_chat_memory_answer,
+                "answer_similarity": 1.0,
+                "source": "persistent_medical_memory",
+                "language": final_language,
+            })
+
+        # ----------------------------------------------------
+        # MULTIMODAL DOCUMENT FOLLOW-UP QUESTION ANSWERING
+        # ----------------------------------------------------
+        active_doc = get_active_session_document(session_id, user_id=user_id)
+        if not active_doc and can_use_memory:
+            past_docs = get_user_medical_documents(user_id, is_temporary=is_temporary)
+            if past_docs:
+                active_doc = past_docs[0]
+
+        is_doc_query = any(w in text.lower() for w in [
+            "report", "prescription", "abnormal", "dose", "dosage", "timing", "result", "findings",
+            "रिपोर्ट", "प्रिस्क्रिप्शन", "तपासणी", "डोस", "औषध", "नॉर्मल"
+        ])
+        if active_doc and is_doc_query:
+            doc_ans = answer_document_followup(active_doc, text, language=final_language)
+            if doc_ans:
+                _record_message("user", text, [])
+                _record_message("assistant", doc_ans, previous_symptoms)
+                _maybe_save_user_prefs()
+                return _json_response({
+                    "status": "success",
+                    "session_id": session_id,
+                    "question": text,
+                    "intent": "document_followup",
+                    "confidence": 1.0,
+                    "symptoms": previous_symptoms,
+                    "medical_query": True,
+                    "answer": doc_ans,
+                    "answer_similarity": 1.0,
+                    "source": "multimodal_document_engine",
+                    "language": final_language,
+                })
+
+        # ----------------------------------------------------
         # SPECIFIC MEMORY RECALL
         # ----------------------------------------------------
         has_memory_language = any(
@@ -3426,7 +3750,7 @@ def predict():
         # FOLLOW-UP
         # ----------------------------------------------------
         is_followup = is_contextual_followup(text, session_id=session_id, previous_symptoms=previous_symptoms)
-        if is_followup and previous_symptoms and (not symptoms or set(symptoms).issubset(set(previous_symptoms))):
+        if is_followup and previous_symptoms and (not symptoms or set(symptoms).issubset(set(previous_symptoms)) or bool(_resolved_note)):
             followup_context = ""
             if any(phrase in normalized_query for phrase in CARE_PHRASES):
                 followup_context = build_multi_symptom_response(

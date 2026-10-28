@@ -882,11 +882,27 @@ fun ChatbotScreen(
 
     var currentlySpeakingText by remember { mutableStateOf<String?>(null) }
     val voiceAssistant = remember(context) {
-        VoiceAssistant(context) { isSpeaking ->
-            if (!isSpeaking) {
+        VoiceAssistant(
+            context = context,
+            onSpeakingChanged = { isSpeaking ->
+                if (!isSpeaking) {
+                    currentlySpeakingText = null
+                }
+            },
+            onVoiceMissing = { missingLocale ->
+                val langName = when (missingLocale.language.lowercase(Locale.ROOT)) {
+                    "mr" -> "Marathi"
+                    "hi" -> "Hindi"
+                    else -> missingLocale.displayLanguage
+                }
+                Toast.makeText(
+                    context,
+                    "Please install the $langName voice pack in your device's Text-to-Speech settings for natural speech.",
+                    Toast.LENGTH_LONG
+                ).show()
                 currentlySpeakingText = null
             }
-        }
+        )
     }
 
     DisposableEffect(Unit) {
@@ -2028,11 +2044,7 @@ fun ChatbotScreen(
                                             currentlySpeakingText = null
                                         } else {
                                             currentlySpeakingText = chatMessage.text
-                                            val ttsLocale = when (selectedLanguage) {
-                                                "मराठी", "mr", "mr-IN" -> Locale.forLanguageTag("mr-IN")
-                                                "हिंदी", "hi", "hi-IN" -> Locale.forLanguageTag("hi-IN")
-                                                else -> Locale.US
-                                            }
+                                            val ttsLocale = detectSpokenLanguage(chatMessage.text, selectedLanguage)
                                             voiceAssistant.speak(chatMessage.text, ttsLocale)
                                         }
                                     }
@@ -4970,4 +4982,68 @@ private fun TypingDot(
             .clip(CircleShape)
             .background(PrimaryTeal)
     )
+}
+
+/**
+ * Detects the language of text content dynamically for natural Indic Text-to-Speech.
+ * Prioritizes Devanagari script detection (Marathi vs Hindi), followed by Roman Indic,
+ * and falls back to Indian English (en-IN).
+ */
+private fun detectSpokenLanguage(text: String, fallbackLanguage: String = "en"): Locale {
+    val trimmed = text.trim()
+    if (trimmed.isEmpty()) return Locale.forLanguageTag("en-IN")
+
+    val devanagariCount = trimmed.count { it in '\u0900'..'\u097F' }
+    val totalLetters = trimmed.count { it.isLetter() }
+
+    if (totalLetters > 0 && devanagariCount.toDouble() / totalLetters > 0.15) {
+        val marathiMarkers = listOf(
+            "आहे", "नाही", "काय", "होते", "होता", "होती", "मित्रा", "मित्राला",
+            "त्रास", "औषध", "करा", "तुम्हाला", "मला", "त्याला", "झाले", "झाला",
+            "झाली", "केले", "करावे", "येथे", "लक्षणे", "उपचार", "तपासणी", "काही",
+            "आपण", "कसा", "कशी", "करावा"
+        )
+        val hindiMarkers = listOf(
+            "है", "नहीं", "क्या", "होता", "होती", "था", "थी", "दोस्त",
+            "दवा", "करें", "आपको", "मुझे", "उसे", "हुआ", "हुई", "किया",
+            "करना", "यहाँ", "लक्षण", "उपाय", "जांच", "कुछ", "आप", "कैसा", "कैसी"
+        )
+
+        val marathiScore = marathiMarkers.count { trimmed.contains(it) }
+        val hindiScore = hindiMarkers.count { trimmed.contains(it) }
+
+        return if (marathiScore >= hindiScore) {
+            Locale.forLanguageTag("mr-IN")
+        } else {
+            Locale.forLanguageTag("hi-IN")
+        }
+    }
+
+    val lower = trimmed.lowercase(Locale.ROOT)
+    val romanMarathiMarkers = listOf(
+        "aahe", "nahi", "kay", "mitra", "tras", "aushadh", "mala", "tula",
+        "tyala", "zala", "zali", "kela", "keli", "hota", "hoti", "hote",
+        "maza", "majha", "kiti", "kasa", "kashi", "koni"
+    )
+    val romanHindiMarkers = listOf(
+        "hai", "nahi", "kya", "dost", "taklif", "dawa", "mujhe", "tujhe",
+        "use", "hua", "hui", "kiya", "kitna", "kaisa", "kaisi", "tha", "thi",
+        "mera", "meri"
+    )
+
+    val rmScore = romanMarathiMarkers.count { Regex("\\b" + it + "\\b").containsMatchIn(lower) }
+    val rhScore = romanHindiMarkers.count { Regex("\\b" + it + "\\b").containsMatchIn(lower) }
+
+    if (rmScore >= 2 && rmScore >= rhScore) {
+        return Locale.forLanguageTag("mr-IN")
+    }
+    if (rhScore >= 2) {
+        return Locale.forLanguageTag("hi-IN")
+    }
+
+    return when (fallbackLanguage) {
+        "मराठी", "mr", "mr-IN" -> Locale.forLanguageTag("mr-IN")
+        "हिंदी", "hi", "hi-IN" -> Locale.forLanguageTag("hi-IN")
+        else -> Locale.forLanguageTag("en-IN")
+    }
 }

@@ -264,6 +264,16 @@ def resolve_followup_references(user_text: str, history: List[dict]) -> Tuple[st
     return enriched_prompt, resolved_entity
 
 
+CANONICAL_SYMPTOM_MAP = {
+    "vague_cough": "cough",
+    "vague_headache": "headache",
+    "vague_stomach": "stomach_pain",
+    "vague_fever": "fever",
+    "vague_pain": "body_pain",
+    "vague_malaise": "weakness"
+}
+
+
 def check_for_ambiguous_query(user_text: str, detected_dialect: str = "en") -> Optional[Dict[str, str]]:
     """
     Checks if user query is clinically underspecified/ambiguous and generates
@@ -291,8 +301,9 @@ def check_for_ambiguous_query(user_text: str, detected_dialect: str = "en") -> O
                 else:
                     q_text = cfg["en"]
 
+                canonical = CANONICAL_SYMPTOM_MAP.get(category, category.replace("vague_", ""))
                 return {
-                    "category": category,
+                    "category": canonical,
                     "clarification_question": q_text,
                     "is_ambiguous": True
                 }

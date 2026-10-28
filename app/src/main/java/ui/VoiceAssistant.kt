@@ -15,7 +15,8 @@ import java.util.Locale
  */
 class VoiceAssistant(
     context: Context,
-    private val onSpeakingChanged: (Boolean) -> Unit = {}
+    private val onSpeakingChanged: (Boolean) -> Unit = {},
+    private val onVoiceMissing: ((Locale) -> Unit)? = null
 ) : TextToSpeech.OnInitListener {
 
     companion object {
@@ -237,7 +238,11 @@ class VoiceAssistant(
 
         textToSpeech.stop()
 
-        setBestLanguage(locale)
+        val languageReady = setBestLanguage(locale)
+        if (!languageReady) {
+            Log.w(TAG, "Speech aborted: voice data for ${locale.toLanguageTag()} is missing")
+            return
+        }
 
         textToSpeech.speak(
             speechText,
@@ -273,37 +278,103 @@ class VoiceAssistant(
     private fun setBestLanguage(
         requestedLocale: Locale
     ): Boolean {
+        val lang = requestedLocale.language.lowercase()
 
-        var result =
-            textToSpeech.setLanguage(
-                requestedLocale
-            )
+        // 1. Marathi requested
+        if (lang == "mr") {
+            val mrLocale = Locale.forLanguageTag("mr-IN")
+            val mrAvailable = textToSpeech.isLanguageAvailable(mrLocale)
+            val langOnlyAvailable = textToSpeech.isLanguageAvailable(Locale.forLanguageTag("mr"))
 
-        if (
-            result != TextToSpeech.LANG_MISSING_DATA &&
-            result != TextToSpeech.LANG_NOT_SUPPORTED
-        ) {
+            if ((mrAvailable != TextToSpeech.LANG_MISSING_DATA && mrAvailable != TextToSpeech.LANG_NOT_SUPPORTED) ||
+                (langOnlyAvailable != TextToSpeech.LANG_MISSING_DATA && langOnlyAvailable != TextToSpeech.LANG_NOT_SUPPORTED)) {
+
+                val marathiVoice = textToSpeech.voices?.firstOrNull { voice ->
+                    (voice.locale.language.equals("mr", ignoreCase = true) ||
+                     voice.locale.toLanguageTag().equals("mr-IN", ignoreCase = true)) &&
+                    !voice.isNetworkConnectionRequired
+                } ?: textToSpeech.voices?.firstOrNull { voice ->
+                    voice.locale.language.equals("mr", ignoreCase = true) ||
+                    voice.locale.toLanguageTag().equals("mr-IN", ignoreCase = true)
+                }
+
+                if (marathiVoice != null) {
+                    try {
+                        textToSpeech.voice = marathiVoice
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Could not bind Marathi voice: ${e.message}")
+                    }
+                }
+                textToSpeech.setLanguage(mrLocale)
+                return true
+            }
+
+            Log.w(TAG, "Marathi voice data is missing on this device's Text-to-Speech engine")
+            onVoiceMissing?.invoke(mrLocale)
+            return false
+        }
+
+        // 2. Hindi requested
+        if (lang == "hi") {
+            val hiLocale = Locale.forLanguageTag("hi-IN")
+            val hiAvailable = textToSpeech.isLanguageAvailable(hiLocale)
+
+            if (hiAvailable != TextToSpeech.LANG_MISSING_DATA && hiAvailable != TextToSpeech.LANG_NOT_SUPPORTED) {
+                val hindiVoice = textToSpeech.voices?.firstOrNull { voice ->
+                    voice.locale.language.equals("hi", ignoreCase = true) && !voice.isNetworkConnectionRequired
+                } ?: textToSpeech.voices?.firstOrNull { voice ->
+                    voice.locale.language.equals("hi", ignoreCase = true)
+                }
+
+                if (hindiVoice != null) {
+                    try {
+                        textToSpeech.voice = hindiVoice
+                    } catch (e: Exception) {
+                        Log.w(TAG, "Could not bind Hindi voice: ${e.message}")
+                    }
+                }
+                textToSpeech.setLanguage(hiLocale)
+                return true
+            }
+
+            Log.w(TAG, "Hindi voice data is missing on this device's Text-to-Speech engine")
+            onVoiceMissing?.invoke(hiLocale)
+            return false
+        }
+
+        // 3. Indian English preferred for natural Indian English pronunciation
+        val inEnglishLocale = Locale.forLanguageTag("en-IN")
+        val inAvailable = textToSpeech.isLanguageAvailable(inEnglishLocale)
+
+        if (inAvailable != TextToSpeech.LANG_MISSING_DATA && inAvailable != TextToSpeech.LANG_NOT_SUPPORTED) {
+            val indianVoice = textToSpeech.voices?.firstOrNull { voice ->
+                voice.locale.language.equals("en", ignoreCase = true) &&
+                voice.locale.country.equals("IN", ignoreCase = true) &&
+                !voice.isNetworkConnectionRequired
+            } ?: textToSpeech.voices?.firstOrNull { voice ->
+                voice.locale.language.equals("en", ignoreCase = true) &&
+                voice.locale.country.equals("IN", ignoreCase = true)
+            }
+
+            if (indianVoice != null) {
+                try {
+                    textToSpeech.voice = indianVoice
+                } catch (e: Exception) {
+                    Log.w(TAG, "Could not bind Indian English voice: ${e.message}")
+                }
+            }
+            textToSpeech.setLanguage(inEnglishLocale)
             return true
         }
 
-        val languageOnly =
-            Locale.forLanguageTag(requestedLocale.language)
-
-        result =
-            textToSpeech.setLanguage(
-                languageOnly
-            )
-
-        if (
-            result != TextToSpeech.LANG_MISSING_DATA &&
-            result != TextToSpeech.LANG_NOT_SUPPORTED
-        ) {
+        // Fallback for standard English
+        var result = textToSpeech.setLanguage(requestedLocale)
+        if (result != TextToSpeech.LANG_MISSING_DATA && result != TextToSpeech.LANG_NOT_SUPPORTED) {
             return true
         }
 
         textToSpeech.setLanguage(Locale.US)
-
-        return false
+        return true
     }
 
     /**

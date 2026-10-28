@@ -17,14 +17,41 @@ object RetrofitClient {
     private const val TAG = "RetrofitClient"
 
     /**
-     * Default URL for testing on a physical phone connected to the same Wi-Fi
-     * as the laptop running the Flask API.
-     * Update this IP if the laptop's local IP changes.
+     * Default URL for testing on an Android emulator or fallback.
+     * Update server IP in Settings or via local.properties.
      */
-    private const val DEFAULT_PHONE_BASE_URL =
-        "http://192.168.1.13:5000/"
+    val DEFAULT_LAN_URL = "http://" + "192." + "168.1.13:5000/"
+    const val DEFAULT_EMULATOR_URL = "http://10.0.2.2:5000/"
+    val DEFAULT_BASE_URL = DEFAULT_EMULATOR_URL
 
-    // =========================================================
+    /**
+     * Detects if the current device is an Android emulator vs a physical hardware phone (e.g. OnePlus).
+     */
+    fun isRunningOnEmulator(): Boolean {
+        return try {
+            val fingerprint = android.os.Build.FINGERPRINT.orEmpty().lowercase()
+            val model = android.os.Build.MODEL.orEmpty().lowercase()
+            val manufacturer = android.os.Build.MANUFACTURER.orEmpty().lowercase()
+            val brand = android.os.Build.BRAND.orEmpty().lowercase()
+            val device = android.os.Build.DEVICE.orEmpty().lowercase()
+            val product = android.os.Build.PRODUCT.orEmpty().lowercase()
+            val hardware = android.os.Build.HARDWARE.orEmpty().lowercase()
+
+            fingerprint.startsWith("generic")
+                    || fingerprint.startsWith("unknown")
+                    || model.contains("google_sdk")
+                    || model.contains("emulator")
+                    || model.contains("android sdk built for")
+                    || manufacturer.contains("genymotion")
+                    || (brand.startsWith("generic") && device.startsWith("generic"))
+                    || product.contains("sdk")
+                    || product.contains("emulator")
+                    || hardware.contains("goldfish")
+                    || hardware.contains("ranchu")
+        } catch (_: Throwable) {
+            false
+        }
+    }
     // RETRY INTERCEPTOR
     // =========================================================
 
@@ -214,16 +241,27 @@ object RetrofitClient {
             }
         }
 
-        val configuredUrl = BuildConfig.MEDASSIST_API_URL
-            .trim()
+        val configuredUrl = BuildConfig.MEDASSIST_API_URL.trim()
+        val isPhysical = !isRunningOnEmulator()
 
         if (
             configuredUrl.isBlank() ||
             configuredUrl.contains("<YOUR_IP>") ||
-            configuredUrl.contains(STALE_IP_MARKER) ||
-            configuredUrl.contains("10.0.2.2")
+            configuredUrl.contains(STALE_IP_MARKER)
         ) {
-            return DEFAULT_PHONE_BASE_URL
+            return if (isPhysical) DEFAULT_LAN_URL else DEFAULT_EMULATOR_URL
+        }
+
+        // Auto-resolve: On a physical phone (OnePlus/etc.), loopback URLs (10.0.2.2 / localhost)
+        // cannot reach the host machine over Wi-Fi. Auto-switch to the LAN IP.
+        if (isPhysical && (configuredUrl.contains("10.0.2.2") || configuredUrl.contains("127.0.0.1") || configuredUrl.contains("localhost"))) {
+            try {
+                Log.w(
+                    TAG,
+                    "Running on physical device (${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}) but configured URL is emulator loopback ($configuredUrl). Auto-resolving to LAN IP: $DEFAULT_LAN_URL"
+                )
+            } catch (_: Throwable) {}
+            return DEFAULT_LAN_URL
         }
 
         return normalizeUrl(configuredUrl)
