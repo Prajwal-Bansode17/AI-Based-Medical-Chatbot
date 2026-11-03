@@ -125,7 +125,7 @@ class MainActivity : FragmentActivity() {
         }
 
         setContent {
-            AIBasedMedicalChatbotTheme {
+            ProvideAppTheme {
                 ProvideAppLanguage {
                     androidx.compose.material3.Surface(
                         modifier = androidx.compose.ui.Modifier.fillMaxSize(),

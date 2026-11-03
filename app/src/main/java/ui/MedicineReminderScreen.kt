@@ -1,6 +1,7 @@
 package ui
 
 import android.widget.Toast
+import androidx.compose.runtime.Composable
 
 import android.Manifest
 import android.app.TimePickerDialog
@@ -112,14 +113,14 @@ import java.util.Calendar
 import java.util.Date
 import java.util.Locale
 
-private val ReminderBlue = DeepTeal
-private val ReminderDarkBlue = DarkTeal
-private val ReminderLightBlue = SoftMint
-private val ReminderBackground = Ivory
-private val ReminderCardSurface = PureWhite
-private val ReminderMintBorder = Mint
-private val ReminderGreen = SageGreen
-private val ReminderRed = StatusError
+private val ReminderBlue get() = DeepTeal
+private val ReminderDarkBlue get() = DarkTeal
+private val ReminderLightBlue get() = SoftMint
+private val ReminderBackground get() = Ivory
+private val ReminderCardSurface get() = PureWhite
+private val ReminderMintBorder get() = Mint
+private val ReminderGreen get() = SageGreen
+private val ReminderRed get() = StatusError
 
 @OptIn(ExperimentalMaterial3Api::class)
 @androidx.compose.runtime.Composable

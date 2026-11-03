@@ -95,6 +95,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import com.example.ai_based_medical_chatbot.LocalAppLanguageController
+import com.example.ai_based_medical_chatbot.LocalAppThemeController
+import com.example.ai_based_medical_chatbot.ui.theme.MoonVectorIcon
+import com.example.ai_based_medical_chatbot.ui.theme.SunVectorIcon
 import com.example.ai_based_medical_chatbot.MedicineReminder
 import com.example.ai_based_medical_chatbot.MedicineReminderRepository
 import com.example.ai_based_medical_chatbot.appText
@@ -678,6 +681,64 @@ fun ProfileScreen(
                                     )
                                 }
                             }
+                        }
+
+                        ProfileDivider()
+
+                        // Dark Mode Preference Row
+                        val themeController = LocalAppThemeController.current
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { themeController.toggleDarkTheme() }
+                                .padding(16.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(42.dp)
+                                    .background(SoftMint, RoundedCornerShape(12.dp)),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = if (themeController.isDarkTheme) MoonVectorIcon else SunVectorIcon,
+                                    contentDescription = "Theme",
+                                    tint = DeepTeal,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
+
+                            Spacer(modifier = Modifier.width(12.dp))
+
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = appText("dark_mode", selectedLanguage),
+                                    color = TextDark,
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                Spacer(modifier = Modifier.height(2.dp))
+                                Text(
+                                    text = if (themeController.isDarkTheme) {
+                                        appText("dark_mode_enabled", selectedLanguage)
+                                    } else {
+                                        appText("dark_mode_disabled", selectedLanguage)
+                                    },
+                                    color = TextMuted,
+                                    fontSize = 11.sp
+                                )
+                            }
+
+                            Switch(
+                                checked = themeController.isDarkTheme,
+                                onCheckedChange = { themeController.setDarkTheme(it) },
+                                colors = SwitchDefaults.colors(
+                                    checkedThumbColor = PureWhite,
+                                    checkedTrackColor = DeepTeal,
+                                    uncheckedThumbColor = PureWhite,
+                                    uncheckedTrackColor = Mint
+                                )
+                            )
                         }
 
                         ProfileDivider()

@@ -92,6 +92,11 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.ai_based_medical_chatbot.LocalAppLanguageController
+import com.example.ai_based_medical_chatbot.LocalAppThemeController
+import com.example.ai_based_medical_chatbot.ui.theme.StaticDeepTeal
+import com.example.ai_based_medical_chatbot.ui.theme.StaticDarkTeal
+import com.example.ai_based_medical_chatbot.ui.theme.MoonVectorIcon
+import com.example.ai_based_medical_chatbot.ui.theme.SunVectorIcon
 import com.example.ai_based_medical_chatbot.MedicineReminder
 import com.example.ai_based_medical_chatbot.MedicineReminderRepository
 import com.example.ai_based_medical_chatbot.appText
@@ -129,7 +134,7 @@ val HomeVectorIcon: ImageVector by lazy {
         viewportHeight = 24f
     ).apply {
         path(
-            stroke = SolidColor(DeepTeal),
+            stroke = SolidColor(StaticDeepTeal),
             strokeLineWidth = 2f,
             strokeLineCap = StrokeCap.Round,
             strokeLineJoin = StrokeJoin.Round
@@ -159,7 +164,7 @@ val ScaleVectorIcon: ImageVector by lazy {
         viewportHeight = 24f
     ).apply {
         path(
-            stroke = SolidColor(DeepTeal),
+            stroke = SolidColor(StaticDeepTeal),
             strokeLineWidth = 2f,
             strokeLineCap = StrokeCap.Round,
             strokeLineJoin = StrokeJoin.Round
@@ -197,7 +202,7 @@ val StethoscopeVectorIcon: ImageVector by lazy {
         viewportHeight = 24f
     ).apply {
         path(
-            stroke = SolidColor(DarkTeal),
+            stroke = SolidColor(StaticDarkTeal),
             strokeLineWidth = 2f,
             strokeLineCap = StrokeCap.Round,
             strokeLineJoin = StrokeJoin.Round
@@ -227,7 +232,7 @@ val PillVectorIcon: ImageVector by lazy {
         viewportHeight = 24f
     ).apply {
         path(
-            stroke = SolidColor(DeepTeal),
+            stroke = SolidColor(StaticDeepTeal),
             strokeLineWidth = 2f,
             strokeLineCap = StrokeCap.Round,
             strokeLineJoin = StrokeJoin.Round
@@ -255,7 +260,7 @@ val HeartPulseVectorIcon: ImageVector by lazy {
         viewportHeight = 24f
     ).apply {
         path(
-            stroke = SolidColor(DarkTeal),
+            stroke = SolidColor(StaticDarkTeal),
             strokeLineWidth = 2f,
             strokeLineCap = StrokeCap.Round,
             strokeLineJoin = StrokeJoin.Round
@@ -288,7 +293,7 @@ val DocumentScannerVectorIcon: ImageVector by lazy {
         viewportHeight = 24f
     ).apply {
         path(
-            stroke = SolidColor(DeepTeal),
+            stroke = SolidColor(StaticDeepTeal),
             strokeLineWidth = 2f,
             strokeLineCap = StrokeCap.Round,
             strokeLineJoin = StrokeJoin.Round
@@ -324,7 +329,7 @@ val ClockVectorIcon: ImageVector by lazy {
         viewportHeight = 24f
     ).apply {
         path(
-            stroke = SolidColor(DeepTeal),
+            stroke = SolidColor(StaticDeepTeal),
             strokeLineWidth = 2f,
             strokeLineCap = StrokeCap.Round,
             strokeLineJoin = StrokeJoin.Round
@@ -351,7 +356,7 @@ val ChatVectorIcon: ImageVector by lazy {
         viewportHeight = 24f
     ).apply {
         path(
-            stroke = SolidColor(DeepTeal),
+            stroke = SolidColor(StaticDeepTeal),
             strokeLineWidth = 2f,
             strokeLineCap = StrokeCap.Round,
             strokeLineJoin = StrokeJoin.Round
@@ -384,7 +389,7 @@ val UserCardVectorIcon: ImageVector by lazy {
         viewportHeight = 24f
     ).apply {
         path(
-            stroke = SolidColor(DeepTeal),
+            stroke = SolidColor(StaticDeepTeal),
             strokeLineWidth = 2f,
             strokeLineCap = StrokeCap.Round,
             strokeLineJoin = StrokeJoin.Round
@@ -578,6 +583,28 @@ fun DashboardScreen(
                             }
 
                             Spacer(modifier = Modifier.width(12.dp))
+
+                            // Quick theme toggle button (Dark / Light mode)
+                            val themeController = LocalAppThemeController.current
+                            Surface(
+                                onClick = { themeController.toggleDarkTheme() },
+                                shape = CircleShape,
+                                color = PureWhite,
+                                border = BorderStroke(1.5.dp, Mint),
+                                shadowElevation = 2.dp,
+                                modifier = Modifier.size(44.dp)
+                            ) {
+                                Box(contentAlignment = Alignment.Center) {
+                                    Icon(
+                                        imageVector = if (themeController.isDarkTheme) SunVectorIcon else MoonVectorIcon,
+                                        contentDescription = "Toggle Theme",
+                                        tint = DeepTeal,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                            }
+
+                            Spacer(modifier = Modifier.width(8.dp))
 
                             // Profile action avatar - opens Profile screen directly
                             Box {

@@ -85,6 +85,10 @@ private fun formatHumanReadableFallback(key: String): String {
 }
 
 private fun marathiText(key: String): String? = when (key) {
+    "dark_mode" -> "डार्क मोड"
+    "dark_mode_enabled" -> "सुरू"
+    "dark_mode_disabled" -> "बंद"
+    "theme_settings" -> "थीम आणि देखावा"
     "account" -> "खाते"
     "age" -> "वय"
     "app_language" -> "अॅपची भाषा"
@@ -578,6 +582,10 @@ private fun marathiText(key: String): String? = when (key) {
 }
 
 private fun hindiText(key: String): String? = when (key) {
+    "dark_mode" -> "डार्क मोड"
+    "dark_mode_enabled" -> "सक्रिय"
+    "dark_mode_disabled" -> "निष्क्रिय"
+    "theme_settings" -> "थीम और स्वरूप"
     "account" -> "खाता"
     "age" -> "उम्र"
     "app_language" -> "ऐप की भाषा"
@@ -1071,6 +1079,10 @@ private fun hindiText(key: String): String? = when (key) {
 }
 
 private fun englishText(key: String): String? = when (key) {
+    "dark_mode" -> "Dark Mode"
+    "dark_mode_enabled" -> "Enabled"
+    "dark_mode_disabled" -> "Disabled"
+    "theme_settings" -> "Theme & Appearance"
     "account" -> "Account"
     "age" -> "Age"
     "app_language" -> "App Language"
