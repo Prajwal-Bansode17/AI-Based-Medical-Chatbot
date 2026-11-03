@@ -25,13 +25,14 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.IconButtonDefaults
@@ -40,18 +41,18 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.ai_based_medical_chatbot.LocalAppLanguageController
-import com.example.ai_based_medical_chatbot.appText
 import com.example.ai_based_medical_chatbot.ui.theme.DarkTeal
 import com.example.ai_based_medical_chatbot.ui.theme.DeepTeal
 import com.example.ai_based_medical_chatbot.ui.theme.Ivory
@@ -62,66 +63,36 @@ import com.example.ai_based_medical_chatbot.ui.theme.SoftMint
 import com.example.ai_based_medical_chatbot.ui.theme.TextDark
 import com.example.ai_based_medical_chatbot.ui.theme.TextMuted
 
-enum class HealthCategory(
-    val key: String,
-    val icon: ImageVector
-) {
-    ALL("cat_all", HeartPulseVectorIcon),
-    NUTRITION("cat_nutrition", PillVectorIcon),
-    FITNESS("cat_fitness", HeartPulseVectorIcon),
-    SLEEP("cat_sleep", ClockVectorIcon),
-    HYGIENE("cat_hygiene", StethoscopeVectorIcon),
-    MENTAL("cat_mental", ChatVectorIcon),
-    PREVENTION("cat_prevention", StethoscopeVectorIcon),
-    LIFESTYLE("cat_lifestyle", ScaleVectorIcon)
-}
-
-data class HealthTip(
-    val id: Int,
-    val category: HealthCategory,
-    val defaultTitle: String,
-    val defaultDescription: String
-)
-
-private val healthTipsList = listOf(
-    HealthTip(1, HealthCategory.NUTRITION, "Stay Hydrated", "Drink adequate water throughout the day (2.5-3 liters) to maintain electrolyte balance, digestion, and energy levels."),
-    HealthTip(2, HealthCategory.NUTRITION, "Eat a Balanced Diet", "Fill half your plate with colorful vegetables and fruits, a quarter with lean protein, and a quarter with whole grains."),
-    HealthTip(3, HealthCategory.FITNESS, "Stay Physically Active", "Engage in at least 30 minutes of moderate physical activity daily—brisk walking, cycling, or yoga keeps your heart strong."),
-    HealthTip(4, HealthCategory.SLEEP, "Prioritize Quality Sleep", "Aim for 7 to 8 hours of uninterrupted restful sleep every night. Keep a consistent sleep schedule to support cellular recovery."),
-    HealthTip(5, HealthCategory.HYGIENE, "Maintain Personal Hygiene", "Wash your hands frequently with soap and water, practice daily oral hygiene, and sanitize everyday contact surfaces."),
-    HealthTip(6, HealthCategory.MENTAL, "Manage Daily Stress", "Practice mindful deep breathing, meditation, or spend time in nature. Chronic stress elevates cortisol and blood pressure."),
-    HealthTip(7, HealthCategory.PREVENTION, "Avoid Smoking & Tobacco", "Quitting tobacco drastically cuts the risk of cardiovascular diseases, lung illness, and stroke within weeks."),
-    HealthTip(8, HealthCategory.PREVENTION, "Routine Health Screenings", "Schedule annual blood tests, BP checks, and lipid panels. Early detection is the single most powerful tool in modern medicine."),
-    HealthTip(9, HealthCategory.NUTRITION, "Limit Refined Sugars", "Minimize sweetened beverages, packaged juices, and refined sweets to protect insulin sensitivity and prevent weight spikes."),
-    HealthTip(10, HealthCategory.NUTRITION, "Fresh Seasonal Produce", "Incorporate seasonal vegetables, leafy greens, and citrus fruits packed with bioflavonoids, fiber, and vital micronutrients."),
-    HealthTip(11, HealthCategory.LIFESTYLE, "Take Active Micro-Breaks", "If you work sitting down, follow the 20-20-20 rule for eyes and stand up every 45 minutes to restore circulation."),
-    HealthTip(12, HealthCategory.LIFESTYLE, "Practice Ergonomic Posture", "Keep your back straight, shoulders relaxed, and screens at eye level to prevent chronic cervical and lumbar strain."),
-    HealthTip(13, HealthCategory.PREVENTION, "Sun Protection & Vitamin D", "Soak in 15 minutes of gentle morning sunlight for natural Vitamin D synthesis, while using UV protection during peak afternoon hours."),
-    HealthTip(14, HealthCategory.HYGIENE, "Clean Living Spaces", "Ensure proper room ventilation, dust living areas regularly, and keep indoor air fresh to minimize respiratory allergens."),
-    HealthTip(15, HealthCategory.MENTAL, "Stay Socially Connected", "Meaningful conversations with family and friends foster emotional resilience, reduce anxiety, and promote longevity."),
-    HealthTip(16, HealthCategory.LIFESTYLE, "Spend Time in Nature", "Walking in green parks lowers resting pulse rate, eases cognitive fatigue, and naturally uplifts your mental mood."),
-    HealthTip(17, HealthCategory.PREVENTION, "Avoid Excess Alcohol", "Limiting alcohol intake protects liver function, lowers cardiac arrhythmia risks, and prevents sleep cycle disruptions."),
-    HealthTip(18, HealthCategory.PREVENTION, "Listen to Early Body Cues", "Never ignore persistent fatigue, unexplained weight shifts, or chronic headaches. Timely medical consultation saves lives."),
-    HealthTip(19, HealthCategory.HYGIENE, "Safe Medication Storage", "Store medicines in cool, dry places away from sunlight. Check expiry dates and set reminders to avoid missed doses."),
-    HealthTip(20, HealthCategory.HYGIENE, "Thorough Hand Washing", "Scrub hands for at least 20 seconds before meals and after outdoor trips to stop infectious pathogens before they enter your body.")
-)
+// Backwards compatibility aliases if needed
+typealias HealthCategory = HealthTipCategory
+typealias HealthTip = HealthTipItem
 
 @Composable
 fun HealthTipsScreen(
     onBackClick: () -> Unit
 ) {
     val appLanguageController = LocalAppLanguageController.current
-    val selectedLanguage = appLanguageController.selectedLanguage
 
-    var selectedCategory by remember { mutableStateOf(HealthCategory.ALL) }
+    // Dedicated independent language selector state: defaults to current app language
+    // but stays independent of global application state so other screens are unaffected.
+    var screenLanguage by rememberSaveable { mutableStateOf(appLanguageController.selectedLanguage) }
+    var languageMenuExpanded by remember { mutableStateOf(false) }
+
+    var selectedCategory by rememberSaveable { mutableStateOf(HealthTipCategory.ALL) }
 
     val filteredTips = remember(selectedCategory) {
-        if (selectedCategory == HealthCategory.ALL) {
-            healthTipsList
-        } else {
-            healthTipsList.filter { it.category == selectedCategory }
-        }
+        HealthTipsRepository.getTipsByCategory(selectedCategory)
     }
+
+    val headerTitle = remember(screenLanguage) { HealthTipsRepository.getHeaderTitle(screenLanguage) }
+    val headerSubtitle = remember(screenLanguage) { HealthTipsRepository.getHeaderSubtitle(screenLanguage) }
+    val heroTitle = remember(screenLanguage) { HealthTipsRepository.getHeroTitle(screenLanguage) }
+    val heroDesc = remember(screenLanguage) { HealthTipsRepository.getHeroDescription(screenLanguage) }
+    val dailyTitle = remember(screenLanguage) { HealthTipsRepository.getDailySectionTitle(screenLanguage) }
+    val dailySubtitle = remember(screenLanguage) { HealthTipsRepository.getDailySectionSubtitle(screenLanguage) }
+    val countLabel = remember(screenLanguage) { HealthTipsRepository.getCountLabel(screenLanguage) }
+    val disclaimerText = remember(screenLanguage) { HealthTipsRepository.getDisclaimer(screenLanguage) }
+    val benefitsLabel = remember(screenLanguage) { HealthTipsRepository.getBenefitsLabel(screenLanguage) }
 
     Box(
         modifier = Modifier
@@ -148,7 +119,9 @@ fun HealthTipsScreen(
             ),
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
-            // HEADER
+            // ==========================================
+            // 1. TOP HEADER WITH INDEPENDENT LANGUAGE PILL
+            // ==========================================
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -179,22 +152,104 @@ fun HealthTipsScreen(
                         modifier = Modifier.weight(1f)
                     ) {
                         Text(
-                            text = appText("health_tips_title", selectedLanguage),
+                            text = headerTitle,
                             color = DarkTeal,
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.Bold
+                            fontSize = 21.sp,
+                            fontWeight = FontWeight.Bold,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = appText("health_tips_subtitle", selectedLanguage),
+                            text = headerSubtitle,
                             color = TextMuted,
-                            fontSize = 12.sp
+                            fontSize = 11.5.sp,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
+                    }
+
+                    Spacer(modifier = Modifier.width(8.dp))
+
+                    // Dedicated Independent Language Selector Dropdown Pill
+                    Box {
+                        val langShortCode = when (screenLanguage.lowercase().trim()) {
+                            "mr", "marathi", "मराठी" -> "MR ▾"
+                            "hi", "hindi", "हिंदी" -> "HI ▾"
+                            else -> "EN ▾"
+                        }
+
+                        Row(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(20.dp))
+                                .background(PureWhite)
+                                .border(BorderStroke(1.dp, Mint), RoundedCornerShape(20.dp))
+                                .clickable { languageMenuExpanded = true }
+                                .padding(horizontal = 12.dp, vertical = 7.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = langShortCode,
+                                color = DarkTeal,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        DropdownMenu(
+                            expanded = languageMenuExpanded,
+                            onDismissRequest = { languageMenuExpanded = false },
+                            modifier = Modifier
+                                .background(PureWhite)
+                                .border(BorderStroke(1.dp, Mint.copy(alpha = 0.6f)), RoundedCornerShape(12.dp))
+                        ) {
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = "English",
+                                        fontWeight = if (screenLanguage == "English") FontWeight.Bold else FontWeight.Normal,
+                                        color = if (screenLanguage == "English") DeepTeal else TextDark
+                                    )
+                                },
+                                onClick = {
+                                    screenLanguage = "English"
+                                    languageMenuExpanded = false
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = "मराठी (Marathi)",
+                                        fontWeight = if (screenLanguage == "मराठी") FontWeight.Bold else FontWeight.Normal,
+                                        color = if (screenLanguage == "मराठी") DeepTeal else TextDark
+                                    )
+                                },
+                                onClick = {
+                                    screenLanguage = "मराठी"
+                                    languageMenuExpanded = false
+                                }
+                            )
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = "हिंदी (Hindi)",
+                                        fontWeight = if (screenLanguage == "हिंदी") FontWeight.Bold else FontWeight.Normal,
+                                        color = if (screenLanguage == "हिंदी") DeepTeal else TextDark
+                                    )
+                                },
+                                onClick = {
+                                    screenLanguage = "हिंदी"
+                                    languageMenuExpanded = false
+                                }
+                            )
+                        }
                     }
                 }
             }
 
-            // HERO CARD
+            // ==========================================
+            // 2. HERO CARD
+            // ==========================================
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -243,14 +298,14 @@ fun HealthTipsScreen(
 
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
-                                    text = appText("health_tips_hero_title", selectedLanguage),
+                                    text = heroTitle,
                                     color = PureWhite,
                                     fontSize = 18.sp,
                                     fontWeight = FontWeight.Bold
                                 )
                                 Spacer(modifier = Modifier.height(4.dp))
                                 Text(
-                                    text = appText("health_tips_hero_description", selectedLanguage),
+                                    text = heroDesc,
                                     color = PureWhite.copy(alpha = 0.88f),
                                     fontSize = 12.sp,
                                     lineHeight = 18.sp
@@ -261,61 +316,63 @@ fun HealthTipsScreen(
                 }
             }
 
-            // CATEGORY FILTER CHIPS
+            // ==========================================
+            // 3. CATEGORY FILTER CHIPS (5 Categories + ALL)
+            // ==========================================
             item {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        HealthCategory.values().forEach { cat ->
-                            val isSelected = cat == selectedCategory
-                            Box(
-                                modifier = Modifier
-                                    .clip(RoundedCornerShape(12.dp))
-                                    .background(
-                                        if (isSelected) DeepTeal else PureWhite
-                                    )
-                                    .border(
-                                        BorderStroke(
-                                            1.dp,
-                                            if (isSelected) DeepTeal else Mint
-                                        ),
-                                        RoundedCornerShape(12.dp)
-                                    )
-                                    .clickable { selectedCategory = cat }
-                                    .padding(horizontal = 14.dp, vertical = 8.dp),
-                                contentAlignment = Alignment.Center
+                    HealthTipCategory.values().forEach { cat ->
+                        val isSelected = cat == selectedCategory
+                        val catTitle = HealthTipsRepository.getCategoryTitle(cat, screenLanguage)
+                        val catIcon = HealthTipsRepository.getCategoryIcon(cat)
+
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(12.dp))
+                                .background(
+                                    if (isSelected) DeepTeal else PureWhite
+                                )
+                                .border(
+                                    BorderStroke(
+                                        1.dp,
+                                        if (isSelected) DeepTeal else Mint
+                                    ),
+                                    RoundedCornerShape(12.dp)
+                                )
+                                .clickable { selectedCategory = cat }
+                                .padding(horizontal = 13.dp, vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = cat.icon,
-                                        contentDescription = null,
-                                        tint = if (isSelected) PureWhite else DeepTeal,
-                                        modifier = Modifier.size(15.dp)
-                                    )
-                                    Text(
-                                        text = appText(cat.key, selectedLanguage),
-                                        color = if (isSelected) PureWhite else DarkTeal,
-                                        fontSize = 12.sp,
-                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
-                                    )
-                                }
+                                Icon(
+                                    imageVector = catIcon,
+                                    contentDescription = null,
+                                    tint = if (isSelected) PureWhite else DeepTeal,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Text(
+                                    text = catTitle,
+                                    color = if (isSelected) PureWhite else DarkTeal,
+                                    fontSize = 12.sp,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
+                                )
                             }
                         }
                     }
                 }
             }
 
-            // SECTION HEADER WITH COUNT BADGE
+            // ==========================================
+            // 4. SECTION HEADER WITH COUNT BADGE
+            // ==========================================
             item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -323,14 +380,14 @@ fun HealthTipsScreen(
                 ) {
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
-                            text = appText("health_tips_daily_title", selectedLanguage),
+                            text = dailyTitle,
                             color = DarkTeal,
                             fontSize = 18.sp,
                             fontWeight = FontWeight.Bold
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
-                            text = appText("health_tips_daily_subtitle", selectedLanguage),
+                            text = dailySubtitle,
                             color = TextMuted,
                             fontSize = 12.sp
                         )
@@ -349,7 +406,7 @@ fun HealthTipsScreen(
                             .padding(horizontal = 10.dp, vertical = 5.dp)
                     ) {
                         Text(
-                            text = "${filteredTips.size} ${appText("health_tips_count", selectedLanguage)}",
+                            text = "${filteredTips.size} $countLabel",
                             color = DeepTeal,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold
@@ -358,29 +415,55 @@ fun HealthTipsScreen(
                 }
             }
 
-            // HEALTH TIP CARDS
-            itemsIndexed(
-                items = filteredTips,
-                key = { _, tip -> tip.id }
-            ) { _, tip ->
-                val localizedTitle = appText("health_tip_${tip.id}_title", selectedLanguage)
-                    .takeIf { it.isNotBlank() && it != "health_tip_${tip.id}_title" }
-                    ?: tip.defaultTitle
-                val localizedDesc = appText("health_tip_${tip.id}_description", selectedLanguage)
-                    .takeIf { it.isNotBlank() && it != "health_tip_${tip.id}_description" }
-                    ?: tip.defaultDescription
-                val categoryName = appText(tip.category.key, selectedLanguage)
+            // ==========================================
+            // 5. HEALTH TIP CARDS (With Rich Benefits Section)
+            // ==========================================
+            if (filteredTips.isEmpty()) {
+                item {
+                    Card(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = CardDefaults.cardColors(containerColor = PureWhite),
+                        border = BorderStroke(1.dp, Mint)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(24.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = HealthTipsRepository.getEmptyStateMessage(screenLanguage),
+                                color = TextMuted,
+                                fontSize = 13.sp
+                            )
+                        }
+                    }
+                }
+            } else {
+                itemsIndexed(
+                    items = filteredTips,
+                    key = { _, tip -> tip.id }
+                ) { _, tip ->
+                    val content = tip.getContent(screenLanguage)
+                    val catTitle = HealthTipsRepository.getCategoryTitle(tip.category, screenLanguage)
+                    val catIcon = HealthTipsRepository.getCategoryIcon(tip.category)
 
-                HealthTipCard(
-                    id = tip.id,
-                    title = localizedTitle,
-                    description = localizedDesc,
-                    categoryName = categoryName,
-                    icon = tip.category.icon
-                )
+                    HealthTipCard(
+                        id = tip.id,
+                        categoryTitle = catTitle,
+                        title = content.title,
+                        description = content.description,
+                        benefits = content.benefits,
+                        benefitsLabel = benefitsLabel,
+                        icon = catIcon
+                    )
+                }
             }
 
-            // DISCLAIMER CARD
+            // ==========================================
+            // 6. MEDICAL SAFETY DISCLAIMER CARD
+            // ==========================================
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
@@ -400,7 +483,7 @@ fun HealthTipsScreen(
                         )
                         Spacer(modifier = Modifier.width(10.dp))
                         Text(
-                            text = appText("health_tips_disclaimer", selectedLanguage),
+                            text = disclaimerText,
                             color = TextMuted,
                             fontSize = 11.sp,
                             lineHeight = 17.sp
@@ -409,7 +492,9 @@ fun HealthTipsScreen(
                 }
             }
 
-            // FOOTER
+            // ==========================================
+            // 7. FOOTER
+            // ==========================================
             item {
                 Spacer(modifier = Modifier.height(4.dp))
                 Row(
@@ -441,9 +526,11 @@ fun HealthTipsScreen(
 @Composable
 private fun HealthTipCard(
     id: Int,
+    categoryTitle: String,
     title: String,
     description: String,
-    categoryName: String,
+    benefits: String,
+    benefitsLabel: String,
     icon: ImageVector
 ) {
     Card(
@@ -458,7 +545,7 @@ private fun HealthTipCard(
                 .fillMaxWidth()
                 .padding(16.dp)
         ) {
-            // CATEGORY PILL & ID BADGE ROW
+            // Category Badge & ID Row
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -481,7 +568,7 @@ private fun HealthTipCard(
                         modifier = Modifier.size(13.dp)
                     )
                     Text(
-                        text = categoryName,
+                        text = categoryTitle,
                         color = DeepTeal,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold
@@ -496,9 +583,9 @@ private fun HealthTipCard(
                 )
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(12.dp))
 
-            // TITLE AND DESCRIPTION
+            // Title & Icon Row
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.Top
@@ -530,17 +617,64 @@ private fun HealthTipCard(
                     Text(
                         text = title,
                         color = DarkTeal,
-                        fontSize = 15.sp,
+                        fontSize = 15.5.sp,
                         fontWeight = FontWeight.Bold,
-                        lineHeight = 20.sp
+                        lineHeight = 21.sp
                     )
-                    Spacer(modifier = Modifier.height(4.dp))
+                    Spacer(modifier = Modifier.height(6.dp))
                     Text(
                         text = description,
-                        color = TextDark.copy(alpha = 0.8f),
+                        color = TextDark.copy(alpha = 0.85f),
                         fontSize = 13.sp,
                         lineHeight = 19.sp
                     )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Dedicated Benefits Section
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(
+                        SoftMint.copy(alpha = 0.65f),
+                        RoundedCornerShape(12.dp)
+                    )
+                    .border(
+                        BorderStroke(1.dp, Mint.copy(alpha = 0.7f)),
+                        RoundedCornerShape(12.dp)
+                    )
+                    .padding(horizontal = 12.dp, vertical = 10.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.Top
+                ) {
+                    Icon(
+                        imageVector = BenefitCheckVectorIcon,
+                        contentDescription = null,
+                        tint = DeepTeal,
+                        modifier = Modifier
+                            .padding(top = 2.dp)
+                            .size(15.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = benefitsLabel,
+                            color = DeepTeal,
+                            fontSize = 11.5.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = benefits,
+                            color = TextDark.copy(alpha = 0.9f),
+                            fontSize = 12.sp,
+                            lineHeight = 17.sp
+                        )
+                    }
                 }
             }
         }
