@@ -95,6 +95,7 @@ import com.example.ai_based_medical_chatbot.ui.theme.PrimaryTeal
 import com.example.ai_based_medical_chatbot.ui.theme.PrimaryTealDark
 import com.example.ai_based_medical_chatbot.ui.theme.PureWhite
 import com.example.ai_based_medical_chatbot.ui.theme.StatusSuccess
+import com.example.ai_based_medical_chatbot.ui.theme.StatusWarning
 import com.example.ai_based_medical_chatbot.ui.theme.TextDark
 import com.example.ai_based_medical_chatbot.ui.theme.TextMuted
 
@@ -2445,7 +2446,7 @@ fun PrescriptionScannerScreen(
 
                             Text(
                                 text = ocrError,
-                                color = Color(0xFFB45309),
+                                color = StatusWarning,
                                 fontSize = 12.sp,
                                 lineHeight = 17.sp
                             )

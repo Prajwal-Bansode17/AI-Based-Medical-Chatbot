@@ -2,13 +2,20 @@ package ui
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -49,6 +56,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -129,12 +137,12 @@ fun HealthTipsScreen(
                 .statusBarsPadding()
                 .navigationBarsPadding(),
             contentPadding = PaddingValues(
-                start = 20.dp,
-                top = 18.dp,
-                end = 20.dp,
-                bottom = 30.dp
+                start = 16.dp,
+                top = 14.dp,
+                end = 16.dp,
+                bottom = 28.dp
             ),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             // ==========================================
             // 1. TOP HEADER WITH INDEPENDENT LANGUAGE PILL
@@ -144,10 +152,22 @@ fun HealthTipsScreen(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    val backInteraction = remember { MutableInteractionSource() }
+                    val isBackPressed by backInteraction.collectIsPressedAsState()
+                    val backScale by animateFloatAsState(
+                        targetValue = if (isBackPressed) 0.94f else 1f,
+                        label = "backScale"
+                    )
+
                     IconButton(
                         onClick = onBackClick,
+                        interactionSource = backInteraction,
                         modifier = Modifier
-                            .size(44.dp)
+                            .size(42.dp)
+                            .graphicsLayer {
+                                scaleX = backScale
+                                scaleY = backScale
+                            }
                             .background(PureWhite, RoundedCornerShape(12.dp))
                             .border(BorderStroke(1.dp, Mint), RoundedCornerShape(12.dp)),
                         colors = IconButtonDefaults.iconButtonColors(
@@ -159,7 +179,7 @@ fun HealthTipsScreen(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "Back",
                             tint = DarkTeal,
-                            modifier = Modifier.size(24.dp)
+                            modifier = Modifier.size(22.dp)
                         )
                     }
 
@@ -171,7 +191,7 @@ fun HealthTipsScreen(
                         Text(
                             text = headerTitle,
                             color = DarkTeal,
-                            fontSize = 21.sp,
+                            fontSize = 20.sp,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -196,13 +216,27 @@ fun HealthTipsScreen(
                             else -> "EN ▾"
                         }
 
+                        val langInteraction = remember { MutableInteractionSource() }
+                        val isLangPressed by langInteraction.collectIsPressedAsState()
+                        val langScale by animateFloatAsState(
+                            targetValue = if (isLangPressed) 0.95f else 1f,
+                            label = "langScale"
+                        )
+
                         Row(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(20.dp))
+                                .graphicsLayer {
+                                    scaleX = langScale
+                                    scaleY = langScale
+                                }
+                                .clip(RoundedCornerShape(18.dp))
                                 .background(PureWhite)
-                                .border(BorderStroke(1.dp, Mint), RoundedCornerShape(20.dp))
-                                .clickable { languageMenuExpanded = true }
-                                .padding(horizontal = 12.dp, vertical = 7.dp),
+                                .border(BorderStroke(1.dp, Mint), RoundedCornerShape(18.dp))
+                                .clickable(
+                                    interactionSource = langInteraction,
+                                    indication = null
+                                ) { languageMenuExpanded = true }
+                                .padding(horizontal = 11.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
@@ -270,12 +304,12 @@ fun HealthTipsScreen(
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(20.dp),
+                    shape = RoundedCornerShape(18.dp),
                     colors = CardDefaults.cardColors(
                         containerColor = DarkTeal
                     ),
                     border = BorderStroke(1.dp, Mint.copy(alpha = 0.35f)),
-                    elevation = CardDefaults.cardElevation(defaultElevation = 3.dp)
+                    elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
                 ) {
                     Box(
                         modifier = Modifier
@@ -288,7 +322,7 @@ fun HealthTipsScreen(
                                     )
                                 )
                             )
-                            .padding(20.dp)
+                            .padding(16.dp)
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -296,10 +330,10 @@ fun HealthTipsScreen(
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(56.dp)
+                                    .size(48.dp)
                                     .background(
-                                        PureWhite.copy(alpha = 0.15f),
-                                        RoundedCornerShape(16.dp)
+                                        PureWhite.copy(alpha = 0.18f),
+                                        RoundedCornerShape(14.dp)
                                     ),
                                 contentAlignment = Alignment.Center
                             ) {
@@ -307,25 +341,25 @@ fun HealthTipsScreen(
                                     imageVector = HeartPulseVectorIcon,
                                     contentDescription = null,
                                     tint = PureWhite,
-                                    modifier = Modifier.size(30.dp)
+                                    modifier = Modifier.size(26.dp)
                                 )
                             }
 
-                            Spacer(modifier = Modifier.width(14.dp))
+                            Spacer(modifier = Modifier.width(12.dp))
 
                             Column(modifier = Modifier.weight(1f)) {
                                 Text(
                                     text = heroTitle,
                                     color = PureWhite,
-                                    fontSize = 18.sp,
+                                    fontSize = 17.5.sp,
                                     fontWeight = FontWeight.Bold
                                 )
-                                Spacer(modifier = Modifier.height(4.dp))
+                                Spacer(modifier = Modifier.height(3.dp))
                                 Text(
                                     text = heroDesc,
-                                    color = PureWhite.copy(alpha = 0.88f),
+                                    color = PureWhite.copy(alpha = 0.90f),
                                     fontSize = 12.sp,
-                                    lineHeight = 18.sp
+                                    lineHeight = 17.sp
                                 )
                             }
                         }
@@ -334,7 +368,7 @@ fun HealthTipsScreen(
             }
 
             // ==========================================
-            // 3. CATEGORY FILTER CHIPS (5 Categories + ALL)
+            // 3. CATEGORY FILTER CHIPS (Animated Transitions)
             // ==========================================
             item {
                 Row(
@@ -348,21 +382,51 @@ fun HealthTipsScreen(
                         val catTitle = HealthTipsRepository.getCategoryTitle(cat, screenLanguage)
                         val catIcon = HealthTipsRepository.getCategoryIcon(cat)
 
+                        val chipBgColor by animateColorAsState(
+                            targetValue = if (isSelected) DeepTeal else PureWhite,
+                            animationSpec = tween(220),
+                            label = "chipBg"
+                        )
+                        val chipBorderColor by animateColorAsState(
+                            targetValue = if (isSelected) DeepTeal else Mint,
+                            animationSpec = tween(220),
+                            label = "chipBorder"
+                        )
+                        val chipTextColor by animateColorAsState(
+                            targetValue = if (isSelected) PureWhite else DarkTeal,
+                            animationSpec = tween(220),
+                            label = "chipText"
+                        )
+                        val chipIconColor by animateColorAsState(
+                            targetValue = if (isSelected) PureWhite else DeepTeal,
+                            animationSpec = tween(220),
+                            label = "chipIcon"
+                        )
+
+                        val chipInteraction = remember { MutableInteractionSource() }
+                        val isChipPressed by chipInteraction.collectIsPressedAsState()
+                        val chipScale by animateFloatAsState(
+                            targetValue = if (isChipPressed) 0.94f else 1f,
+                            label = "chipScale"
+                        )
+
                         Box(
                             modifier = Modifier
+                                .graphicsLayer {
+                                    scaleX = chipScale
+                                    scaleY = chipScale
+                                }
                                 .clip(RoundedCornerShape(12.dp))
-                                .background(
-                                    if (isSelected) DeepTeal else PureWhite
-                                )
+                                .background(chipBgColor)
                                 .border(
-                                    BorderStroke(
-                                        1.dp,
-                                        if (isSelected) DeepTeal else Mint
-                                    ),
+                                    BorderStroke(1.dp, chipBorderColor),
                                     RoundedCornerShape(12.dp)
                                 )
-                                .clickable { selectedCategory = cat }
-                                .padding(horizontal = 13.dp, vertical = 8.dp),
+                                .clickable(
+                                    interactionSource = chipInteraction,
+                                    indication = null
+                                ) { selectedCategory = cat }
+                                .padding(horizontal = 12.dp, vertical = 7.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             Row(
@@ -372,13 +436,13 @@ fun HealthTipsScreen(
                                 Icon(
                                     imageVector = catIcon,
                                     contentDescription = null,
-                                    tint = if (isSelected) PureWhite else DeepTeal,
-                                    modifier = Modifier.size(15.dp)
+                                    tint = chipIconColor,
+                                    modifier = Modifier.size(14.dp)
                                 )
                                 Text(
                                     text = catTitle,
-                                    color = if (isSelected) PureWhite else DarkTeal,
-                                    fontSize = 12.sp,
+                                    color = chipTextColor,
+                                    fontSize = 11.5.sp,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium
                                 )
                             }
@@ -399,14 +463,14 @@ fun HealthTipsScreen(
                         Text(
                             text = dailyTitle,
                             color = DarkTeal,
-                            fontSize = 18.sp,
+                            fontSize = 17.5.sp,
                             fontWeight = FontWeight.Bold
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = dailySubtitle,
                             color = TextMuted,
-                            fontSize = 12.sp
+                            fontSize = 11.5.sp
                         )
                     }
 
@@ -414,13 +478,13 @@ fun HealthTipsScreen(
                         modifier = Modifier
                             .background(
                                 SoftMint,
-                                RoundedCornerShape(12.dp)
+                                RoundedCornerShape(10.dp)
                             )
                             .border(
                                 BorderStroke(1.dp, Mint),
-                                RoundedCornerShape(12.dp)
+                                RoundedCornerShape(10.dp)
                             )
-                            .padding(horizontal = 10.dp, vertical = 5.dp)
+                            .padding(horizontal = 9.dp, vertical = 4.dp)
                     ) {
                         Text(
                             text = "${filteredTips.size} $countLabel",
@@ -486,26 +550,26 @@ fun HealthTipsScreen(
             item {
                 Card(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(16.dp),
+                    shape = RoundedCornerShape(14.dp),
                     colors = CardDefaults.cardColors(containerColor = SoftMint),
                     border = BorderStroke(1.dp, Mint)
                 ) {
                     Row(
-                        modifier = Modifier.padding(14.dp),
+                        modifier = Modifier.padding(12.dp),
                         verticalAlignment = Alignment.Top
                     ) {
                         Icon(
                             imageVector = Icons.Default.Info,
                             contentDescription = "Disclaimer",
                             tint = DeepTeal,
-                            modifier = Modifier.size(20.dp)
+                            modifier = Modifier.size(18.dp)
                         )
-                        Spacer(modifier = Modifier.width(10.dp))
+                        Spacer(modifier = Modifier.width(9.dp))
                         Text(
                             text = disclaimerText,
                             color = TextMuted,
-                            fontSize = 11.sp,
-                            lineHeight = 17.sp
+                            fontSize = 10.5.sp,
+                            lineHeight = 16.sp
                         )
                     }
                 }
@@ -515,7 +579,7 @@ fun HealthTipsScreen(
             // 7. FOOTER
             // ==========================================
             item {
-                Spacer(modifier = Modifier.height(4.dp))
+                Spacer(modifier = Modifier.height(2.dp))
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.Center,
@@ -525,18 +589,18 @@ fun HealthTipsScreen(
                         imageVector = HeartPulseVectorIcon,
                         contentDescription = null,
                         tint = DeepTeal,
-                        modifier = Modifier.size(14.dp)
+                        modifier = Modifier.size(13.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = "MEDASSIST AI • CLINICAL WELLNESS GUIDE",
                         color = DarkTeal,
-                        fontSize = 11.sp,
+                        fontSize = 10.5.sp,
                         fontWeight = FontWeight.Bold,
-                        letterSpacing = 1.sp
+                        letterSpacing = 0.8.sp
                     )
                 }
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(6.dp))
             }
         }
     }
@@ -554,12 +618,26 @@ private fun HealthTipCard(
     icon: ImageVector,
     onClick: () -> Unit
 ) {
+    val cardInteraction = remember { MutableInteractionSource() }
+    val isCardPressed by cardInteraction.collectIsPressedAsState()
+    val cardScale by animateFloatAsState(
+        targetValue = if (isCardPressed) 0.98f else 1f,
+        label = "tipCardScale"
+    )
+
     Card(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(18.dp))
-            .clickable { onClick() },
-        shape = RoundedCornerShape(18.dp),
+            .graphicsLayer {
+                scaleX = cardScale
+                scaleY = cardScale
+            }
+            .clip(RoundedCornerShape(16.dp))
+            .clickable(
+                interactionSource = cardInteraction,
+                indication = null
+            ) { onClick() },
+        shape = RoundedCornerShape(16.dp),
         colors = CardDefaults.cardColors(containerColor = PureWhite),
         border = BorderStroke(1.dp, Mint),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
@@ -567,7 +645,7 @@ private fun HealthTipCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(16.dp)
+                .padding(14.dp)
         ) {
             // Category Badge & ID Row
             Row(
@@ -577,24 +655,24 @@ private fun HealthTipCard(
             ) {
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    horizontalArrangement = Arrangement.spacedBy(5.dp),
                     modifier = Modifier
                         .background(
                             SoftMint,
                             RoundedCornerShape(8.dp)
                         )
-                        .padding(horizontal = 8.dp, vertical = 3.dp)
+                        .padding(horizontal = 7.dp, vertical = 3.dp)
                 ) {
                     Icon(
                         imageVector = icon,
                         contentDescription = null,
                         tint = DeepTeal,
-                        modifier = Modifier.size(13.dp)
+                        modifier = Modifier.size(12.dp)
                     )
                     Text(
                         text = categoryTitle,
                         color = DeepTeal,
-                        fontSize = 11.sp,
+                        fontSize = 10.5.sp,
                         fontWeight = FontWeight.SemiBold
                     )
                 }
@@ -607,7 +685,7 @@ private fun HealthTipCard(
                 )
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             // Title & Icon Row
             Row(
@@ -616,14 +694,14 @@ private fun HealthTipCard(
             ) {
                 Box(
                     modifier = Modifier
-                        .size(42.dp)
+                        .size(38.dp)
                         .background(
                             Ivory,
-                            RoundedCornerShape(12.dp)
+                            RoundedCornerShape(10.dp)
                         )
                         .border(
                             BorderStroke(1.dp, Mint),
-                            RoundedCornerShape(12.dp)
+                            RoundedCornerShape(10.dp)
                         ),
                     contentAlignment = Alignment.Center
                 ) {
@@ -631,31 +709,31 @@ private fun HealthTipCard(
                         imageVector = icon,
                         contentDescription = null,
                         tint = DarkTeal,
-                        modifier = Modifier.size(22.dp)
+                        modifier = Modifier.size(20.dp)
                     )
                 }
 
-                Spacer(modifier = Modifier.width(12.dp))
+                Spacer(modifier = Modifier.width(10.dp))
 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = title,
                         color = DarkTeal,
-                        fontSize = 15.5.sp,
+                        fontSize = 15.sp,
                         fontWeight = FontWeight.Bold,
-                        lineHeight = 21.sp
+                        lineHeight = 20.sp
                     )
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(4.dp))
                     Text(
                         text = description,
                         color = TextDark.copy(alpha = 0.85f),
-                        fontSize = 13.sp,
-                        lineHeight = 19.sp
+                        fontSize = 12.5.sp,
+                        lineHeight = 18.sp
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             // Dedicated Benefits Section
             Box(
@@ -663,13 +741,13 @@ private fun HealthTipCard(
                     .fillMaxWidth()
                     .background(
                         SoftMint.copy(alpha = 0.65f),
-                        RoundedCornerShape(12.dp)
+                        RoundedCornerShape(10.dp)
                     )
                     .border(
                         BorderStroke(1.dp, Mint.copy(alpha = 0.7f)),
-                        RoundedCornerShape(12.dp)
+                        RoundedCornerShape(10.dp)
                     )
-                    .padding(horizontal = 12.dp, vertical = 10.dp)
+                    .padding(horizontal = 10.dp, vertical = 8.dp)
             ) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -681,28 +759,28 @@ private fun HealthTipCard(
                         tint = DeepTeal,
                         modifier = Modifier
                             .padding(top = 2.dp)
-                            .size(15.dp)
+                            .size(13.dp)
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(7.dp))
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = benefitsLabel,
                             color = DeepTeal,
-                            fontSize = 11.5.sp,
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Bold
                         )
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = benefits,
                             color = TextDark.copy(alpha = 0.9f),
-                            fontSize = 12.sp,
-                            lineHeight = 17.sp
+                            fontSize = 11.5.sp,
+                            lineHeight = 16.5.sp
                         )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
+            Spacer(modifier = Modifier.height(8.dp))
 
             // Action: View Details Hint
             Row(
@@ -713,15 +791,15 @@ private fun HealthTipCard(
                 Text(
                     text = viewDetailsLabel,
                     color = DeepTeal,
-                    fontSize = 11.5.sp,
+                    fontSize = 11.sp,
                     fontWeight = FontWeight.Bold
                 )
-                Spacer(modifier = Modifier.width(4.dp))
+                Spacer(modifier = Modifier.width(3.dp))
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                     contentDescription = null,
                     tint = DeepTeal,
-                    modifier = Modifier.size(16.dp)
+                    modifier = Modifier.size(15.dp)
                 )
             }
         }

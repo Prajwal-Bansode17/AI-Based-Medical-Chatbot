@@ -724,7 +724,7 @@ fun SymptomsCheckerScreen(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(22.dp),
                         colors = CardDefaults.cardColors(
-                            containerColor = Color(0xFFE2F4F0)
+                            containerColor = SoftMint
                         ),
                         border = BorderStroke(1.dp, Mint.copy(alpha = 0.5f)),
                         elevation = CardDefaults.cardElevation(2.dp)

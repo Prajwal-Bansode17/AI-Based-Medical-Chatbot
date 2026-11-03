@@ -50,6 +50,7 @@ import androidx.compose.ui.graphics.vector.addPathNodes
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ai_based_medical_chatbot.ui.theme.ThemeState
 import com.example.ai_based_medical_chatbot.LocalAppLanguageController
 import com.example.ai_based_medical_chatbot.appText
 import com.example.ai_based_medical_chatbot.ui.theme.DarkTeal
@@ -265,9 +266,22 @@ fun MedicineDetailScreen(
                             // Rx or OTC Badge (only when supported by data)
                             if (medicine.isPrescription != null) {
                                 val isRx = medicine.isPrescription == true
-                                val badgeBg = if (isRx) Color(0xFFFEE2E2) else Color(0xFFDCFCE7)
-                                val badgeBorder = if (isRx) Color(0xFFFECACA) else Color(0xFFBBF7D0)
-                                val badgeText = if (isRx) Color(0xFF991B1B) else Color(0xFF166534)
+                                val isDarkTheme = ThemeState.current.isDark
+                                val badgeBg = if (isDarkTheme) {
+                                    if (isRx) Color(0xFF3B1818) else Color(0xFF132F1E)
+                                } else {
+                                    if (isRx) Color(0xFFFEE2E2) else Color(0xFFDCFCE7)
+                                }
+                                val badgeBorder = if (isDarkTheme) {
+                                    if (isRx) Color(0xFF6B2525) else Color(0xFF215535)
+                                } else {
+                                    if (isRx) Color(0xFFFECACA) else Color(0xFFBBF7D0)
+                                }
+                                val badgeText = if (isDarkTheme) {
+                                    if (isRx) Color(0xFFFF8A80) else Color(0xFF81C784)
+                                } else {
+                                    if (isRx) Color(0xFF991B1B) else Color(0xFF166534)
+                                }
                                 val badgeLabel = if (isRx) t("medicine_rx_badge") else t("medicine_otc_badge")
 
                                 Box(
@@ -305,17 +319,28 @@ fun MedicineDetailScreen(
                     }
 
                     // Favorite Button
+                    val isDarkTheme = ThemeState.current.isDark
+                    val favBg = if (isFavorite) {
+                        if (isDarkTheme) Color(0xFF3B1818) else Color(0xFFFFEBEE)
+                    } else SoftMint.copy(alpha = 0.45f)
+                    val favBorder = if (isFavorite) {
+                        if (isDarkTheme) Color(0xFF6B2525) else Color(0xFFFFCDD2)
+                    } else Mint.copy(alpha = 0.5f)
+                    val favTint = if (isFavorite) {
+                        if (isDarkTheme) Color(0xFFFF5252) else Color(0xFFE53935)
+                    } else DeepTeal
+
                     Box(
                         modifier = Modifier
                             .size(38.dp)
                             .background(
-                                color = if (isFavorite) Color(0xFFFFEBEE) else SoftMint.copy(alpha = 0.45f),
+                                color = favBg,
                                 shape = CircleShape
                             )
                             .border(
                                 border = BorderStroke(
                                     1.dp,
-                                    if (isFavorite) Color(0xFFFFCDD2) else Mint.copy(alpha = 0.5f)
+                                    favBorder
                                 ),
                                 shape = CircleShape
                             )
@@ -325,7 +350,7 @@ fun MedicineDetailScreen(
                         Icon(
                             imageVector = if (isFavorite) HeartFilledVectorIcon else HeartBorderVectorIcon,
                             contentDescription = t("chat_save_favorite_desc"),
-                            tint = if (isFavorite) Color(0xFFE53935) else DeepTeal,
+                            tint = favTint,
                             modifier = Modifier
                                 .size(20.dp)
                                 .scale(heartScale)
@@ -475,11 +500,12 @@ fun MedicineDetailScreen(
                         .fillMaxWidth()
                         .padding(16.dp)
                 ) {
+                    val isDarkSide = ThemeState.current.isDark
                     SectionHeader(
                         icon = Icons.Default.Info,
-                        iconTint = Color(0xFFD97706),
-                        iconBg = Color(0xFFFEF3C7),
-                        iconBorder = Color(0xFFFDE68A),
+                        iconTint = if (isDarkSide) Color(0xFFFFB74D) else Color(0xFFD97706),
+                        iconBg = if (isDarkSide) Color(0xFF332312) else Color(0xFFFEF3C7),
+                        iconBorder = if (isDarkSide) Color(0xFF5E3F18) else Color(0xFFFDE68A),
                         title = t("medicine_detail_side_effects")
                     )
 
@@ -512,11 +538,12 @@ fun MedicineDetailScreen(
                         .fillMaxWidth()
                         .padding(16.dp)
                 ) {
+                    val isDarkPrec = ThemeState.current.isDark
                     SectionHeader(
                         icon = Icons.Default.Warning,
-                        iconTint = Color(0xFFDC2626),
-                        iconBg = Color(0xFFFEE2E2),
-                        iconBorder = Color(0xFFFECACA),
+                        iconTint = if (isDarkPrec) Color(0xFFEF5350) else Color(0xFFDC2626),
+                        iconBg = if (isDarkPrec) Color(0xFF331515) else Color(0xFFFEE2E2),
+                        iconBorder = if (isDarkPrec) Color(0xFF5E2222) else Color(0xFFFECACA),
                         title = t("medicine_detail_precautions")
                     )
 
@@ -575,11 +602,20 @@ fun MedicineDetailScreen(
             // H. WARNING CARD (Only displayed if warnings exist in dataset)
             // =========================================================
             if (medicine.warning.isNotBlank()) {
+                val isDarkWarn = ThemeState.current.isDark
+                val warnBg = if (isDarkWarn) Color(0xFF2A2012) else Color(0xFFFFFBEB)
+                val warnBorder = if (isDarkWarn) Color(0xFF5C431A) else Color(0xFFFCD34D)
+                val warnIconBg = if (isDarkWarn) Color(0xFF3D2C15) else Color(0xFFFDE68A)
+                val warnIconBorder = if (isDarkWarn) Color(0xFF78541D) else Color(0xFFF59E0B)
+                val warnIconTint = if (isDarkWarn) Color(0xFFFFB74D) else Color(0xFFB45309)
+                val warnTitleColor = if (isDarkWarn) Color(0xFFFFCC80) else Color(0xFF92400E)
+                val warnTextColor = if (isDarkWarn) Color(0xFFFFE0B2) else Color(0xFF78350F)
+
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(16.dp),
-                    colors = CardDefaults.cardColors(containerColor = Color(0xFFFFFBEB)),
-                    border = BorderStroke(1.dp, Color(0xFFFCD34D))
+                    colors = CardDefaults.cardColors(containerColor = warnBg),
+                    border = BorderStroke(1.dp, warnBorder)
                 ) {
                     Row(
                         modifier = Modifier
@@ -590,14 +626,14 @@ fun MedicineDetailScreen(
                         Box(
                             modifier = Modifier
                                 .size(30.dp)
-                                .background(Color(0xFFFDE68A), CircleShape)
-                                .border(BorderStroke(1.dp, Color(0xFFF59E0B)), CircleShape),
+                                .background(warnIconBg, CircleShape)
+                                .border(BorderStroke(1.dp, warnIconBorder), CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Warning,
                                 contentDescription = null,
-                                tint = Color(0xFFB45309),
+                                tint = warnIconTint,
                                 modifier = Modifier.size(16.dp)
                             )
                         }
@@ -607,14 +643,14 @@ fun MedicineDetailScreen(
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = t("medicine_detail_warnings"),
-                                color = Color(0xFF92400E),
+                                color = warnTitleColor,
                                 fontSize = 13.sp,
                                 fontWeight = FontWeight.Bold
                             )
                             Spacer(modifier = Modifier.height(3.dp))
                             Text(
                                 text = medicine.warning,
-                                color = Color(0xFF78350F),
+                                color = warnTextColor,
                                 fontSize = 12.sp,
                                 lineHeight = 17.sp
                             )
@@ -626,11 +662,20 @@ fun MedicineDetailScreen(
             // =========================================================
             // I. PROMINENT EDUCATIONAL SAFETY NOTICE
             // =========================================================
+            val isDarkSafety = ThemeState.current.isDark
+            val safetyBg = if (isDarkSafety) Color(0xFF14291E) else Color(0xFFF0FDF4)
+            val safetyBorder = if (isDarkSafety) Color(0xFF244F35) else Color(0xFF86EFAC)
+            val safetyIconBg = if (isDarkSafety) Color(0xFF1D3B2A) else Color(0xFFDCFCE7)
+            val safetyIconBorder = if (isDarkSafety) Color(0xFF2D6343) else Color(0xFF4ADE80)
+            val safetyIconTint = if (isDarkSafety) Color(0xFF81C784) else Color(0xFF15803D)
+            val safetyTitleColor = if (isDarkSafety) Color(0xFFA5D6A7) else Color(0xFF166534)
+            val safetyTextColor = if (isDarkSafety) Color(0xFFC8E6C9) else Color(0xFF14532D)
+
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(16.dp),
-                colors = CardDefaults.cardColors(containerColor = Color(0xFFF0FDF4)),
-                border = BorderStroke(1.dp, Color(0xFF86EFAC))
+                colors = CardDefaults.cardColors(containerColor = safetyBg),
+                border = BorderStroke(1.dp, safetyBorder)
             ) {
                 Row(
                     modifier = Modifier
@@ -641,14 +686,14 @@ fun MedicineDetailScreen(
                     Box(
                         modifier = Modifier
                             .size(32.dp)
-                            .background(Color(0xFFDCFCE7), CircleShape)
-                            .border(BorderStroke(1.dp, Color(0xFF4ADE80)), CircleShape),
+                            .background(safetyIconBg, CircleShape)
+                            .border(BorderStroke(1.dp, safetyIconBorder), CircleShape),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             imageVector = ShieldCheckVectorIcon,
                             contentDescription = t("medicine_safety_notice_title"),
-                            tint = Color(0xFF15803D),
+                            tint = safetyIconTint,
                             modifier = Modifier.size(17.dp)
                         )
                     }
@@ -658,14 +703,14 @@ fun MedicineDetailScreen(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = t("medicine_safety_notice_title"),
-                            color = Color(0xFF166534),
+                            color = safetyTitleColor,
                             fontSize = 13.sp,
                             fontWeight = FontWeight.Bold
                         )
                         Spacer(modifier = Modifier.height(3.dp))
                         Text(
                             text = t("medicine_safety_notice_body"),
-                            color = Color(0xFF14532D),
+                            color = safetyTextColor,
                             fontSize = 11.5.sp,
                             lineHeight = 16.5.sp
                         )
@@ -771,8 +816,8 @@ private fun UnavailableInformationNotice(message: String) {
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .background(Color(0xFFF9FAFB), RoundedCornerShape(10.dp))
-            .border(BorderStroke(1.dp, Color(0xFFE5E7EB)), RoundedCornerShape(10.dp))
+            .background(SoftMint, RoundedCornerShape(10.dp))
+            .border(BorderStroke(1.dp, Mint), RoundedCornerShape(10.dp))
             .padding(horizontal = 12.dp, vertical = 9.dp)
     ) {
         Text(
