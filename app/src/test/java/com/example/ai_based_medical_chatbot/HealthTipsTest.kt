@@ -6,7 +6,9 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import ui.HealthTipCategory
+import ui.HealthTipsRecommendations
 import ui.HealthTipsRepository
+import ui.WellnessConcernType
 
 class HealthTipsTest {
 
@@ -79,6 +81,121 @@ class HealthTipsTest {
             for (cat in HealthTipCategory.values()) {
                 val catTitle = HealthTipsRepository.getCategoryTitle(cat, lang)
                 assertFalse("Category title for $cat in $lang must not be blank", catTitle.isBlank())
+            }
+        }
+    }
+
+    @Test
+    fun allTwentyTwoTipsHaveCompleteDetailedContentInThreeLanguages() {
+        val languages = listOf("English", "मराठी", "हिंदी")
+        val allTips = HealthTipsRepository.getAllTips()
+        assertEquals(22, allTips.size)
+
+        for (tip in allTips) {
+            val bundle = HealthTipsRecommendations.getTipDetails(tip.id)
+            assertNotNull("Detail bundle for tip #${tip.id} must exist", bundle)
+
+            for (lang in languages) {
+                val details = bundle!!.getLocalized(lang)
+                assertFalse("Why useful for #${tip.id} in $lang must not be blank", details.whyUseful.isBlank())
+                assertTrue("Target audience for #${tip.id} in $lang must have >= 2 items", details.targetAudience.size >= 2)
+                details.targetAudience.forEach {
+                    assertFalse("Target audience item in $lang must not be blank", it.isBlank())
+                }
+
+                assertTrue("Relevant concerns for #${tip.id} in $lang must have >= 1 items", details.relevantConcerns.isNotEmpty())
+                details.relevantConcerns.forEach {
+                    assertFalse("Relevant concern in $lang must not be blank", it.isBlank())
+                }
+
+                assertTrue("Personalized suggestions for #${tip.id} in $lang must have >= 3 items", details.personalizedSuggestions.size >= 3)
+                details.personalizedSuggestions.forEach {
+                    assertFalse("Personalized suggestion in $lang must not be blank", it.isBlank())
+                }
+
+                assertTrue("Detailed benefits for #${tip.id} in $lang must have >= 3 items", details.detailedBenefits.size >= 3)
+                details.detailedBenefits.forEach {
+                    assertFalse("Detailed benefit in $lang must not be blank", it.isBlank())
+                }
+
+                assertTrue("Precautions for #${tip.id} in $lang must have >= 2 items", details.precautions.size >= 2)
+                details.precautions.forEach {
+                    assertFalse("Precaution in $lang must not be blank", it.isBlank())
+                }
+
+                assertFalse("When to consult doctor for #${tip.id} in $lang must not be blank", details.whenToConsultDoctor.isBlank())
+            }
+        }
+    }
+
+    @Test
+    fun relatedTipsAreValidAndExist() {
+        val allTips = HealthTipsRepository.getAllTips()
+        for (tip in allTips) {
+            val related = HealthTipsRecommendations.getRelatedTips(tip.id)
+            assertTrue("Tip #${tip.id} must have >= 2 related tips", related.size >= 2)
+            assertTrue("Related tips must not include the tip itself", related.none { it.id == tip.id })
+            related.forEach { rel ->
+                assertNotNull("Related tip must exist in repository", HealthTipsRepository.getTipById(rel.id))
+            }
+        }
+    }
+
+    @Test
+    fun wellnessConcernsSystemIsComplete() {
+        val concerns = HealthTipsRecommendations.getAllWellnessConcerns()
+        assertEquals("Must support 8 clinical wellness concern classifications", 8, concerns.size)
+
+        val languages = listOf("English", "मराठी", "हिंदी")
+
+        for (concern in concerns) {
+            assertTrue("Concern ${concern.type} must link to >= 2 health tips", concern.relatedTipIds.size >= 2)
+            concern.relatedTipIds.forEach { tipId ->
+                assertNotNull("Tip #$tipId mapped to concern ${concern.type} must exist", HealthTipsRepository.getTipById(tipId))
+            }
+
+            for (lang in languages) {
+                val loc = concern.getLocalized(lang)
+                assertFalse("Concern name in $lang must not be blank", loc.name.isBlank())
+                assertFalse("Concern description in $lang must not be blank", loc.description.isBlank())
+                assertFalse("Concern whyHelpful in $lang must not be blank", loc.whyHelpful.isBlank())
+                assertFalse("Concern precautions in $lang must not be blank", loc.precautions.isBlank())
+                assertFalse("Concern medicalGuidance in $lang must not be blank", loc.medicalGuidance.isBlank())
+                assertTrue("Practical suggestions in $lang must have >= 3 items", loc.practicalSuggestions.size >= 3)
+                loc.practicalSuggestions.forEach {
+                    assertFalse("Practical suggestion in $lang must not be blank", it.isBlank())
+                }
+            }
+        }
+    }
+
+    @Test
+    fun detailScreenLabelsAreCompleteInAllThreeLanguages() {
+        val languages = listOf("English", "मराठी", "हिंदी")
+        val requiredKeys = listOf(
+            "overview_title",
+            "why_useful_label",
+            "who_useful_title",
+            "target_audience_label",
+            "relevant_concerns_label",
+            "personalized_suggestions_title",
+            "suggestions_note",
+            "benefits_title",
+            "precautions_title",
+            "when_consult_title",
+            "emergency_alert",
+            "related_tips_title",
+            "tip_details_screen_title",
+            "view_detail_action",
+            "disclaimer_banner"
+        )
+
+        for (lang in languages) {
+            val labels = HealthTipsRecommendations.getDetailLabels(lang)
+            for (key in requiredKeys) {
+                val value = labels[key]
+                assertNotNull("Label '$key' must exist for language $lang", value)
+                assertFalse("Label '$key' must not be blank for language $lang", value!!.isBlank())
             }
         }
     }

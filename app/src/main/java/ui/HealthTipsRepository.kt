@@ -710,6 +710,8 @@ object HealthTipsRepository {
 
     fun getAllTips(): List<HealthTipItem> = allTips
 
+    fun getTipById(id: Int): HealthTipItem? = allTips.firstOrNull { it.id == id }
+
     fun getTipsByCategory(category: HealthTipCategory): List<HealthTipItem> {
         return if (category == HealthTipCategory.ALL) {
             allTips

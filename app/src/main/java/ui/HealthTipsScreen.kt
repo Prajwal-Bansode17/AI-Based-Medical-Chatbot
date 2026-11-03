@@ -1,5 +1,6 @@
 package ui
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -28,6 +29,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -79,6 +81,19 @@ fun HealthTipsScreen(
     var languageMenuExpanded by remember { mutableStateOf(false) }
 
     var selectedCategory by rememberSaveable { mutableStateOf(HealthTipCategory.ALL) }
+    var selectedTipId by rememberSaveable { mutableStateOf<Int?>(null) }
+
+    // If a tip is selected, display its dedicated detail screen with back navigation
+    if (selectedTipId != null) {
+        HealthTipDetailScreen(
+            tipId = selectedTipId!!,
+            screenLanguage = screenLanguage,
+            onBackClick = { selectedTipId = null },
+            onLanguageChange = { newLang -> screenLanguage = newLang },
+            onRelatedTipClick = { newTipId -> selectedTipId = newTipId }
+        )
+        return
+    }
 
     val filteredTips = remember(selectedCategory) {
         HealthTipsRepository.getTipsByCategory(selectedCategory)
@@ -93,6 +108,8 @@ fun HealthTipsScreen(
     val countLabel = remember(screenLanguage) { HealthTipsRepository.getCountLabel(screenLanguage) }
     val disclaimerText = remember(screenLanguage) { HealthTipsRepository.getDisclaimer(screenLanguage) }
     val benefitsLabel = remember(screenLanguage) { HealthTipsRepository.getBenefitsLabel(screenLanguage) }
+    val labels = remember(screenLanguage) { HealthTipsRecommendations.getDetailLabels(screenLanguage) }
+    val viewDetailsLabel = labels["view_detail_action"] ?: "View Details"
 
     Box(
         modifier = Modifier
@@ -416,7 +433,7 @@ fun HealthTipsScreen(
             }
 
             // ==========================================
-            // 5. HEALTH TIP CARDS (With Rich Benefits Section)
+            // 5. CLICKABLE HEALTH TIP CARDS (Opens Details Screen)
             // ==========================================
             if (filteredTips.isEmpty()) {
                 item {
@@ -456,7 +473,9 @@ fun HealthTipsScreen(
                         description = content.description,
                         benefits = content.benefits,
                         benefitsLabel = benefitsLabel,
-                        icon = catIcon
+                        viewDetailsLabel = viewDetailsLabel,
+                        icon = catIcon,
+                        onClick = { selectedTipId = tip.id }
                     )
                 }
             }
@@ -531,10 +550,15 @@ private fun HealthTipCard(
     description: String,
     benefits: String,
     benefitsLabel: String,
-    icon: ImageVector
+    viewDetailsLabel: String,
+    icon: ImageVector,
+    onClick: () -> Unit
 ) {
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(18.dp))
+            .clickable { onClick() },
         shape = RoundedCornerShape(18.dp),
         colors = CardDefaults.cardColors(containerColor = PureWhite),
         border = BorderStroke(1.dp, Mint),
@@ -676,6 +700,29 @@ private fun HealthTipCard(
                         )
                     }
                 }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Action: View Details Hint
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.End,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = viewDetailsLabel,
+                    color = DeepTeal,
+                    fontSize = 11.5.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = DeepTeal,
+                    modifier = Modifier.size(16.dp)
+                )
             }
         }
     }
