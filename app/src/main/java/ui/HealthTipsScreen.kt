@@ -38,6 +38,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
@@ -79,7 +80,8 @@ typealias HealthTip = HealthTipItem
 
 @Composable
 fun HealthTipsScreen(
-    onBackClick: () -> Unit
+    onBackClick: () -> Unit,
+    onOpenRemindersScreen: () -> Unit = {}
 ) {
     val appLanguageController = LocalAppLanguageController.current
 
@@ -98,7 +100,8 @@ fun HealthTipsScreen(
             screenLanguage = screenLanguage,
             onBackClick = { selectedTipId = null },
             onLanguageChange = { newLang -> screenLanguage = newLang },
-            onRelatedTipClick = { newTipId -> selectedTipId = newTipId }
+            onRelatedTipClick = { newTipId -> selectedTipId = newTipId },
+            onOpenRemindersScreen = onOpenRemindersScreen
         )
         return
     }
@@ -206,7 +209,29 @@ fun HealthTipsScreen(
                         )
                     }
 
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+
+                    // Manage Reminders Action Button
+                    IconButton(
+                        onClick = onOpenRemindersScreen,
+                        modifier = Modifier
+                            .size(38.dp)
+                            .background(PureWhite, RoundedCornerShape(12.dp))
+                            .border(BorderStroke(1.dp, Mint), RoundedCornerShape(12.dp)),
+                        colors = IconButtonDefaults.iconButtonColors(
+                            containerColor = PureWhite,
+                            contentColor = DeepTeal
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Notifications,
+                            contentDescription = "Reminders",
+                            tint = DeepTeal,
+                            modifier = Modifier.size(19.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(6.dp))
 
                     // Dedicated Independent Language Selector Dropdown Pill
                     Box {

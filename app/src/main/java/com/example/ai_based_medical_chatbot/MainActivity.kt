@@ -31,6 +31,7 @@ import ui.DashboardScreen
 import ui.ForgotPasswordScreen
 import ui.HealthProfileScreen
 import ui.HealthTipsScreen
+import ui.HealthTipReminderScreen
 import ui.LoginScreen
 import ui.MedicineDetailScreen
 import ui.MedicineInfoScreen
@@ -112,6 +113,7 @@ private fun openDeviceAuthentication(
 class MainActivity : FragmentActivity() {
 
     private var recoveryIntentUri = mutableStateOf<android.net.Uri?>(null)
+    private var notificationTargetScreen = mutableStateOf<String?>(null)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -123,6 +125,9 @@ class MainActivity : FragmentActivity() {
                 recoveryIntentUri.value = uri
             }
         }
+        intent?.getStringExtra("OPEN_SCREEN")?.let { screen ->
+            notificationTargetScreen.value = screen
+        }
 
         setContent {
             ProvideAppTheme {
@@ -133,7 +138,9 @@ class MainActivity : FragmentActivity() {
                     ) {
                         MedicalChatbotNavigation(
                             recoveryUri = recoveryIntentUri.value,
-                            onRecoveryUriHandled = { recoveryIntentUri.value = null }
+                            onRecoveryUriHandled = { recoveryIntentUri.value = null },
+                            pendingTargetScreen = notificationTargetScreen.value,
+                            onTargetScreenHandled = { notificationTargetScreen.value = null }
                         )
                     }
                 }
@@ -149,13 +156,18 @@ class MainActivity : FragmentActivity() {
                 recoveryIntentUri.value = uri
             }
         }
+        intent.getStringExtra("OPEN_SCREEN")?.let { screen ->
+            notificationTargetScreen.value = screen
+        }
     }
 }
 
 @Composable
 private fun MedicalChatbotNavigation(
     recoveryUri: android.net.Uri? = null,
-    onRecoveryUriHandled: () -> Unit = {}
+    onRecoveryUriHandled: () -> Unit = {},
+    pendingTargetScreen: String? = null,
+    onTargetScreenHandled: () -> Unit = {}
 ) {
 
     val context = LocalContext.current
@@ -178,6 +190,19 @@ private fun MedicalChatbotNavigation(
     var initialChatQuery by remember { mutableStateOf<String?>(null) }
 
     val currentScreen = screenStack.lastOrNull() ?: "login"
+
+    androidx.compose.runtime.LaunchedEffect(pendingTargetScreen) {
+        if (!pendingTargetScreen.isNullOrBlank()) {
+            if (currentScreen != pendingTargetScreen) {
+                if (screenStack.isEmpty() || screenStack.first() == "splash") {
+                    screenStack.clear()
+                    screenStack.add("dashboard")
+                }
+                screenStack.add(pendingTargetScreen)
+            }
+            onTargetScreenHandled()
+        }
+    }
 
     // Deep Link Recovery Handler
     androidx.compose.runtime.LaunchedEffect(recoveryUri) {
@@ -736,6 +761,20 @@ private fun MedicalChatbotNavigation(
             HealthTipsScreen(
                 onBackClick = {
                     back()
+                },
+                onOpenRemindersScreen = {
+                    go("healthTipReminders")
+                }
+            )
+        }
+
+        "healthTipReminders" -> {
+            HealthTipReminderScreen(
+                onBackClick = {
+                    back()
+                },
+                onNavigateToTip = { _ ->
+                    go("healthTips")
                 }
             )
         }

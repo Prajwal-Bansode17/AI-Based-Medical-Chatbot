@@ -1,5 +1,6 @@
 package ui
 
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
@@ -38,7 +39,10 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Warning
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
@@ -59,10 +63,13 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.ai_based_medical_chatbot.HealthTipReminderScheduler
+import com.example.ai_based_medical_chatbot.appText
 import com.example.ai_based_medical_chatbot.ui.theme.DarkTeal
 import com.example.ai_based_medical_chatbot.ui.theme.DeepTeal
 import com.example.ai_based_medical_chatbot.ui.theme.Ivory
@@ -79,15 +86,20 @@ fun HealthTipDetailScreen(
     screenLanguage: String,
     onBackClick: () -> Unit,
     onLanguageChange: (String) -> Unit = {},
-    onRelatedTipClick: (Int) -> Unit = {}
+    onRelatedTipClick: (Int) -> Unit = {},
+    onOpenRemindersScreen: () -> Unit = {}
 ) {
     BackHandler { onBackClick() }
 
+    val context = LocalContext.current
     val tip = remember(tipId) { HealthTipsRepository.getTipById(tipId) }
     val detailBundle = remember(tipId) { HealthTipsRecommendations.getTipDetails(tipId) }
     val labels = remember(screenLanguage) { HealthTipsRecommendations.getDetailLabels(screenLanguage) }
 
     var languageMenuExpanded by remember { mutableStateOf(false) }
+    var showAddReminderDialog by remember { mutableStateOf(false) }
+
+    val scheduler = remember { HealthTipReminderScheduler(context) }
 
     // Accordion expand/collapse states (default expanded for optimal discoverability)
     var isWhoUsefulExpanded by rememberSaveable { mutableStateOf(true) }
@@ -136,6 +148,26 @@ fun HealthTipDetailScreen(
     val categoryIcon = HealthTipsRepository.getCategoryIcon(tip.category)
     val relatedTips = remember(tipId) { HealthTipsRecommendations.getRelatedTips(tipId) }
 
+    // Add Reminder Dialog
+    if (showAddReminderDialog) {
+        AddHealthTipReminderDialog(
+            tipId = tip.id,
+            defaultTitle = content.title,
+            defaultDescription = "Time for your daily ${content.title} routine. Stay healthy with MedAssist AI!",
+            screenLanguage = screenLanguage,
+            onDismiss = { showAddReminderDialog = false },
+            onSave = { reminder ->
+                scheduler.scheduleAndSave(reminder)
+                showAddReminderDialog = false
+                Toast.makeText(
+                    context,
+                    appText("reminder_saved_success", screenLanguage),
+                    Toast.LENGTH_SHORT
+                ).show()
+            }
+        )
+    }
+
     Box(
         modifier = Modifier
             .fillMaxSize()
@@ -162,7 +194,7 @@ fun HealthTipDetailScreen(
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             // ==========================================
-            // 1. TOP APP BAR WITH BACK & LANGUAGE PILL
+            // 1. TOP APP BAR WITH BACK, REMINDERS & LANGUAGE PILL
             // ==========================================
             item {
                 Row(
@@ -200,13 +232,13 @@ fun HealthTipDetailScreen(
                         )
                     }
 
-                    Spacer(modifier = Modifier.width(12.dp))
+                    Spacer(modifier = Modifier.width(10.dp))
 
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = labels["tip_details_screen_title"] ?: "Health Tip Details",
                             color = DarkTeal,
-                            fontSize = 19.sp,
+                            fontSize = 18.5.sp,
                             fontWeight = FontWeight.Bold,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -215,12 +247,34 @@ fun HealthTipDetailScreen(
                         Text(
                             text = categoryTitle,
                             color = DeepTeal,
-                            fontSize = 12.sp,
+                            fontSize = 11.5.sp,
                             fontWeight = FontWeight.SemiBold
                         )
                     }
 
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+
+                    // Reminders Management Icon Button
+                    IconButton(
+                        onClick = onOpenRemindersScreen,
+                        modifier = Modifier
+                            .size(38.dp)
+                            .background(PureWhite, RoundedCornerShape(12.dp))
+                            .border(BorderStroke(1.dp, Mint), RoundedCornerShape(12.dp)),
+                        colors = IconButtonDefaults.iconButtonColors(
+                            containerColor = PureWhite,
+                            contentColor = DeepTeal
+                        )
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Notifications,
+                            contentDescription = "View Reminders",
+                            tint = DeepTeal,
+                            modifier = Modifier.size(19.dp)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(6.dp))
 
                     // Language Selector Pill
                     Box {
@@ -250,13 +304,13 @@ fun HealthTipDetailScreen(
                                     interactionSource = langInteraction,
                                     indication = null
                                 ) { languageMenuExpanded = true }
-                                .padding(horizontal = 11.dp, vertical = 6.dp),
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
                                 text = langShortCode,
                                 color = DarkTeal,
-                                fontSize = 12.sp,
+                                fontSize = 11.5.sp,
                                 fontWeight = FontWeight.Bold
                             )
                         }
@@ -408,6 +462,78 @@ fun HealthTipDetailScreen(
                                     modifier = Modifier.weight(1f)
                                 )
                             }
+                        }
+                    }
+                }
+            }
+
+            // ==========================================
+            // 2B. SMART WELLNESS ROUTINE REMINDER ACTION
+            // ==========================================
+            item {
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = CardDefaults.cardColors(containerColor = PureWhite),
+                    border = BorderStroke(1.dp, Mint),
+                    elevation = CardDefaults.cardElevation(defaultElevation = 1.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(36.dp)
+                                    .background(SoftMint, CircleShape)
+                                    .border(BorderStroke(1.dp, Mint), CircleShape),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Notifications,
+                                    contentDescription = null,
+                                    tint = DeepTeal,
+                                    modifier = Modifier.size(19.dp)
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(10.dp))
+                            Column {
+                                Text(
+                                    text = appText("health_tip_add_reminder", screenLanguage),
+                                    color = DarkTeal,
+                                    fontSize = 13.5.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Spacer(modifier = Modifier.height(1.dp))
+                                Text(
+                                    text = "Daily habit schedule & alarms",
+                                    color = TextMuted,
+                                    fontSize = 11.sp
+                                )
+                            }
+                        }
+
+                        Spacer(modifier = Modifier.width(8.dp))
+
+                        Button(
+                            onClick = { showAddReminderDialog = true },
+                            colors = ButtonDefaults.buttonColors(containerColor = DeepTeal),
+                            shape = RoundedCornerShape(10.dp),
+                            contentPadding = PaddingValues(horizontal = 12.dp, vertical = 7.dp)
+                        ) {
+                            Text(
+                                text = appText("btn_add_new_reminder", screenLanguage),
+                                color = PureWhite,
+                                fontSize = 11.5.sp,
+                                fontWeight = FontWeight.Bold
+                            )
                         }
                     }
                 }
