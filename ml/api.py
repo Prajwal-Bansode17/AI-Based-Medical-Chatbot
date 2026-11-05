@@ -974,14 +974,29 @@ def get_ai_status_fields():
         ollama = {"reachable": False, "model_available": False}
 
     primary_pref = os.getenv("AI_PRIMARY_PROVIDER", "auto").strip().lower()
-    if primary_pref == "ollama" and OLLAMA_ENABLED:
-        primary = "ollama"
-    elif gemini_client is not None:
-        primary = "gemini"
-    elif OLLAMA_ENABLED:
-        primary = "ollama"
-    else:
-        primary = "none"
+    gemini_configured = gemini_client is not None
+
+    if primary_pref == "gemini":
+        if gemini_configured:
+            primary = "gemini"
+        elif OLLAMA_ENABLED:
+            primary = "ollama"
+        else:
+            primary = "none"
+    elif primary_pref == "ollama":
+        if OLLAMA_ENABLED:
+            primary = "ollama"
+        elif gemini_configured:
+            primary = "gemini"
+        else:
+            primary = "none"
+    else:  # "auto" -> accurately reflects text-query execution priority (Ollama first, then Gemini)
+        if OLLAMA_ENABLED:
+            primary = "ollama"
+        elif gemini_configured:
+            primary = "gemini"
+        else:
+            primary = "none"
 
     return {
         "ai_primary_provider": primary,
@@ -989,7 +1004,8 @@ def get_ai_status_fields():
         "ollama_model": OLLAMA_MODEL,
         "ollama_reachable": bool(ollama.get("reachable")),
         "ollama_model_available": bool(ollama.get("model_available")),
-        "gemini_configured": gemini_client is not None,
+        "gemini_configured": gemini_configured,
+        "vision_provider": "gemini" if gemini_configured else "none",
     }
 
 
@@ -3601,7 +3617,7 @@ def predict():
             ambiguous_check = check_for_ambiguous_query(text, detected_dialect=final_language)
             if ambiguous_check:
                 clarifying_answer = ambiguous_check.get("clarification_question") or ambiguous_check.get("clarifying_question") or ""
-                category_symptom = ambiguous_check.get("category", "symptom")
+                category_symptom = ambiguous_check.get("canonical_symptom") or ambiguous_check.get("category", "symptom").replace("vague_", "")
                 _record_message("user", text, [category_symptom])
                 _record_message("assistant", clarifying_answer, [category_symptom])
                 _maybe_save_user_prefs()

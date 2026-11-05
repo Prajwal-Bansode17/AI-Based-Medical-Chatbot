@@ -56,6 +56,8 @@ class TestConversationEngine(unittest.TestCase):
         result = check_for_ambiguous_query("I have headache", detected_dialect="en")
         self.assertIsNotNone(result)
         self.assertEqual(result["category"], "vague_headache")
+        self.assertEqual(result.get("canonical_symptom"), "headache")
+        self.assertTrue(result.get("is_ambiguous"))
         self.assertIn("clarification_question", result)
         self.assertTrue(len(result["clarification_question"]) > 15)
 
@@ -63,12 +65,16 @@ class TestConversationEngine(unittest.TestCase):
         result = check_for_ambiguous_query("khansi ho rahi hai", detected_dialect="hinglish")
         self.assertIsNotNone(result)
         self.assertEqual(result["category"], "vague_cough")
+        self.assertEqual(result.get("canonical_symptom"), "cough")
+        self.assertTrue(result.get("is_ambiguous"))
         self.assertIn("Khaansi", result["clarification_question"])
 
     def test_ambiguity_detection_vague_fever_marathi(self):
         result = check_for_ambiguous_query("mala tap ahe", detected_dialect="roman_mr")
         self.assertIsNotNone(result)
         self.assertEqual(result["category"], "vague_fever")
+        self.assertEqual(result.get("canonical_symptom"), "fever")
+        self.assertTrue(result.get("is_ambiguous"))
         self.assertIn("tap", result["clarification_question"].lower())
 
     def test_ambiguity_detection_detailed_query_not_ambiguous(self):

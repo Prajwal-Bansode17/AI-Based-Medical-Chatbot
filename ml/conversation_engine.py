@@ -303,7 +303,8 @@ def check_for_ambiguous_query(user_text: str, detected_dialect: str = "en") -> O
 
                 canonical = CANONICAL_SYMPTOM_MAP.get(category, category.replace("vague_", ""))
                 return {
-                    "category": canonical,
+                    "category": category,
+                    "canonical_symptom": canonical,
                     "clarification_question": q_text,
                     "is_ambiguous": True
                 }
