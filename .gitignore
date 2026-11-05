@@ -34,3 +34,16 @@ ml/venv/
 __pycache__/
 *.pyc
 .env
+
+# Python Virtual Environments
+.venv/
+venv312/
+
+# Kotlin & IDE caches
+.kotlin/
+
+# Build artifacts & packages
+**/build/
+*.apk
+*.aab
+*.log
