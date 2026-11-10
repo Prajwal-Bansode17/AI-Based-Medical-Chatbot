@@ -7,7 +7,14 @@ and prompt injection defense.
 
 import re
 import logging
-from typing import Optional, Dict, List, Tuple
+from typing import Optional, Dict, List, Tuple, Any
+
+from environmental_health import (
+    get_atmospheric_context,
+    get_regional_health_alert,
+    get_citizen_advisory,
+    format_atmospheric_advisory_block,
+)
 
 logger = logging.getLogger("medassist.conversation_engine")
 
@@ -530,3 +537,18 @@ def generate_clinical_follow_up_questions(symptoms: List[str], language: str = "
         "How many days have you been noticing these symptoms?",
         "Are you experiencing any associated symptoms such as fever, fatigue, or dizziness?"
     ]
+
+
+def attach_atmospheric_advisory(
+    base_response: str,
+    symptoms: Any,
+    lat: Optional[float] = None,
+    lon: Optional[float] = None,
+    city: Optional[str] = None,
+    language: str = "en"
+) -> str:
+    """Appends localized atmospheric intelligence and citizen advisories if relevant."""
+    block = format_atmospheric_advisory_block(symptoms, lat=lat, lon=lon, city=city, language=language)
+    if block and block not in base_response:
+        return f"{base_response}\n\n{block}"
+    return base_response

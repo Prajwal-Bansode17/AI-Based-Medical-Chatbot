@@ -82,6 +82,13 @@ from conversation_engine import (
     build_resolution_acknowledgment,
     generate_clinical_follow_up_questions,
     get_quick_reply_chips,
+    attach_atmospheric_advisory,
+)
+from environmental_health import (
+    get_atmospheric_context,
+    get_regional_health_alert,
+    get_citizen_advisory,
+    format_atmospheric_advisory_block,
 )
 from memory_service import (
     init_memory_schema,
@@ -3523,6 +3530,9 @@ def chat():
     session_id = (payload.get("session_id") or f"chat_{uuid.uuid4().hex[:12]}").strip()
     req_lang = (payload.get("language") or "").strip().lower()
     user_id = (payload.get("user_id") or extract_auth_user(request)[0] or session_id).strip()
+    lat = payload.get("lat") or payload.get("latitude")
+    lon = payload.get("lon") or payload.get("longitude")
+    city = payload.get("city")
 
     # Pre-processing: sanitize and detect dialect/language
     sanitized_message, was_sanitized = sanitize_prompt_input(raw_message)
@@ -3662,8 +3672,19 @@ def chat():
             logger.warning("[%s] HF Layer 2 exception: %s", correlation_id, ex)
             hf_answer = None
 
+    env_block = format_atmospheric_advisory_block(
+        symptoms=detected_symptoms or sanitized_message,
+        lat=lat,
+        lon=lon,
+        city=city,
+        language=final_language,
+    )
+    env_context = get_atmospheric_context(lat=lat, lon=lon, city=city) if env_block else None
+
     if hf_answer and hf_answer.strip():
         final_answer = _ensure_medical_disclaimer(hf_answer.strip(), final_language)
+        if env_block and env_block not in final_answer:
+            final_answer = f"{final_answer}\n\n{env_block}"
         _record_chat("user", raw_message, symptoms=",".join(detected_symptoms))
         _record_chat("assistant", final_answer, symptoms=",".join(detected_symptoms))
         return jsonify({
@@ -3678,6 +3699,8 @@ def chat():
             "proactive_check_in": False,
             "follow_up_questions": follow_up_questions,
             "quick_replies": quick_replies,
+            "atmospheric_advisory": env_block,
+            "atmospheric_context": env_context,
             "language": final_language,
         }), 200
 
@@ -3689,6 +3712,8 @@ def chat():
         fallback_text = build_safe_general_advice(sanitized_message, final_language)
 
     final_answer = _ensure_medical_disclaimer(fallback_text.strip(), final_language)
+    if env_block and env_block not in final_answer:
+        final_answer = f"{final_answer}\n\n{env_block}"
     _record_chat("user", raw_message, symptoms=",".join(detected_symptoms))
     _record_chat("assistant", final_answer, symptoms=",".join(detected_symptoms))
     return jsonify({
@@ -3702,6 +3727,8 @@ def chat():
         "proactive_check_in": False,
         "follow_up_questions": follow_up_questions,
         "quick_replies": quick_replies,
+        "atmospheric_advisory": env_block,
+        "atmospheric_context": env_context,
         "language": final_language,
     }), 200
 
@@ -3733,6 +3760,28 @@ def predict():
                         payload.get("symptoms") or (symptoms if 'symptoms' in locals() else []),
                         resp_lang,
                     )
+                # Atmospheric & Regional Epidemiological Advisory Engine
+                p_intent = payload.get("intent")
+                if p_intent not in ("emergency", "greeting", "clarification_needed", "loose_pill_refusal"):
+                    pred_syms = payload.get("symptoms") or (symptoms if 'symptoms' in locals() else []) or (text if 'text' in locals() else "")
+                    p_lat = lat if 'lat' in locals() else None
+                    p_lon = lon if 'lon' in locals() else None
+                    p_city = city if 'city' in locals() else None
+                    adv_block = format_atmospheric_advisory_block(
+                        symptoms=pred_syms,
+                        lat=p_lat,
+                        lon=p_lon,
+                        city=p_city,
+                        language=resp_lang,
+                    )
+                    if adv_block:
+                        payload["environmental_advisory"] = adv_block
+                        payload["atmospheric_context"] = get_atmospheric_context(lat=p_lat, lon=p_lon, city=p_city)
+                        curr_ans = payload.get("answer") or payload.get("response") or ""
+                        if curr_ans and adv_block not in curr_ans:
+                            new_ans = f"{curr_ans}\n\n{adv_block}"
+                            payload["answer"] = new_ans
+                            payload["response"] = new_ans
         resp = jsonify(payload)
         resp.headers["X-Correlation-ID"] = correlation_id
         total_time = time.monotonic() - t_start
@@ -3758,6 +3807,9 @@ def predict():
     is_guest = not user_id or str(user_id).startswith("guest_") or str(user_id) == "guest"
     is_temporary = bool(data.get("is_temporary", False))
     conversation_id = data.get("conversation_id")
+    lat = data.get("lat") or data.get("latitude")
+    lon = data.get("lon") or data.get("longitude")
+    city = data.get("city")
 
     # Image validation (D1, D6)
     image_base64 = data.get("image_base64") or data.get("image")
