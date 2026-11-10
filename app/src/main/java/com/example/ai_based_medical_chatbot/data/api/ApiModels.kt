@@ -25,7 +25,16 @@ data class PredictionRequest(
     val isTemporary: Boolean = false,
 
     @SerializedName("correlation_id")
-    val correlationId: String? = null
+    val correlationId: String? = null,
+
+    @SerializedName("user_name")
+    val userName: String? = null,
+
+    @SerializedName("user_age")
+    val userAge: Int? = null,
+
+    @SerializedName("user_gender")
+    val userGender: String? = null
 )
 
 data class PredictionResponse(
@@ -72,7 +81,16 @@ data class PredictionResponse(
     val sessionId: String? = null,
 
     @SerializedName("correlation_id")
-    val correlationId: String? = null
+    val correlationId: String? = null,
+
+    @SerializedName("user_name")
+    val userName: String? = null,
+
+    @SerializedName("user_age")
+    val userAge: Int? = null,
+
+    @SerializedName("user_gender")
+    val userGender: String? = null
 )
 
 data class Measurement(

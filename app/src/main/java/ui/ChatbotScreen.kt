@@ -1237,6 +1237,11 @@ fun ChatbotScreen(
                             }
 
                         val requestCorrelationId = "req_" + java.util.UUID.randomUUID().toString().take(8)
+                        val userBmiData = BMIRepository.getBMIData(context)
+                        val resolvedUserName = savedUser?.fullName?.trim()?.ifBlank { null }
+                            ?: userBmiData.fullName.trim().ifBlank { null }
+                        val resolvedUserAge = userBmiData.age.takeIf { it > 0 }
+                        val resolvedUserGender = userBmiData.gender.trim().ifBlank { null }
 
                         RetrofitClient
                             .apiService
@@ -1249,7 +1254,10 @@ fun ChatbotScreen(
                                     userId = savedUser?.id,
                                     conversationId = currentSessionId,
                                     isTemporary = isTemporaryChat,
-                                    correlationId = requestCorrelationId
+                                    correlationId = requestCorrelationId,
+                                    userName = resolvedUserName,
+                                    userAge = resolvedUserAge,
+                                    userGender = resolvedUserGender
                                 )
                             )
                     }
@@ -1533,6 +1541,11 @@ fun ChatbotScreen(
                 }
 
                 val retryCorrelationId = "req_" + java.util.UUID.randomUUID().toString().take(8)
+                val retryBmiData = BMIRepository.getBMIData(context)
+                val retryResolvedUserName = savedUser?.fullName?.trim()?.ifBlank { null }
+                    ?: retryBmiData.fullName.trim().ifBlank { null }
+                val retryResolvedUserAge = retryBmiData.age.takeIf { it > 0 }
+                val retryResolvedUserGender = retryBmiData.gender.trim().ifBlank { null }
 
                 val response = withContext(Dispatchers.IO) {
                     RetrofitClient.apiService.predict(
@@ -1544,7 +1557,10 @@ fun ChatbotScreen(
                             userId = savedUser?.id,
                             conversationId = currentSessionId,
                             isTemporary = isTemporaryChat,
-                            correlationId = retryCorrelationId
+                            correlationId = retryCorrelationId,
+                            userName = retryResolvedUserName,
+                            userAge = retryResolvedUserAge,
+                            userGender = retryResolvedUserGender
                         )
                     )
                 }

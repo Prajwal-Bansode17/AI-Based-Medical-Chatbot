@@ -86,6 +86,8 @@ from conversation_engine import (
     has_clinical_history_context,
     is_conversational_followup_query,
     sanitize_kgmu_references,
+    detect_identity_query_intent,
+    build_identity_response,
 )
 from environmental_health import (
     get_atmospheric_context,
@@ -128,6 +130,8 @@ from memory_service import (
     resolve_symptom,
     delete_all_user_symptoms,
     update_symptom_last_checked,
+    save_user_profile,
+    get_user_profile,
 )
 from vision_service import (
     validate_and_decode_image,
@@ -1012,6 +1016,9 @@ HF_ENABLED = _env_bool("HF_ENABLED", True)
 HF_TEMPERATURE = _env_float("HF_TEMPERATURE", 0.3)
 HF_MAX_NEW_TOKENS = _env_int("HF_MAX_NEW_TOKENS", 512)
 
+DEFAULT_AI_PROVIDER = "huggingface"
+AI_PROVIDER = os.getenv("AI_PRIMARY_PROVIDER", DEFAULT_AI_PROVIDER).strip().lower()
+
 
 def query_hf_chat(
     system_prompt=None,
@@ -1129,6 +1136,29 @@ def query_hf_chat(
             )
 
     return None
+
+
+def _generate_huggingface(
+    system_prompt=None,
+    user_prompt="",
+    messages=None,
+    session_id=None,
+    language="en",
+    correlation_id=None,
+    prompt=None,
+):
+    """
+    Primary Hugging Face generator invoking hariom-peddawad/MedAssist-AI-1B.
+    """
+    actual_prompt = user_prompt or prompt or ""
+    return query_hf_chat(
+        system_prompt=system_prompt,
+        user_prompt=actual_prompt,
+        messages=messages,
+        session_id=session_id,
+        language=language,
+        correlation_id=correlation_id,
+    )
 
 
 # ------------------------- Layer 3 Local Semantic Retrieval -------------------------
@@ -1269,7 +1299,7 @@ def get_ai_status_fields():
     except Exception:
         ollama = {"reachable": False, "model_available": False}
 
-    primary_pref = os.getenv("AI_PRIMARY_PROVIDER", "auto").strip().lower()
+    primary_pref = os.getenv("AI_PRIMARY_PROVIDER", DEFAULT_AI_PROVIDER).strip().lower()
     gemini_configured = gemini_client is not None
 
     if primary_pref == "gemini":
@@ -1374,7 +1404,7 @@ def build_session_memory_summary(session_id):
     return "\n".join(summary_parts)
 
 
-def _build_medical_system_instruction(language, memory_summary=""):
+def _build_medical_system_instruction(language, memory_summary="", user_identity_context=""):
     language_names = {"en": "English", "mr": "Marathi", "hi": "Hindi"}
     target_language = language_names.get(language, "English")
 
@@ -1399,6 +1429,8 @@ def _build_medical_system_instruction(language, memory_summary=""):
         f"Do not start every message with greeting formulas. Address the user's question directly and concisely.\n"
         f"10. SYSTEM IDENTITY: You are MedAssist AI. Never reference external hospital portals, OPD booking counters, or institutions like KGMU (King George's Medical University). All clinical guidance is provided directly by MedAssist AI.\n"
     )
+    if user_identity_context:
+        instruction += f"\nCONFIRMED USER IDENTITY & PROFILE:\n{user_identity_context}\n(You know the user personally. Always recognize and address them warmly by name if asked, acknowledging their registered identity directly.)\n"
     if memory_summary:
         instruction += f"\nCONFIRMED PATIENT FACTS IN THIS CONVERSATION:\n{memory_summary}\n"
     return instruction
@@ -1550,7 +1582,7 @@ def _gemini_generate(contents, correlation_id=None):
 # ------------------------------ public generators ----------------------------
 
 def generate_medical_response_with_provider(
-    user_text, language="en", medical_context="", conversation_context="", session_id=None, image_bytes=None, user_memory_context="", correlation_id=None, system_instruction=None
+    user_text, language="en", medical_context="", conversation_context="", session_id=None, image_bytes=None, user_memory_context="", correlation_id=None, system_instruction=None, user_identity_context=""
 ):
     ollama_available = OLLAMA_ENABLED
     gemini_available = gemini_client is not None
@@ -1559,8 +1591,22 @@ def generate_medical_response_with_provider(
         return None, None
 
     memory_summary = build_session_memory_summary(session_id) if session_id else ""
+    if not user_identity_context and session_id:
+        prof = get_user_profile(user_id=None, session_id=session_id)
+        if prof:
+            id_parts = []
+            if prof.get("user_name"):
+                id_parts.append(f"Name: {prof['user_name']}")
+            if prof.get("age"):
+                id_parts.append(f"Age: {prof['age']} years")
+            if prof.get("gender"):
+                id_parts.append(f"Gender: {prof['gender']}")
+            user_identity_context = ", ".join(id_parts)
+
     if not system_instruction:
-        system_instruction = _build_medical_system_instruction(language, memory_summary=memory_summary)
+        system_instruction = _build_medical_system_instruction(
+            language, memory_summary=memory_summary, user_identity_context=user_identity_context
+        )
     prompt = _build_medical_user_prompt(
         user_text, language, medical_context, conversation_context, user_memory_context=user_memory_context
     )
@@ -1576,7 +1622,7 @@ def generate_medical_response_with_provider(
             limit=8,
         )
 
-    primary_pref = os.getenv("AI_PRIMARY_PROVIDER", "auto").strip().lower()
+    primary_pref = os.getenv("AI_PRIMARY_PROVIDER", DEFAULT_AI_PROVIDER).strip().lower()
 
     providers = []
 
@@ -1611,7 +1657,7 @@ def generate_medical_response_with_provider(
 
     def _add_hf():
         if hf_available and not image_bytes:
-            providers.append(("huggingface", lambda: query_hf_chat(
+            providers.append(("huggingface", lambda: _generate_huggingface(
                 system_prompt=system_instruction,
                 user_prompt=prompt,
                 messages=structured_messages,
@@ -3622,6 +3668,33 @@ def chat():
     detected_lang = dialect_info.get("language") or dialect_info.get("primary_language") or "en"
     final_language = req_lang if req_lang and req_lang not in {"auto", ""} else detected_lang
 
+    user_name = payload.get("user_name") or payload.get("userName")
+    user_age = payload.get("user_age") or payload.get("age")
+    user_gender = payload.get("user_gender") or payload.get("gender")
+
+    if user_name or user_age or user_gender:
+        save_user_profile(
+            user_id=user_id,
+            user_name=user_name,
+            age=user_age,
+            gender=user_gender,
+            session_id=session_id
+        )
+
+    profile = get_user_profile(user_id=user_id, session_id=session_id)
+    if profile:
+        user_name = profile.get("user_name") or user_name
+        user_age = profile.get("age") or user_age
+        user_gender = profile.get("gender") or user_gender
+
+    user_identity_context = ""
+    if user_name or user_age or user_gender:
+        id_parts = []
+        if user_name: id_parts.append(f"Name: {user_name}")
+        if user_age: id_parts.append(f"Age: {user_age} years")
+        if user_gender: id_parts.append(f"Gender: {user_gender}")
+        user_identity_context = ", ".join(id_parts)
+
     def _record_chat(role, text, symptoms=None):
         try:
             save_chat_message(
@@ -3633,6 +3706,28 @@ def chat():
             )
         except Exception as e:
             logger.debug("[%s] Chat record failed: %s", correlation_id, e)
+
+    # ------------------------------------------------------------
+    # LAYER 0: User Identity & Name Intercept
+    # ------------------------------------------------------------
+    if detect_identity_query_intent(sanitized_message):
+        id_response = build_identity_response(user_name, user_age, user_gender, language=final_language)
+        _record_chat("user", raw_message)
+        _record_chat("assistant", id_response)
+        return jsonify({
+            "status": "success",
+            "session_id": session_id,
+            "response": id_response,
+            "answer": id_response,
+            "layer": 1,
+            "source": "user_profile",
+            "emergency": False,
+            "proactive_check_in": False,
+            "follow_up_questions": [],
+            "quick_replies": get_quick_reply_chips(final_language),
+            "language": final_language,
+            "user_name": user_name,
+        }), 200
 
     # ------------------------------------------------------------
     # LAYER 0A: Symptom Resolution Intercept
@@ -3741,9 +3836,9 @@ def chat():
         try:
             memory_summary = build_session_memory_summary(session_id) if session_id else ""
             system_instruction = _build_medical_system_instruction(
-                final_language, memory_summary=memory_summary
+                final_language, memory_summary=memory_summary, user_identity_context=user_identity_context
             )
-            hf_answer = query_hf_chat(
+            hf_answer = _generate_huggingface(
                 system_prompt=system_instruction,
                 user_prompt=sanitized_message,
                 session_id=session_id,
@@ -3946,6 +4041,33 @@ def predict():
         final_language = previous_response_language
     else:
         final_language = detected_language
+
+    user_name = data.get("user_name") or data.get("userName")
+    user_age = data.get("user_age") or data.get("age")
+    user_gender = data.get("user_gender") or data.get("gender")
+
+    if user_name or user_age or user_gender:
+        save_user_profile(
+            user_id=effective_user_id,
+            user_name=user_name,
+            age=user_age,
+            gender=user_gender,
+            session_id=session_id
+        )
+
+    current_profile = get_user_profile(user_id=effective_user_id, session_id=session_id)
+    if current_profile:
+        user_name = current_profile.get("user_name") or user_name
+        user_age = current_profile.get("age") or user_age
+        user_gender = current_profile.get("gender") or user_gender
+
+    user_identity_context = ""
+    if user_name or user_age or user_gender:
+        id_parts = []
+        if user_name: id_parts.append(f"Name: {user_name}")
+        if user_age: id_parts.append(f"Age: {user_age} years")
+        if user_gender: id_parts.append(f"Gender: {user_gender}")
+        user_identity_context = ", ".join(id_parts)
 
     def _record_message(role, msg, syms=None):
         save_chat_message(
@@ -4296,6 +4418,40 @@ def predict():
                 "language": final_language,
                 "emergency": True,
                 "safety_flag": safety_flag,
+            })
+
+        # ----------------------------------------------------
+        # USER IDENTITY & NAME INTERCEPT
+        # ----------------------------------------------------
+        if detect_identity_query_intent(text) and not safety_flag:
+            identity_answer = build_identity_response(
+                user_name=user_name,
+                age=user_age,
+                gender=user_gender,
+                language=final_language
+            )
+            _record_message("user", text, [])
+            _record_message("assistant", identity_answer, [])
+            _maybe_save_user_prefs()
+            return _json_response({
+                "status": "success",
+                "session_id": session_id,
+                "question": text,
+                "intent": "user_identity",
+                "confidence": 1.0,
+                "symptoms": [],
+                "previous_symptoms": previous_symptoms,
+                "duration": duration,
+                "measurements": measurements,
+                "medical_query": False,
+                "answer": identity_answer,
+                "response": identity_answer,
+                "source": "user_profile",
+                "language": final_language,
+                "proactive_check_in": False,
+                "follow_up_questions": [],
+                "quick_replies": get_quick_reply_chips(final_language),
+                "user_name": user_name,
             })
 
         # ----------------------------------------------------
@@ -4907,19 +5063,11 @@ if __name__ == "__main__":
     print("Chat DB      :", CHAT_DB_FILE)
     print("MEDIQ Records:", len(dataset))
     print("Medical KB Records:", len(medical_knowledge))
-    _ollama_info = get_ollama_status(max_age=0)
-    if OLLAMA_ENABLED:
-        print("AI Primary   : Ollama")
-        print("Ollama URL   :", OLLAMA_BASE_URL)
-        if not _ollama_info["reachable"]:
-            print("Ollama Status: NOT reachable -", _ollama_info["error"])
-        elif _ollama_info["model_available"]:
-            print("Ollama Status: Connected, model ready:", OLLAMA_MODEL)
-        else:
-            print("Ollama Status: Connected, but model not installed. Run: ollama pull", OLLAMA_MODEL)
-    else:
-        print("AI Primary   : Ollama disabled (OLLAMA_ENABLED=0)")
-    print("Gemini       :", "Configured (fallback)" if gemini_client is not None else "Not configured")
+    hf_model_id = os.getenv("HF_MODEL_NAME", "hariom-peddawad/MedAssist-AI-1B")
+    hf_token_detected = bool(os.getenv("HF_TOKEN"))
+    print(f"AI Primary   : Hugging Face ({hf_model_id})")
+    print(f"HF Status    : {'Connected (Token detected)' if hf_token_detected else 'No HF_TOKEN set'}")
+    print("Fallback     : Gemini (Configured) + Local Retriever (4497 records)")
     print("API Port     : 5000")
     print("LAN URL      : http://<YOUR-LAPTOP-IP>:5000")
     print("Android BASE_URL must point to the laptop running Flask.")

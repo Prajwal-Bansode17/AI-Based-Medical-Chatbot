@@ -660,3 +660,79 @@ def attach_atmospheric_advisory(
     if block and block not in base_response:
         return f"{base_response}\n\n{block}"
     return base_response
+
+
+# -------------------------------------------------------------
+# USER IDENTITY & CONVERSATIONAL MEMORY ENGINE
+# -------------------------------------------------------------
+
+IDENTITY_QUERY_PATTERNS = [
+    # English
+    r"\b(?:what(?:'s|\s+is)\s+my\s+name)\b",
+    r"\b(?:who\s+am\s+i)\b",
+    r"\b(?:do\s+you\s+know\s+my\s+name)\b",
+    r"\b(?:do\s+you\s+know\s+who\s+i\s+am)\b",
+    r"\b(?:tell\s+me\s+my\s+name)\b",
+    r"\b(?:can\s+you\s+tell\s+me\s+my\s+name)\b",
+    r"\b(?:remember\s+my\s+name)\b",
+    r"\b(?:do\s+you\s+remember\s+me)\b",
+    r"\b(?:my\s+name\s*\?)\b",
+    # Marathi (Devanagari & Roman Marathi)
+    r"(?:माझं|माझे|माझ)\s+(?:नाव|नांव)",
+    r"मी\s+कोण\s+आहे",
+    r"तुम्हाला\s+माझं\s+नाव",
+    r"\b(?:maz[a-z]*|majh[a-z]*)\s+(?:naav|nav)\s+(?:kay|kaay)\b",
+    r"\b(?:mi\s+kon\s+ahe)\b",
+    # Hindi (Devanagari & Hinglish)
+    r"(?:मेरा|मेरी)\s+नाम\s+(?:क्या\s+है|बताओ|याद\s+है)",
+    r"मैं\s+कौन\s+(?:हूँ|हू|हु)",
+    r"मेरा\s+नाम",
+    r"मेरा\s+नाम\s+जानते",
+    r"\b(?:mera|meri)\s+naam\s+(?:kya\s+hai|batao|yaad\s+hai)\b",
+    r"\b(?:main\s+kaun\s+hoon|main\s+kaun\s+hu)\b",
+]
+
+
+def detect_identity_query_intent(text: str) -> bool:
+    """
+    Detects if the user query is asking about their own name, identity, or personal recognition.
+    """
+    if not text or not isinstance(text, str):
+        return False
+    clean = text.strip().lower()
+    for pat in IDENTITY_QUERY_PATTERNS:
+        if re.search(pat, clean, re.IGNORECASE):
+            return True
+    return False
+
+
+def build_identity_response(
+    user_name: Optional[str] = None,
+    age: Optional[int] = None,
+    gender: Optional[str] = None,
+    language: str = "en"
+) -> str:
+    """
+    Builds a warm, personalized identity response acknowledging user's name and demographics.
+    """
+    lang = (language or "en").strip().lower()
+    has_name = bool(user_name and str(user_name).strip())
+    name = str(user_name).strip() if has_name else ""
+
+    if has_name:
+        if lang in ("mr", "roman_mr"):
+            age_str = f", वय {age} वर्षे" if age and int(age) > 0 else ""
+            return f"तुमचे नाव {name}{age_str} आहे. आपल्या प्रोफाइलनुसार मला तुमचे नाव आणि माहिती आठवते आहे! आज मी तुमच्या आरोग्यासाठी कशी मदत करू?"
+        elif lang in ("hi", "hinglish"):
+            age_str = f", उम्र {age} वर्ष" if age and int(age) > 0 else ""
+            return f"आपका नाम {name}{age_str} है। आपकी प्रोफाइल और हमारी बातचीत के आधार पर मुझे यह याद है! आज मैं आपकी सेहत के लिए क्या सहायता कर सकता हूँ?"
+        else:
+            age_str = f", {age} years old" if age and int(age) > 0 else ""
+            return f"Your name is {name}{age_str}. I remember you from your profile! How can I assist you with your health today?"
+    else:
+        if lang in ("mr", "roman_mr"):
+            return "आपल्या सध्याच्या संभाषणात तुमचे नाव अजून नोंदवले गेलेले नाही. कृपया तुमचे नाव मला सांगू शकाल का?"
+        elif lang in ("hi", "hinglish"):
+            return "वर्तमान बातचीत में आपका नाम अभी दर्ज नहीं है। क्या आप कृपया मुझे अपना नाम बता सकते हैं?"
+        else:
+            return "I don't have your name saved in our current conversation yet. Could you please share your name with me?"

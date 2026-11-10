@@ -287,6 +287,47 @@ object PrescriptionRepository {
         return id
     }
 
+    fun saveLabReport(
+        context: Context,
+        reportTitle: String,
+        date: String,
+        extractedText: String,
+        summary: String,
+        abnormalBiomarkersCount: Int,
+        totalBiomarkersCount: Int,
+        imageUri: String = ""
+    ): String {
+        val id = "lab_${System.currentTimeMillis()}"
+
+        val item = JSONObject().apply {
+            put("id", id)
+            put("recordType", "lab_report")
+            put("savedAt", System.currentTimeMillis())
+            put("reportTitle", reportTitle)
+            put("doctorName", "")
+            put("patientName", "")
+            put("date", date)
+            put("diagnosis", summary)
+            put("extractedText", extractedText)
+            put("abnormalCount", abnormalBiomarkersCount)
+            put("totalCount", totalBiomarkersCount)
+            put("imageUri", imageUri)
+            put("medicines", JSONArray())
+        }
+
+        val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+        val current = JSONArray(prefs.getString(KEY_PRESCRIPTIONS, "[]") ?: "[]")
+        val updated = JSONArray()
+
+        updated.put(item)
+        for (i in 0 until current.length()) {
+            updated.put(current.getJSONObject(i))
+        }
+
+        prefs.edit().putString(KEY_PRESCRIPTIONS, updated.toString()).apply()
+        return id
+    }
+
     fun getSavedPrescriptions(context: Context): JSONArray {
         val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
         return JSONArray(prefs.getString(KEY_PRESCRIPTIONS, "[]") ?: "[]")

@@ -102,6 +102,7 @@ import com.example.ai_based_medical_chatbot.MedicineReminder
 import com.example.ai_based_medical_chatbot.MedicineReminderRepository
 import com.example.ai_based_medical_chatbot.appText
 import com.example.ai_based_medical_chatbot.data.SupabaseClient
+import com.example.ai_based_medical_chatbot.ui.theme.CoralAccent
 import com.example.ai_based_medical_chatbot.ui.theme.DarkTeal
 import com.example.ai_based_medical_chatbot.ui.theme.DeepTeal
 import com.example.ai_based_medical_chatbot.ui.theme.Ivory
@@ -1065,11 +1066,15 @@ fun ProfileScreen(
                         for (i in 0 until prescriptionArray.length()) {
                             val prescription = prescriptionArray.optJSONObject(i) ?: continue
                             val prescriptionId = prescription.optString("id")
+                            val isLabReport = prescription.optString("recordType") == "lab_report" || prescription.has("abnormalCount")
+                            val reportTitle = prescription.optString("reportTitle")
                             val doctor = prescription.optString("doctorName")
                             val patient = prescription.optString("patientName")
                             val date = prescription.optString("date")
                             val diagnosisText = prescription.optString("diagnosis")
                             val hospitalText = prescription.optString("hospitalName")
+                            val abnormalCount = prescription.optInt("abnormalCount", 0)
+                            val totalCount = prescription.optInt("totalCount", 0)
                             val medicines = prescription.optJSONArray("medicines") ?: JSONArray()
                             val medicineCount = medicines.length()
 
@@ -1099,7 +1104,7 @@ fun ProfileScreen(
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Icon(
-                                                imageVector = DocumentScannerVectorIcon,
+                                                imageVector = if (isLabReport) LabFlaskVectorIcon else DocumentScannerVectorIcon,
                                                 contentDescription = null,
                                                 tint = DeepTeal,
                                                 modifier = Modifier.size(22.dp)
@@ -1110,7 +1115,13 @@ fun ProfileScreen(
 
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text(
-                                                text = if (doctor.isNotBlank()) "Dr. $doctor" else "Saved Prescription",
+                                                text = if (isLabReport) {
+                                                    reportTitle.ifBlank { "Diagnostic Lab Report" }
+                                                } else if (doctor.isNotBlank()) {
+                                                    "Dr. $doctor"
+                                                } else {
+                                                    "Saved Prescription"
+                                                },
                                                 color = TextDark,
                                                 fontSize = 14.sp,
                                                 fontWeight = FontWeight.Bold,
@@ -1119,17 +1130,31 @@ fun ProfileScreen(
                                             )
                                             Spacer(modifier = Modifier.height(2.dp))
                                             Text(
-                                                text = buildString {
-                                                    if (date.isNotBlank()) append(date)
-                                                    if (medicineCount > 0) {
-                                                        if (isNotEmpty()) append("  •  ")
-                                                        append("$medicineCount medicine")
-                                                        if (medicineCount != 1) append("s")
+                                                text = if (isLabReport) {
+                                                    buildString {
+                                                        if (date.isNotBlank()) append(date)
+                                                        if (totalCount > 0) {
+                                                            if (isNotEmpty()) append("  •  ")
+                                                            append("$totalCount Biomarkers")
+                                                            if (abnormalCount > 0) append(" ($abnormalCount Flagged)")
+                                                            else append(" (All Normal)")
+                                                        }
+                                                        if (isEmpty()) append("Diagnostic Lab Findings")
                                                     }
-                                                    if (isEmpty()) append("Prescription details")
+                                                } else {
+                                                    buildString {
+                                                        if (date.isNotBlank()) append(date)
+                                                        if (medicineCount > 0) {
+                                                            if (isNotEmpty()) append("  •  ")
+                                                            append("$medicineCount medicine")
+                                                            if (medicineCount != 1) append("s")
+                                                        }
+                                                        if (isEmpty()) append("Prescription details")
+                                                    }
                                                 },
-                                                color = TextMuted,
+                                                color = if (isLabReport && abnormalCount > 0) CoralAccent else TextMuted,
                                                 fontSize = 11.sp,
+                                                fontWeight = if (isLabReport && abnormalCount > 0) FontWeight.SemiBold else FontWeight.Normal,
                                                 maxLines = 1,
                                                 overflow = TextOverflow.Ellipsis
                                             )
@@ -1143,7 +1168,16 @@ fun ProfileScreen(
                                         )
                                     }
 
-                                    if (hospitalText.isNotBlank() || patient.isNotBlank() || diagnosisText.isNotBlank()) {
+                                    if (isLabReport && diagnosisText.isNotBlank()) {
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Text(
+                                            text = diagnosisText,
+                                            color = TextMuted,
+                                            fontSize = 11.sp,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    } else if (!isLabReport && (hospitalText.isNotBlank() || patient.isNotBlank() || diagnosisText.isNotBlank())) {
                                         Spacer(modifier = Modifier.height(10.dp))
                                         if (hospitalText.isNotBlank()) {
                                             Text(
@@ -1189,50 +1223,69 @@ fun ProfileScreen(
                     .firstOrNull { it.optString("id") == selectedId }
 
                 if (selectedPrescription != null) {
+                    val isLabRecord = selectedPrescription.optString("recordType") == "lab_report" || selectedPrescription.has("abnormalCount")
                     val selectedMedicines = selectedPrescription.optJSONArray("medicines") ?: JSONArray()
+                    val labReportTitle = selectedPrescription.optString("reportTitle").ifBlank { "Diagnostic Lab Report" }
+                    val labAbnormalCount = selectedPrescription.optInt("abnormalCount", 0)
+                    val labTotalCount = selectedPrescription.optInt("totalCount", 0)
+                    val labExtractedText = selectedPrescription.optString("extractedText")
 
                     fun shareSavedPrescription() {
                         val shareLines = mutableListOf<String>()
-                        shareLines += "MEDASSIST AI - Prescription"
+                        if (isLabRecord) {
+                            shareLines += "MEDASSIST AI - Diagnostic Lab Report"
+                            shareLines += "Report: $labReportTitle"
+                            val shareDate = selectedPrescription.optString("date")
+                            val shareDiagnosis = selectedPrescription.optString("diagnosis")
+                            if (shareDate.isNotBlank()) shareLines += "Date: $shareDate"
+                            if (labTotalCount > 0) shareLines += "Biomarkers Tested: $labTotalCount (${if (labAbnormalCount > 0) "$labAbnormalCount Flagged" else "All Normal"})"
+                            if (shareDiagnosis.isNotBlank()) shareLines += "Findings: $shareDiagnosis"
+                            if (labExtractedText.isNotBlank()) {
+                                shareLines += ""
+                                shareLines += "Extracted Text:\n$labExtractedText"
+                            }
+                        } else {
+                            shareLines += "MEDASSIST AI - Prescription"
 
-                        val shareHospital = selectedPrescription.optString("hospitalName")
-                        val shareDoctor = selectedPrescription.optString("doctorName")
-                        val sharePatient = selectedPrescription.optString("patientName")
-                        val shareDate = selectedPrescription.optString("date")
-                        val shareDiagnosis = selectedPrescription.optString("diagnosis")
+                            val shareHospital = selectedPrescription.optString("hospitalName")
+                            val shareDoctor = selectedPrescription.optString("doctorName")
+                            val sharePatient = selectedPrescription.optString("patientName")
+                            val shareDate = selectedPrescription.optString("date")
+                            val shareDiagnosis = selectedPrescription.optString("diagnosis")
 
-                        if (shareHospital.isNotBlank()) shareLines += "Hospital / Clinic: $shareHospital"
-                        if (shareDoctor.isNotBlank()) shareLines += "Doctor: $shareDoctor"
-                        if (sharePatient.isNotBlank()) shareLines += "Patient: $sharePatient"
-                        if (shareDate.isNotBlank()) shareLines += "Date: $shareDate"
-                        if (shareDiagnosis.isNotBlank()) shareLines += "Diagnosis: $shareDiagnosis"
+                            if (shareHospital.isNotBlank()) shareLines += "Hospital / Clinic: $shareHospital"
+                            if (shareDoctor.isNotBlank()) shareLines += "Doctor: $shareDoctor"
+                            if (sharePatient.isNotBlank()) shareLines += "Patient: $sharePatient"
+                            if (shareDate.isNotBlank()) shareLines += "Date: $shareDate"
+                            if (shareDiagnosis.isNotBlank()) shareLines += "Diagnosis: $shareDiagnosis"
 
-                        for (k in 0 until selectedMedicines.length()) {
-                            val medicine = selectedMedicines.optJSONObject(k) ?: continue
-                            val name = medicine.optString("medicineName")
-                            val strength = medicine.optString("strength")
-                            val timing = medicine.optString("timing")
-                            val mealTiming = medicine.optString("mealTiming")
-                            val duration = medicine.optString("duration")
-                            val howToTake = medicine.optString("howToTake")
-                            val instructions = medicine.optString("instructions")
+                            for (k in 0 until selectedMedicines.length()) {
+                                val medicine = selectedMedicines.optJSONObject(k) ?: continue
+                                val name = medicine.optString("medicineName")
+                                val strength = medicine.optString("strength")
+                                val timing = medicine.optString("timing")
+                                val mealTiming = medicine.optString("mealTiming")
+                                val duration = medicine.optString("duration")
+                                val howToTake = medicine.optString("howToTake")
+                                val instructions = medicine.optString("instructions")
 
-                            shareLines += ""
-                            shareLines += "Medicine ${k + 1}: $name"
-                            if (strength.isNotBlank()) shareLines += "Strength: $strength"
-                            if (timing.isNotBlank()) shareLines += "Time: $timing"
-                            if (mealTiming.isNotBlank()) shareLines += "Food: $mealTiming"
-                            if (duration.isNotBlank()) shareLines += "Duration: $duration"
-                            if (howToTake.isNotBlank()) {
-                                shareLines += "How to take: $howToTake"
-                            } else if (instructions.isNotBlank()) {
-                                shareLines += "Instructions: $instructions"
+                                shareLines += ""
+                                shareLines += "Medicine ${k + 1}: $name"
+                                if (strength.isNotBlank()) shareLines += "Strength: $strength"
+                                if (timing.isNotBlank()) shareLines += "Time: $timing"
+                                if (mealTiming.isNotBlank()) shareLines += "Food: $mealTiming"
+                                if (duration.isNotBlank()) shareLines += "Duration: $duration"
+                                if (howToTake.isNotBlank()) {
+                                    shareLines += "How to take: $howToTake"
+                                } else if (instructions.isNotBlank()) {
+                                    shareLines += "Instructions: $instructions"
+                                }
                             }
                         }
 
                         val imageUri = selectedPrescription.optString("imageUri")
                         val intent = Intent(Intent.ACTION_SEND).apply {
-                            putExtra(Intent.EXTRA_SUBJECT, "MEDASSIST Prescription")
+                            putExtra(Intent.EXTRA_SUBJECT, if (isLabRecord) "MEDASSIST Lab Report" else "MEDASSIST Prescription")
                             putExtra(Intent.EXTRA_TEXT, shareLines.joinToString("\n"))
 
                             if (imageUri.isNotBlank()) {
@@ -1244,7 +1297,7 @@ fun ProfileScreen(
                             }
                         }
 
-                        context.startActivity(Intent.createChooser(intent, appText("share_prescription", selectedLanguage)))
+                        context.startActivity(Intent.createChooser(intent, if (isLabRecord) "Share Lab Report" else appText("share_prescription", selectedLanguage)))
                     }
 
                     Spacer(modifier = Modifier.height(14.dp))
@@ -1270,7 +1323,7 @@ fun ProfileScreen(
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
                                     Icon(
-                                        imageVector = DocumentScannerVectorIcon,
+                                        imageVector = if (isLabRecord) LabFlaskVectorIcon else DocumentScannerVectorIcon,
                                         contentDescription = null,
                                         tint = DarkTeal,
                                         modifier = Modifier.size(20.dp)
@@ -1278,14 +1331,14 @@ fun ProfileScreen(
                                     Spacer(modifier = Modifier.width(8.dp))
                                     Column {
                                         Text(
-                                            text = appText("prescription_details", selectedLanguage),
+                                            text = if (isLabRecord) labReportTitle else appText("prescription_details", selectedLanguage),
                                             color = DarkTeal,
                                             fontSize = 16.sp,
                                             fontWeight = FontWeight.Bold
                                         )
                                         Spacer(modifier = Modifier.height(2.dp))
                                         Text(
-                                            text = "Saved digital record",
+                                            text = if (isLabRecord) "Saved clinical lab analysis" else "Saved digital record",
                                             color = TextMuted,
                                             fontSize = 11.sp
                                         )
@@ -1313,29 +1366,73 @@ fun ProfileScreen(
                             val detailDiagnosis = selectedPrescription.optString("diagnosis")
                             val detailHospital = selectedPrescription.optString("hospitalName")
 
-                            if (detailHospital.isNotBlank()) {
-                                HealthDataRow(title = "Hospital / Clinic", value = detailHospital)
-                                HealthDataDivider()
-                            }
-                            if (detailDoctor.isNotBlank()) {
-                                HealthDataRow(title = "Doctor", value = detailDoctor)
-                                HealthDataDivider()
-                            }
-                            if (detailPatient.isNotBlank()) {
-                                HealthDataRow(title = "Patient", value = detailPatient)
-                                HealthDataDivider()
-                            }
-                            if (detailDate.isNotBlank()) {
-                                HealthDataRow(title = "Date", value = detailDate)
-                                HealthDataDivider()
-                            }
-                            if (detailDiagnosis.isNotBlank()) {
-                                HealthDataRow(title = "Diagnosis", value = detailDiagnosis)
+                            if (!isLabRecord) {
+                                if (detailHospital.isNotBlank()) {
+                                    HealthDataRow(title = "Hospital / Clinic", value = detailHospital)
+                                    HealthDataDivider()
+                                }
+                                if (detailDoctor.isNotBlank()) {
+                                    HealthDataRow(title = "Doctor", value = detailDoctor)
+                                    HealthDataDivider()
+                                }
+                                if (detailPatient.isNotBlank()) {
+                                    HealthDataRow(title = "Patient", value = detailPatient)
+                                    HealthDataDivider()
+                                }
+                                if (detailDate.isNotBlank()) {
+                                    HealthDataRow(title = "Date", value = detailDate)
+                                    HealthDataDivider()
+                                }
+                                if (detailDiagnosis.isNotBlank()) {
+                                    HealthDataRow(title = "Diagnosis", value = detailDiagnosis)
+                                }
+                            } else {
+                                if (detailDate.isNotBlank()) {
+                                    HealthDataRow(title = "Report Date", value = detailDate)
+                                    HealthDataDivider()
+                                }
+                                if (labTotalCount > 0) {
+                                    HealthDataRow(
+                                        title = "Biomarkers Tested",
+                                        value = "$labTotalCount (${if (labAbnormalCount > 0) "$labAbnormalCount Flagged" else "All Normal"})"
+                                    )
+                                    HealthDataDivider()
+                                }
+                                if (detailDiagnosis.isNotBlank()) {
+                                    HealthDataRow(title = "Clinical Findings", value = detailDiagnosis)
+                                }
+
+                                if (labExtractedText.isNotBlank()) {
+                                    Spacer(modifier = Modifier.height(10.dp))
+                                    Text(
+                                        text = "Report Snippet:",
+                                        color = TextDark,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.SemiBold
+                                    )
+                                    Spacer(modifier = Modifier.height(4.dp))
+                                    Card(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        shape = RoundedCornerShape(10.dp),
+                                        colors = CardDefaults.cardColors(containerColor = SoftMint),
+                                        border = BorderStroke(1.dp, Mint)
+                                    ) {
+                                        Text(
+                                            text = labExtractedText,
+                                            color = TextDark,
+                                            fontSize = 11.sp,
+                                            maxLines = 6,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.padding(10.dp)
+                                        )
+                                    }
+                                }
                             }
 
-                            Spacer(modifier = Modifier.height(14.dp))
+                            if (!isLabRecord) {
+                                Spacer(modifier = Modifier.height(14.dp))
 
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
                                 Icon(
                                     imageVector = PillVectorIcon,
                                     contentDescription = null,
@@ -1475,6 +1572,7 @@ fun ProfileScreen(
                                     }
                                 }
                             }
+                        }
 
                             Spacer(modifier = Modifier.height(10.dp))
 
@@ -1492,7 +1590,7 @@ fun ProfileScreen(
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text(
-                                    text = appText("share_prescription", selectedLanguage),
+                                    text = if (isLabRecord) "Share Lab Report" else appText("share_prescription", selectedLanguage),
                                     fontSize = 13.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = PureWhite

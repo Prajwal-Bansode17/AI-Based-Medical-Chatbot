@@ -1,6 +1,12 @@
 package ui
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.graphics.Bitmap
+import android.net.Uri
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
@@ -80,6 +86,7 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.ContextCompat
 import com.example.ai_based_medical_chatbot.LocalAppLanguageController
 import com.example.ai_based_medical_chatbot.data.api.BiomarkerDto
 import com.example.ai_based_medical_chatbot.data.api.LabReportRequest
@@ -101,6 +108,12 @@ import com.example.ai_based_medical_chatbot.ui.theme.StatusSuccess
 import com.example.ai_based_medical_chatbot.ui.theme.StatusWarning
 import com.example.ai_based_medical_chatbot.ui.theme.TextDark
 import com.example.ai_based_medical_chatbot.ui.theme.TextMuted
+import com.google.mlkit.vision.common.InputImage
+import com.google.mlkit.vision.text.TextRecognition
+import com.google.mlkit.vision.text.latin.TextRecognizerOptions
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -218,14 +231,16 @@ fun LabReportScreen(
     var selectedLanguage by remember { mutableStateOf(defaultLang) }
     var inputText by remember { mutableStateOf("") }
     var isAnalyzing by remember { mutableStateOf(false) }
+    var isOcrScanning by remember { mutableStateOf(false) }
+    var lastScannedImageUri by remember { mutableStateOf<String?>(null) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
     var analysisResult by remember { mutableStateOf<LabReportResponse?>(null) }
 
     // Map to track expanded state of each biomarker accordion
     val expandedCards = remember { mutableStateMapOf<String, Boolean>() }
 
-    fun executeAnalysis() {
-        val trimmed = inputText.trim()
+    fun executeAnalysis(overrideText: String? = null) {
+        val trimmed = (overrideText ?: inputText).trim()
         if (trimmed.isEmpty()) {
             Toast.makeText(
                 context,
@@ -255,13 +270,34 @@ fun LabReportScreen(
                 }
 
                 if (response.isSuccessful && response.body() != null) {
-                    analysisResult = response.body()
+                    val result = response.body()!!
+                    analysisResult = result
                     // Auto-expand flagged biomarkers
-                    analysisResult?.biomarkers?.forEach { b ->
+                    result.biomarkers.forEach { b ->
                         if (b.status != "normal") {
                             expandedCards[b.key] = true
                         }
                     }
+
+                    // Save report to User Profile under Prescriptions / Medical Records
+                    try {
+                        val reportDateStr = SimpleDateFormat("dd MMM yyyy, hh:mm a", Locale.getDefault()).format(Date())
+                        val title = when (selectedLanguage) {
+                            "mr" -> "पॅथॉलॉजी लॅब रिपोर्ट"
+                            "hi" -> "पैथोलॉजी लैब रिपोर्ट"
+                            else -> "Diagnostic Lab Report"
+                        }
+                        PrescriptionRepository.saveLabReport(
+                            context = context,
+                            reportTitle = title,
+                            date = reportDateStr,
+                            extractedText = trimmed,
+                            summary = result.summary.ifBlank { "Analyzed ${result.analyzedCount} biomarkers" },
+                            abnormalBiomarkersCount = result.flaggedCount,
+                            totalBiomarkersCount = result.analyzedCount,
+                            imageUri = lastScannedImageUri.orEmpty()
+                        )
+                    } catch (_: Exception) { }
                 } else {
                     val errCode = response.code()
                     errorMessage = when (selectedLanguage) {
@@ -279,6 +315,135 @@ fun LabReportScreen(
             } finally {
                 isAnalyzing = false
             }
+        }
+    }
+
+    fun processBitmap(bitmap: Bitmap) {
+        isOcrScanning = true
+        errorMessage = null
+        try {
+            val image = InputImage.fromBitmap(bitmap, 0)
+            val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+            recognizer.process(image)
+                .addOnSuccessListener { visionText ->
+                    recognizer.close()
+                    isOcrScanning = false
+                    val text = visionText.text.trim()
+                    if (text.isNotBlank()) {
+                        inputText = text
+                        executeAnalysis(text)
+                    } else {
+                        Toast.makeText(
+                            context,
+                            when (selectedLanguage) {
+                                "mr" -> "प्रतिमेतून वाचनीय मजकूर सापडला नाही."
+                                "hi" -> "इमेज से कोई पढ़ने योग्य टेक्स्ट नहीं मिला।"
+                                else -> "No readable text detected in report image."
+                            },
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+                .addOnFailureListener {
+                    recognizer.close()
+                    isOcrScanning = false
+                    Toast.makeText(
+                        context,
+                        when (selectedLanguage) {
+                            "mr" -> "स्कॅनिंग अयशस्वी झाले. कृपया स्पष्ट फोटो वापरा."
+                            "hi" -> "स्कैनिंग विफल रही। कृपया स्पष्ट फोटो लें।"
+                            else -> "Scanning failed. Please capture a clearer image."
+                        },
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+        } catch (e: Exception) {
+            isOcrScanning = false
+            Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun processUri(uri: Uri) {
+        lastScannedImageUri = uri.toString()
+        isOcrScanning = true
+        errorMessage = null
+        try {
+            val image = InputImage.fromFilePath(context, uri)
+            val recognizer = TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS)
+            recognizer.process(image)
+                .addOnSuccessListener { visionText ->
+                    recognizer.close()
+                    isOcrScanning = false
+                    val text = visionText.text.trim()
+                    if (text.isNotBlank()) {
+                        inputText = text
+                        executeAnalysis(text)
+                    } else {
+                        Toast.makeText(
+                            context,
+                            when (selectedLanguage) {
+                                "mr" -> "फाईलमधून मजकूर वाचता आला नाही."
+                                "hi" -> "फाइल से टेक्स्ट नहीं पढ़ा जा सका।"
+                                else -> "No readable text detected in selected file."
+                            },
+                            Toast.LENGTH_SHORT
+                        ).show()
+                    }
+                }
+                .addOnFailureListener {
+                    recognizer.close()
+                    isOcrScanning = false
+                    Toast.makeText(
+                        context,
+                        when (selectedLanguage) {
+                            "mr" -> "फाईल स्कॅन करण्यात अडचण आली."
+                            "hi" -> "फाइल स्कैन करने में समस्या आई।"
+                            else -> "Failed to process selected file."
+                        },
+                        Toast.LENGTH_SHORT
+                    ).show()
+                }
+        } catch (e: Exception) {
+            isOcrScanning = false
+            Toast.makeText(context, "Error: ${e.message}", Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    val cameraLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.TakePicturePreview()
+    ) { bitmap: Bitmap? ->
+        if (bitmap != null) {
+            processBitmap(bitmap)
+        }
+    }
+
+    val cameraPermissionLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            try {
+                cameraLauncher.launch(null)
+            } catch (e: Exception) {
+                Toast.makeText(context, "Cannot open camera: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+        } else {
+            Toast.makeText(
+                context,
+                when (selectedLanguage) {
+                    "mr" -> "रिपोर्ट स्कॅन करण्यासाठी कॅमेरा परवानगी आवश्यक आहे."
+                    "hi" -> "रिपोर्ट स्कैन करने के लिए कैमरा अनुमति आवश्यक है।"
+                    else -> "Camera permission is required to scan reports."
+                },
+                Toast.LENGTH_SHORT
+            ).show()
+        }
+    }
+
+    val pickImageLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            processUri(uri)
         }
     }
 
@@ -436,6 +601,123 @@ fun LabReportScreen(
                                         )
                                     }
                                 }
+                            }
+                        }
+
+                        // Compact Camera Scan & Image/PDF Upload Row
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            // 📷 Scan Report Button
+                            Button(
+                                onClick = {
+                                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED) {
+                                        try {
+                                            cameraLauncher.launch(null)
+                                        } catch (e: Exception) {
+                                            Toast.makeText(context, "Cannot open camera: ${e.message}", Toast.LENGTH_SHORT).show()
+                                        }
+                                    } else {
+                                        cameraPermissionLauncher.launch(Manifest.permission.CAMERA)
+                                    }
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(38.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = SoftMint),
+                                border = BorderStroke(1.dp, Mint),
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    Text(text = "📷", fontSize = 13.sp)
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = when (selectedLanguage) {
+                                            "mr" -> "रिपोर्ट स्कॅन करा"
+                                            "hi" -> "रिपोर्ट स्कैन करें"
+                                            else -> "Scan Report"
+                                        },
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = DarkTeal,
+                                        maxLines = 1
+                                    )
+                                }
+                            }
+
+                            // 🖼️ Upload Image / PDF Button
+                            Button(
+                                onClick = {
+                                    try {
+                                        pickImageLauncher.launch("image/*")
+                                    } catch (e: Exception) {
+                                        Toast.makeText(context, "Cannot open picker: ${e.message}", Toast.LENGTH_SHORT).show()
+                                    }
+                                },
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(38.dp),
+                                shape = RoundedCornerShape(10.dp),
+                                colors = ButtonDefaults.buttonColors(containerColor = SoftMint),
+                                border = BorderStroke(1.dp, Mint),
+                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.Center
+                                ) {
+                                    Text(text = "🖼️", fontSize = 13.sp)
+                                    Spacer(modifier = Modifier.width(4.dp))
+                                    Text(
+                                        text = when (selectedLanguage) {
+                                            "mr" -> "फोटो / फाईल जोडा"
+                                            "hi" -> "फोटो / फाइल जोड़ें"
+                                            else -> "Upload Image / PDF"
+                                        },
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = DarkTeal,
+                                        maxLines = 1
+                                    )
+                                }
+                            }
+                        }
+
+                        // Scanning in progress feedback
+                        AnimatedVisibility(
+                            visible = isOcrScanning,
+                            enter = fadeIn() + expandVertically(),
+                            exit = fadeOut() + shrinkVertically()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(SoftMint)
+                                    .padding(horizontal = 10.dp, vertical = 6.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                CircularProgressIndicator(
+                                    modifier = Modifier.size(16.dp),
+                                    strokeWidth = 2.dp,
+                                    color = DeepTeal
+                                )
+                                Text(
+                                    text = when (selectedLanguage) {
+                                        "mr" -> "लॅब रिपोर्टमधून मजकूर वाचत आहे..."
+                                        "hi" -> "लैब रिपोर्ट से टेक्स्ट पढ़ा जा रहा है..."
+                                        else -> "Reading text from lab report..."
+                                    },
+                                    fontSize = 11.sp,
+                                    color = DarkTeal,
+                                    fontWeight = FontWeight.Medium
+                                )
                             }
                         }
 

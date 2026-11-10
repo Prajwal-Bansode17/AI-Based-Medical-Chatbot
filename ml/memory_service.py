@@ -239,6 +239,18 @@ def init_memory_schema(db_path=None):
     conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_user_symptom_unique ON user_active_symptoms (user_id, symptom_name)")
     conn.execute("CREATE INDEX IF NOT EXISTS idx_user_symptoms_status ON user_active_symptoms (user_id, status, is_deleted)")
 
+    # 8. User profiles store (identity, name, demographics)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS user_profiles (
+            user_id TEXT PRIMARY KEY,
+            user_name TEXT,
+            age INTEGER,
+            gender TEXT,
+            updated_at TEXT
+        )
+    """)
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_user_profiles_name ON user_profiles (user_name)")
+
     conn.commit()
     conn.close()
 
@@ -309,6 +321,92 @@ def set_user_consent(user_id: Optional[str], enabled: bool) -> bool:
     conn.commit()
     conn.close()
     return True
+
+
+def save_user_profile(
+    user_id: Optional[str],
+    user_name: Optional[str] = None,
+    age: Optional[int] = None,
+    gender: Optional[str] = None,
+    session_id: Optional[str] = None
+) -> bool:
+    """
+    Saves or updates user demographics / identity in user_profiles.
+    Supports authenticated user_id or guest fallback via session_id.
+    """
+    if not user_name and not age and not gender:
+        return False
+    primary_key = (str(user_id) if user_id else "").strip()
+    if not primary_key or primary_key.lower() in ("guest", "none", "null"):
+        if session_id:
+            primary_key = f"session_{str(session_id).strip()}"
+        else:
+            return False
+
+    now = datetime.utcnow().isoformat()
+    conn = _connect()
+    try:
+        cur = conn.cursor()
+        cur.execute("SELECT user_name, age, gender FROM user_profiles WHERE user_id = ?", (primary_key,))
+        row = cur.fetchone()
+        if row:
+            existing_name = row[0]
+            existing_age = row[1]
+            existing_gender = row[2]
+            new_name = str(user_name).strip() if user_name and str(user_name).strip() else existing_name
+            new_age = age if (age is not None and int(age) > 0) else existing_age
+            new_gender = str(gender).strip() if gender and str(gender).strip() else existing_gender
+            conn.execute(
+                "UPDATE user_profiles SET user_name = ?, age = ?, gender = ?, updated_at = ? WHERE user_id = ?",
+                (new_name, new_age, new_gender, now, primary_key)
+            )
+        else:
+            conn.execute(
+                "INSERT INTO user_profiles (user_id, user_name, age, gender, updated_at) VALUES (?, ?, ?, ?, ?)",
+                (primary_key, (str(user_name).strip() if user_name else ""), age, (str(gender).strip() if gender else ""), now)
+            )
+        conn.commit()
+        return True
+    except Exception as ex:
+        logger.warning("save_user_profile error: %s", ex)
+        return False
+    finally:
+        conn.close()
+
+
+def get_user_profile(user_id: Optional[str], session_id: Optional[str] = None) -> Dict[str, Any]:
+    """
+    Retrieves user profile (user_name, age, gender) by user_id or fallback session_id.
+    """
+    primary_keys = []
+    if user_id and str(user_id).strip() and str(user_id).strip().lower() not in ("guest", "none", "null"):
+        primary_keys.append(str(user_id).strip())
+    if session_id and str(session_id).strip():
+        primary_keys.append(f"session_{str(session_id).strip()}")
+
+    if not primary_keys:
+        return {}
+
+    conn = _connect()
+    try:
+        cur = conn.cursor()
+        for pk in primary_keys:
+            cur.execute("SELECT user_id, user_name, age, gender, updated_at FROM user_profiles WHERE user_id = ?", (pk,))
+            row = cur.fetchone()
+            if row and (row[1] or row[2] or row[3]):
+                return {
+                    "user_id": row[0],
+                    "user_name": row[1],
+                    "age": row[2],
+                    "gender": row[3],
+                    "updated_at": row[4],
+                }
+        return {}
+    except Exception as ex:
+        logger.warning("get_user_profile error: %s", ex)
+        return {}
+    finally:
+        conn.close()
 
 
 def get_user_memories(user_id: Optional[str], is_temporary: bool = False) -> List[Dict]:
