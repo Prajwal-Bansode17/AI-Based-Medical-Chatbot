@@ -243,3 +243,85 @@ data class ConversationsResponse(
     @SerializedName("message")
     val message: String? = null
 )
+
+/*
+ * ============================================================
+ * SMART MEDICAL LAB REPORT ANALYZER
+ * ============================================================
+ */
+
+data class LabReportRequest(
+    @SerializedName("text")
+    val text: String? = null,
+
+    @SerializedName("biomarkers")
+    val biomarkers: Map<String, Any>? = null,
+
+    @SerializedName("language")
+    val language: String = "en"
+)
+
+data class BiomarkerDto(
+    @SerializedName("key")
+    val key: String = "",
+
+    @SerializedName("name")
+    val name: String = "",
+
+    @SerializedName("display_name")
+    val displayName: String = "",
+
+    @SerializedName("value")
+    val value: Double = 0.0,
+
+    @SerializedName("unit")
+    val unit: String = "",
+
+    @SerializedName("reference_range")
+    val referenceRange: String = "",
+
+    @SerializedName("status")
+    val status: String = "normal",
+
+    @SerializedName("gauge_percent")
+    val gaugePercent: Float = 0.5f,
+
+    @SerializedName("severity_color")
+    val severityColor: String = "#4CAF50",
+
+    @SerializedName("what_it_is")
+    val whatItIs: String = "",
+
+    @SerializedName("layman_explanation")
+    val laymanExplanation: String = "",
+
+    @SerializedName("dietary_advice")
+    val dietaryAdvice: String = ""
+)
+
+data class LabReportResponse(
+    @SerializedName("status")
+    val status: String = "",
+
+    @SerializedName("language")
+    val language: String = "en",
+
+    @SerializedName("analyzed_count")
+    val analyzedCount: Int = 0,
+
+    @SerializedName("flagged_count")
+    val flaggedCount: Int = 0,
+
+    @SerializedName("biomarkers")
+    val biomarkers: List<BiomarkerDto> = emptyList(),
+
+    @SerializedName("doctor_questions")
+    val doctorQuestions: List<String> = emptyList(),
+
+    @SerializedName("summary")
+    val summary: String = "",
+
+    @SerializedName("disclaimer")
+    val disclaimer: String = ""
+)
+

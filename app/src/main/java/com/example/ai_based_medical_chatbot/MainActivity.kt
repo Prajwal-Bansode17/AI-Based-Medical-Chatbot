@@ -32,6 +32,7 @@ import ui.ForgotPasswordScreen
 import ui.HealthProfileScreen
 import ui.HealthTipsScreen
 import ui.HealthTipReminderScreen
+import ui.LabReportScreen
 import ui.LoginScreen
 import ui.MedicineDetailScreen
 import ui.MedicineInfoScreen
@@ -583,6 +584,10 @@ private fun MedicalChatbotNavigation(
                     go("healthProfile")
                 },
 
+                onLabReportClick = {
+                    go("labReport")
+                },
+
                 onLogoutClick = {
                     val currentUserId = SupabaseClient.getSavedUser(context)?.id
                     ChatHistoryRepository.clearActiveSession(context, currentUserId)
@@ -723,6 +728,18 @@ private fun MedicalChatbotNavigation(
             )
         }
 
+        "labReport" -> {
+            LabReportScreen(
+                onBackClick = {
+                    back()
+                },
+                onDiscussInChat = { prompt ->
+                    initialChatQuery = prompt
+                    go("chatbot")
+                }
+            )
+        }
+
         "medicineDetail" -> {
 
             val medicine = selectedMedicine
@@ -803,6 +820,7 @@ private fun MedicalChatbotNavigation(
                 onPrescriptionClick = { go("prescription") },
                 onMedicineReminderClick = { go("medicineReminder") },
                 onHealthProfileClick = { go("healthProfile") },
+                onLabReportClick = { go("labReport") },
                 onLogoutClick = {
                     val currentUserId = SupabaseClient.getSavedUser(context)?.id
                     ChatHistoryRepository.clearActiveSession(context, currentUserId)

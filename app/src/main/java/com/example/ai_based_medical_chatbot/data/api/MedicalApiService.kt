@@ -62,4 +62,13 @@ interface MedicalApiService {
 
     @GET("api/v1/conversations")
     suspend fun getConversations(): Response<ConversationsResponse>
+
+    // =========================================================
+    // SMART MEDICAL LAB REPORT ANALYZER
+    // =========================================================
+
+    @POST("analyze-lab-report")
+    suspend fun analyzeLabReport(
+        @Body request: LabReportRequest
+    ): Response<LabReportResponse>
 }

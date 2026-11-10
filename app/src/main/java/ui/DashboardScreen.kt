@@ -434,6 +434,7 @@ fun DashboardScreen(
     onPrescriptionClick: () -> Unit = {},
     onMedicineReminderClick: () -> Unit = {},
     onHealthProfileClick: () -> Unit = {},
+    onLabReportClick: () -> Unit = {},
     onLogoutClick: () -> Unit = {}
 ) {
     val context = LocalContext.current
@@ -1009,7 +1010,7 @@ fun DashboardScreen(
                     }
                 }
 
-                // Row 4 (Expandable via "View all"): Health Profile & Chat with MedAssist AI
+                // Row 4 (Expandable via "View all"): Health Profile & Lab Report Analyzer
                 if (showAllQuickActions) {
                     item {
                         Row(
@@ -1027,10 +1028,27 @@ fun DashboardScreen(
                             )
 
                             PremiumQuickActionCard(
+                                title = t("dashboard_lab_analyzer"),
+                                subtitle = t("dashboard_lab_analyzer_sub"),
+                                icon = LabFlaskVectorIcon,
+                                iconContainerColor = Mint,
+                                iconTint = DeepTeal,
+                                modifier = Modifier.weight(1f),
+                                onClick = onLabReportClick
+                            )
+                        }
+                    }
+
+                    item {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            PremiumQuickActionCard(
                                 title = t("dashboard_chat_ai"),
                                 subtitle = t("dashboard_chat_ai_sub"),
                                 icon = ChatVectorIcon,
-                                iconContainerColor = Mint,
+                                iconContainerColor = SoftMint,
                                 iconTint = DeepTeal,
                                 modifier = Modifier.weight(1f),
                                 onClick = onChatbotClick
