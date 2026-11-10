@@ -12,6 +12,7 @@ Tests:
 import unittest
 import sqlite3
 import uuid
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 import sys
 
@@ -33,6 +34,20 @@ from memory_service import (
     extract_safe_preferences_from_text,
     is_safe_for_memory,
     is_guest_user,
+    record_or_update_symptom,
+    get_unresolved_symptoms,
+    resolve_symptom,
+    delete_all_user_symptoms,
+    update_symptom_last_checked,
+)
+from conversation_engine import (
+    is_greeting_message,
+    detect_symptom_resolution,
+    get_localized_symptom_name,
+    build_proactive_checkin_message,
+    build_resolution_acknowledgment,
+    get_quick_reply_chips,
+    generate_clinical_follow_up_questions,
 )
 
 
@@ -223,6 +238,167 @@ class TestMemoryService(unittest.TestCase):
         # Clear all
         clear_all_user_memories(self.user_a)
         self.assertEqual(get_user_memories(self.user_a), [])
+
+    def test_symptom_record_and_update(self):
+        # 1. Record initial symptom
+        rec = record_or_update_symptom(
+            user_id=self.user_a,
+            symptom_name="neck_pain",
+            severity="mild",
+            notes="started this morning",
+            language="en"
+        )
+        self.assertIsNotNone(rec)
+        self.assertEqual(rec["symptom_name"], "neck_pain")
+        self.assertEqual(rec["severity"], "mild")
+        self.assertEqual(rec["status"], "active")
+
+        # 2. Update same symptom -> must update existing row without duplicating
+        updated_rec = record_or_update_symptom(
+            user_id=self.user_a,
+            symptom_name="neck_pain",
+            severity="moderate",
+            notes="worse after sitting",
+            language="en"
+        )
+        self.assertIsNotNone(updated_rec)
+        self.assertEqual(updated_rec["id"], rec["id"])
+        self.assertEqual(updated_rec["severity"], "moderate")
+        self.assertEqual(updated_rec["notes"], "worse after sitting")
+
+        # 3. User isolation check
+        symptoms_a = get_unresolved_symptoms(self.user_a, min_hours_elapsed=0)
+        symptoms_b = get_unresolved_symptoms(self.user_b, min_hours_elapsed=0)
+        self.assertEqual(len(symptoms_a), 1)
+        self.assertEqual(len(symptoms_b), 0)
+
+    def test_unresolved_symptoms_elapsed_time(self):
+        # Record symptom for user A
+        record_or_update_symptom(
+            user_id=self.user_a,
+            symptom_name="fever",
+            severity="high",
+            language="en"
+        )
+
+        # Immediately, min_hours_elapsed=12 should return 0 items
+        unresolved_now = get_unresolved_symptoms(self.user_a, min_hours_elapsed=12.0)
+        self.assertEqual(len(unresolved_now), 0)
+
+        # min_hours_elapsed=0 should return it immediately
+        unresolved_immediate = get_unresolved_symptoms(self.user_a, min_hours_elapsed=0.0)
+        self.assertEqual(len(unresolved_immediate), 1)
+        self.assertEqual(unresolved_immediate[0]["symptom_name"], "fever")
+
+        # Manually backdate last_checked_at by 15 hours
+        conn = memory_service._connect()
+        past_iso = (datetime.now(timezone.utc) - timedelta(hours=15)).isoformat()
+        conn.execute(
+            "UPDATE user_active_symptoms SET last_checked_at = ? WHERE user_id = ? AND symptom_name = ?",
+            (past_iso, self.user_a, "fever")
+        )
+        conn.commit()
+        conn.close()
+
+        # Now min_hours_elapsed=12 must return the symptom
+        unresolved_past = get_unresolved_symptoms(self.user_a, min_hours_elapsed=12.0)
+        self.assertEqual(len(unresolved_past), 1)
+        self.assertEqual(unresolved_past[0]["symptom_name"], "fever")
+
+        # Update last_checked_at to reset check-in window
+        ok = update_symptom_last_checked(self.user_a, "fever")
+        self.assertTrue(ok)
+        self.assertEqual(len(get_unresolved_symptoms(self.user_a, min_hours_elapsed=12.0)), 0)
+
+    def test_resolve_symptom(self):
+        record_or_update_symptom(self.user_a, "headache")
+        record_or_update_symptom(self.user_a, "cough")
+        self.assertEqual(len(get_unresolved_symptoms(self.user_a, min_hours_elapsed=0)), 2)
+
+        # Resolve specific symptom
+        resolved_headache = resolve_symptom(self.user_a, "headache")
+        self.assertTrue(resolved_headache)
+
+        remaining = get_unresolved_symptoms(self.user_a, min_hours_elapsed=0)
+        self.assertEqual(len(remaining), 1)
+        self.assertEqual(remaining[0]["symptom_name"], "cough")
+
+        # Resolve all remaining symptoms
+        resolved_all = resolve_symptom(self.user_a, None)
+        self.assertTrue(resolved_all)
+        self.assertEqual(len(get_unresolved_symptoms(self.user_a, min_hours_elapsed=0)), 0)
+
+    def test_delete_all_user_symptoms(self):
+        record_or_update_symptom(self.user_a, "acidity")
+        record_or_update_symptom(self.user_b, "acidity")
+
+        # Purge user A
+        deleted = delete_all_user_symptoms(self.user_a)
+        self.assertTrue(deleted)
+
+        self.assertEqual(len(get_unresolved_symptoms(self.user_a, min_hours_elapsed=0)), 0)
+        self.assertEqual(len(get_unresolved_symptoms(self.user_b, min_hours_elapsed=0)), 1)
+
+    def test_follow_up_questions_and_chips(self):
+        # Quick reply chips in all 3 languages
+        chips_en = get_quick_reply_chips("en")
+        self.assertEqual(len(chips_en), 4)
+        self.assertIn("Much better", chips_en)
+
+        chips_mr = get_quick_reply_chips("mr")
+        self.assertEqual(len(chips_mr), 4)
+        self.assertIn("खूप बरे वाटते", chips_mr)
+
+        chips_hi = get_quick_reply_chips("hi")
+        self.assertEqual(len(chips_hi), 4)
+        self.assertIn("काफी बेहतर", chips_hi)
+
+        # Clinical follow-up questions
+        q_neck_en = generate_clinical_follow_up_questions(["neck_pain"], "en")
+        self.assertEqual(len(q_neck_en), 2)
+        self.assertTrue(any("neck" in q.lower() or "shoulder" in q.lower() for q in q_neck_en))
+
+        q_head_mr = generate_clinical_follow_up_questions(["headache"], "mr")
+        self.assertEqual(len(q_head_mr), 2)
+        self.assertTrue(any("डोकेदुखी" in q for q in q_head_mr))
+
+        q_fever_hi = generate_clinical_follow_up_questions(["fever"], "hi")
+        self.assertEqual(len(q_fever_hi), 2)
+        self.assertTrue(any("बुखार" in q or "तापमान" in q for q in q_fever_hi))
+
+    def test_greeting_and_resolution_detection(self):
+        # Greeting checks
+        self.assertTrue(is_greeting_message("hello"))
+        self.assertTrue(is_greeting_message("hi medassist"))
+        self.assertTrue(is_greeting_message("namaste"))
+        self.assertTrue(is_greeting_message("नमस्कार"))
+        self.assertFalse(is_greeting_message("I have severe neck pain"))
+
+        # Resolution detection checks
+        self.assertTrue(detect_symptom_resolution("I feel much better now")[0])
+        self.assertTrue(detect_symptom_resolution("my headache is fine now")[0])
+        self.assertTrue(detect_symptom_resolution("theek ho gaya")[0])
+        self.assertTrue(detect_symptom_resolution("आता बरे वाटते")[0])
+        self.assertTrue(detect_symptom_resolution("bar vatatay")[0])
+        self.assertFalse(detect_symptom_resolution("my pain is getting worse")[0])
+
+        # Proactive checkin messages
+        msg_en = build_proactive_checkin_message("neck_pain", "en")
+        self.assertIn("neck pain", msg_en)
+        self.assertIn("how has your", msg_en.lower())
+
+        msg_mr = build_proactive_checkin_message("neck_pain", "mr")
+        self.assertIn("मानदुखी", msg_mr)
+        self.assertIn("नमस्कार", msg_mr)
+
+        msg_hi = build_proactive_checkin_message("neck_pain", "hi")
+        self.assertIn("गर्दन का दर्द", msg_hi)
+        self.assertIn("नमस्ते", msg_hi)
+
+        # Resolution acknowledgments
+        self.assertIn("glad", build_resolution_acknowledgment("en").lower())
+        self.assertIn("आनंद", build_resolution_acknowledgment("mr"))
+        self.assertIn("खुशी", build_resolution_acknowledgment("hi"))
 
 
 if __name__ == "__main__":

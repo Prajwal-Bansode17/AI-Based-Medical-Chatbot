@@ -23,10 +23,17 @@ sys.path.insert(0, str(BASE_DIR))
 
 # MedAssist AI Core Modules
 from api import (
+    app,
     detect_safety_flag,
     build_safety_response,
     SAFETY_MESSAGES,
+    query_hf_chat,
+    retrieve_local_finetune_answer,
+    _ensure_medical_disclaimer,
+    HF_MODEL_NAME,
 )
+from unittest.mock import patch, MagicMock
+import urllib.error
 from conversation_engine import (
     sanitize_prompt_input,
     detect_dialect_and_script,
@@ -278,6 +285,126 @@ class TestEndToEndInferenceSimulation(unittest.TestCase):
         self.assertEqual(result["status"], "safety_intercepted")
         self.assertEqual(result["safety_flag"], "emergency")
         self.assertIn("112", result["response"])
+
+
+class TestZeroFailureFailoverArchitecture(unittest.TestCase):
+    """
+    Verifies the 3-Layer Zero-Failure Architecture inside /chat:
+    - Layer 1: Statutory emergency & crisis pre-filter (112, 108, Tele-MANAS 14416).
+    - Layer 2: Primary Hugging Face model inference (hariom-peddawad/MedAssist-AI-1B).
+    - Layer 3: Instant local semantic retrieval fallback over train.jsonl (sub-millisecond, <20MB RAM).
+    """
+
+    def setUp(self):
+        self.client = app.test_client()
+
+    def test_layer1_emergency_heart_attack(self):
+        res = self.client.post("/chat", json={
+            "message": "I have crushing chest pain radiating to my left arm with severe sweating",
+            "language": "en"
+        })
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertEqual(data.get("layer"), 1)
+        self.assertEqual(data.get("source"), "safety_rules")
+        self.assertTrue(data.get("emergency"))
+        self.assertIn("112", data.get("response"))
+        self.assertIn("108", data.get("response"))
+
+    def test_layer1_crisis_suicide_marathi(self):
+        res = self.client.post("/chat", json={
+            "message": "मला खूप एकटे वाटते आत्महत्या करावीशी वाटते",
+            "language": "mr"
+        })
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertEqual(data.get("layer"), 1)
+        self.assertEqual(data.get("source"), "safety_rules")
+        self.assertTrue(data.get("emergency"))
+        self.assertIn("14416", data.get("response"))
+        self.assertIn("112", data.get("response"))
+
+    @patch("api.query_hf_chat")
+    def test_layer2_huggingface_primary_inference(self, mock_hf):
+        mock_hf.return_value = "Take paracetamol for fever after food and stay hydrated with plenty of fluids."
+        res = self.client.post("/chat", json={
+            "message": "What should I take for mild fever?",
+            "language": "en"
+        })
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertEqual(data.get("layer"), 2)
+        self.assertEqual(data.get("source"), "huggingface")
+        self.assertFalse(data.get("emergency"))
+        self.assertIn("paracetamol", data.get("response").lower())
+        self.assertIn("disclaimer", data.get("response").lower())
+
+    @patch("api.query_hf_chat")
+    def test_layer3_fallback_on_hf_503_cold_start(self, mock_hf):
+        # Simulate HF cold start 503 returning None
+        mock_hf.return_value = None
+        res = self.client.post("/chat", json={
+            "message": "What home remedies help with cough and sore throat?",
+            "language": "en"
+        })
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertEqual(data.get("layer"), 3)
+        self.assertEqual(data.get("source"), "local_finetune_retrieval")
+        self.assertFalse(data.get("emergency"))
+        self.assertTrue(len(data.get("response")) > 20)
+        self.assertIn("disclaimer", data.get("response").lower())
+
+    @patch("api.query_hf_chat")
+    def test_layer3_fallback_on_hf_429_rate_limit(self, mock_hf):
+        # Simulate HF rate limit 429 returning None
+        mock_hf.return_value = None
+        res = self.client.post("/chat", json={
+            "message": "I feel nauseous and have a mild stomach ache",
+            "language": "en"
+        })
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertEqual(data.get("layer"), 3)
+        self.assertEqual(data.get("source"), "local_finetune_retrieval")
+        self.assertFalse(data.get("emergency"))
+
+    @patch("api.query_hf_chat")
+    def test_layer3_fallback_on_hf_timeout(self, mock_hf):
+        # Simulate HF timeout returning None
+        mock_hf.return_value = None
+        res = self.client.post("/chat", json={
+            "message": "डोकेदुखीवर काय घरगुती उपाय आहेत?",
+            "language": "mr"
+        })
+        self.assertEqual(res.status_code, 200)
+        data = res.get_json()
+        self.assertEqual(data.get("layer"), 3)
+        self.assertEqual(data.get("source"), "local_finetune_retrieval")
+        self.assertEqual(data.get("language"), "mr")
+        self.assertIn("अस्वीकरण", data.get("response"))
+
+    def test_layer3_marathi_direct_retrieval(self):
+        retrieved = retrieve_local_finetune_answer("मला खूप कणकण आणि ताप जाणवतोय काय करू?", language="mr")
+        self.assertTrue(len(retrieved) > 20)
+        with_disc = _ensure_medical_disclaimer(retrieved, "mr")
+        self.assertIn("अस्वीकरण", with_disc)
+
+    def test_layer3_hindi_direct_retrieval(self):
+        retrieved = retrieve_local_finetune_answer("mujhe tez bukhar aur sardi hai kya karu", language="hi")
+        self.assertTrue(len(retrieved) > 20)
+        with_disc = _ensure_medical_disclaimer(retrieved, "hi")
+        self.assertIn("अस्वीकरण", with_disc)
+
+    def test_memory_constraint_render_512mb(self):
+        import sys
+        from api import _finetune_matrix, _finetune_records
+        # Check size of TF-IDF sparse matrix and record metadata
+        matrix_nbytes = getattr(_finetune_matrix, "data", b"").nbytes if _finetune_matrix is not None else 0
+        records_size = sys.getsizeof(_finetune_records) if _finetune_records is not None else 0
+        total_retriever_mb = (matrix_nbytes + records_size) / (1024 * 1024)
+        print(f"\n[RAM Footprint Check] Layer 3 index memory: {total_retriever_mb:.2f} MB (Budget: < 50 MB)")
+        self.assertLess(total_retriever_mb, 50.0, "Layer 3 retrieval engine must remain under 50 MB for Render 512MB tier")
 
 
 if __name__ == "__main__":

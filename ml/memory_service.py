@@ -12,7 +12,7 @@ import logging
 import re
 import sqlite3
 import uuid
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional, Dict, List, Tuple
 
@@ -65,7 +65,10 @@ def init_memory_schema(db_path=None):
     Creates additive tables for user-isolated long-term memory and consent,
     and ensures conversation history supports user_id.
     """
+    global DB_FILE
     target_db = Path(db_path) if db_path else DB_FILE
+    if db_path:
+        DB_FILE = target_db
     target_db.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(target_db, timeout=10)
     try:
@@ -217,6 +220,24 @@ def init_memory_schema(db_path=None):
             conn.execute("ALTER TABLE medical_memory ADD COLUMN user_id TEXT DEFAULT ''")
     except Exception:
         pass
+
+    # 7. Longitudinal active symptoms table
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS user_active_symptoms (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            symptom_name TEXT NOT NULL,
+            severity TEXT,
+            first_noted_at TIMESTAMP NOT NULL,
+            last_checked_at TIMESTAMP NOT NULL,
+            status TEXT DEFAULT 'active',
+            notes TEXT,
+            language TEXT DEFAULT 'en',
+            is_deleted INTEGER DEFAULT 0
+        )
+    """)
+    conn.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_user_symptom_unique ON user_active_symptoms (user_id, symptom_name)")
+    conn.execute("CREATE INDEX IF NOT EXISTS idx_user_symptoms_status ON user_active_symptoms (user_id, status, is_deleted)")
 
     conn.commit()
     conn.close()
@@ -1572,6 +1593,262 @@ def format_medical_entities_context(user_id: Optional[str], is_temporary: bool =
         + "\n".join(lines)
         + "\n(Enforce strict person isolation: do not attribute a friend's condition to the user, and vice versa.)"
     )
+
+
+# ============================================================
+# LONGITUDINAL ACTIVE SYMPTOMS TRACKING & FOLLOW-UP MEMORY
+# ============================================================
+
+def record_or_update_symptom(
+    user_id: Optional[str],
+    symptom_name: str,
+    severity: Optional[str] = None,
+    notes: Optional[str] = None,
+    language: str = "en",
+) -> Optional[Dict]:
+    """
+    Extracts and tracks persistent complaints for an identified user (e.g., neck pain, headache, acidity, fever).
+    Creates a new active symptom or updates an existing active symptom with the latest timestamp.
+    """
+    if not user_id or not symptom_name:
+        return None
+
+    clean_user = str(user_id).strip()
+    clean_symptom = str(symptom_name).strip().lower().replace("-", " ")
+    now_iso = datetime.now(timezone.utc).isoformat()
+
+    conn = _connect()
+    conn.row_factory = sqlite3.Row
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT * FROM user_active_symptoms
+            WHERE user_id = ? AND symptom_name = ? AND is_deleted = 0
+            LIMIT 1
+            """,
+            (clean_user, clean_symptom),
+        )
+        row = cur.fetchone()
+
+        if row:
+            rec_id = row["id"]
+            new_severity = severity if severity is not None else row["severity"]
+            new_notes = notes if notes is not None else row["notes"]
+            new_lang = language or row["language"] or "en"
+            cur.execute(
+                """
+                UPDATE user_active_symptoms
+                SET last_checked_at = ?,
+                    status = 'active',
+                    severity = ?,
+                    notes = ?,
+                    language = ?,
+                    is_deleted = 0
+                WHERE id = ?
+                """,
+                (now_iso, new_severity, new_notes, new_lang, rec_id),
+            )
+            conn.commit()
+            return {
+                "id": rec_id,
+                "user_id": clean_user,
+                "symptom_name": clean_symptom,
+                "severity": new_severity,
+                "first_noted_at": row["first_noted_at"],
+                "last_checked_at": now_iso,
+                "status": "active",
+                "notes": new_notes,
+                "language": new_lang,
+            }
+        else:
+            rec_id = str(uuid.uuid4())
+            cur.execute(
+                """
+                INSERT INTO user_active_symptoms (
+                    id, user_id, symptom_name, severity, first_noted_at,
+                    last_checked_at, status, notes, language, is_deleted
+                ) VALUES (?, ?, ?, ?, ?, ?, 'active', ?, ?, 0)
+                """,
+                (
+                    rec_id,
+                    clean_user,
+                    clean_symptom,
+                    severity,
+                    now_iso,
+                    now_iso,
+                    notes or "",
+                    language or "en",
+                ),
+            )
+            conn.commit()
+            return {
+                "id": rec_id,
+                "user_id": clean_user,
+                "symptom_name": clean_symptom,
+                "severity": severity,
+                "first_noted_at": now_iso,
+                "last_checked_at": now_iso,
+                "status": "active",
+                "notes": notes or "",
+                "language": language or "en",
+            }
+    except Exception as ex:
+        logger.error("Error recording symptom for %s: %s", clean_user, ex)
+        return None
+    finally:
+        conn.close()
+
+
+def get_unresolved_symptoms(
+    user_id: Optional[str],
+    min_hours_elapsed: float = 12.0,
+) -> List[Dict]:
+    """
+    Retrieves active symptoms that have not been checked recently (e.g. >= min_hours_elapsed hours since last check).
+    If min_hours_elapsed <= 0, returns all active symptoms for the user.
+    """
+    if not user_id:
+        return []
+
+    clean_user = str(user_id).strip()
+    conn = _connect()
+    conn.row_factory = sqlite3.Row
+    results = []
+
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT * FROM user_active_symptoms
+            WHERE user_id = ? AND status = 'active' AND is_deleted = 0
+            ORDER BY first_noted_at ASC
+            """,
+            (clean_user,),
+        )
+        rows = cur.fetchall()
+        now_dt = datetime.now(timezone.utc)
+
+        for row in rows:
+            d = dict(row)
+            if min_hours_elapsed <= 0:
+                results.append(d)
+                continue
+
+            last_checked_str = d.get("last_checked_at") or d.get("first_noted_at")
+            if not last_checked_str:
+                results.append(d)
+                continue
+
+            try:
+                iso_clean = str(last_checked_str).replace("Z", "+00:00")
+                last_dt = datetime.fromisoformat(iso_clean)
+                if last_dt.tzinfo is None:
+                    last_dt = last_dt.replace(tzinfo=timezone.utc)
+                elapsed_hours = (now_dt - last_dt).total_seconds() / 3600.0
+                if elapsed_hours >= min_hours_elapsed:
+                    results.append(d)
+            except Exception:
+                results.append(d)
+
+    except Exception as ex:
+        logger.error("Error getting unresolved symptoms for %s: %s", clean_user, ex)
+    finally:
+        conn.close()
+
+    return results
+
+
+def resolve_symptom(user_id: Optional[str], symptom_name: Optional[str] = None) -> bool:
+    """
+    Marks an active symptom as resolved when user reports recovery.
+    If symptom_name is None, marks all active symptoms for user as resolved.
+    """
+    if not user_id:
+        return False
+
+    clean_user = str(user_id).strip()
+    now_iso = datetime.now(timezone.utc).isoformat()
+    conn = _connect()
+
+    try:
+        cur = conn.cursor()
+        if symptom_name:
+            clean_symptom = str(symptom_name).strip().lower().replace("-", " ")
+            cur.execute(
+                """
+                UPDATE user_active_symptoms
+                SET status = 'resolved', last_checked_at = ?
+                WHERE user_id = ? AND status = 'active' AND is_deleted = 0
+                  AND (symptom_name = ? OR symptom_name LIKE ?)
+                """,
+                (now_iso, clean_user, clean_symptom, f"%{clean_symptom}%"),
+            )
+        else:
+            cur.execute(
+                """
+                UPDATE user_active_symptoms
+                SET status = 'resolved', last_checked_at = ?
+                WHERE user_id = ? AND status = 'active' AND is_deleted = 0
+                """,
+                (now_iso, clean_user),
+            )
+        updated = cur.rowcount > 0
+        conn.commit()
+        return updated
+    except Exception as ex:
+        logger.error("Error resolving symptom for %s: %s", clean_user, ex)
+        return False
+    finally:
+        conn.close()
+
+
+def delete_all_user_symptoms(user_id: Optional[str]) -> bool:
+    """
+    Completely purges tracked symptoms upon manual user request.
+    """
+    if not user_id:
+        return False
+
+    clean_user = str(user_id).strip()
+    conn = _connect()
+    try:
+        cur = conn.cursor()
+        cur.execute("DELETE FROM user_active_symptoms WHERE user_id = ?", (clean_user,))
+        conn.commit()
+        return True
+    except Exception as ex:
+        logger.error("Error deleting all symptoms for %s: %s", clean_user, ex)
+        return False
+    finally:
+        conn.close()
+
+
+def update_symptom_last_checked(user_id: str, symptom_name: str) -> bool:
+    """
+    Updates last_checked_at timestamp when proactive check-in is delivered.
+    """
+    if not user_id or not symptom_name:
+        return False
+    clean_user = str(user_id).strip()
+    clean_symptom = str(symptom_name).strip().lower().replace("-", " ")
+    now_iso = datetime.now(timezone.utc).isoformat()
+    conn = _connect()
+    try:
+        conn.execute(
+            """
+            UPDATE user_active_symptoms
+            SET last_checked_at = ?
+            WHERE user_id = ? AND symptom_name = ? AND is_deleted = 0
+            """,
+            (now_iso, clean_user, clean_symptom),
+        )
+        conn.commit()
+        return True
+    except Exception:
+        return False
+    finally:
+        conn.close()
 
 
 # Initialize schema on load

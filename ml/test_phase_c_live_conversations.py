@@ -204,4 +204,5 @@ if FAILED:
     print("\nFailed tests:")
     for f in FAILED:
         print(f"  - {f}")
-sys.exit(0 if not FAILED else 1)
+if __name__ == "__main__":
+    sys.exit(0 if not FAILED else 1)

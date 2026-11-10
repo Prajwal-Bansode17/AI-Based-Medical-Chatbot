@@ -1,6 +1,12 @@
 import os
+import sys
 import unittest
+from pathlib import Path
 from unittest.mock import patch, MagicMock
+
+BASE_DIR = Path(__file__).resolve().parent
+if str(BASE_DIR) not in sys.path:
+    sys.path.insert(0, str(BASE_DIR))
 
 # Import the status function from api
 from api import get_ai_status_fields

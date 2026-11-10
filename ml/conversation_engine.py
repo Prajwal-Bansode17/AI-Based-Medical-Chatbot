@@ -310,3 +310,223 @@ def check_for_ambiguous_query(user_text: str, detected_dialect: str = "en") -> O
                 }
 
     return None
+
+
+# ============================================================
+# LONGITUDINAL GREETING, CHECK-IN & CLINICAL FOLLOW-UP HELPERS
+# ============================================================
+
+GREETING_PATTERNS = [
+    r"^(hi|hello|hey|namaste|namaskar|pranam|good\s+morning|good\s+evening|good\s+afternoon|hlo|hii|helo)(\s+(medassist|doc|doctor|bot|there|assistant|bhai|sir|mam))?[\s!.,?]*$",
+    r"^(नमस्कार|नमस्ते|हाय|हॅलो|प्रणाम)(\s+(डॉक्टर|मेडॉसिस्ट|सर))?[\s!.,?]*$",
+    r"^(kem\s+cho|vanakkam|sat\s+sri\s+akal)[\s!.,?]*$",
+]
+
+RESOLUTION_PATTERNS = [
+    r"(?i)\b(it'?s\s+fine\s+now|its\s+fine\s+now|fine\s+now|better\s+now|much\s+better|feeling\s+better|cured|healed|recovered)\b",
+    r"(?i)\b(pain\s+is\s+gone|pain\s+gone|no\s+pain\s+now|not\s+hurting\s+anymore|no\s+more\s+pain|fever\s+is\s+gone|gone\s+now)\b",
+    r"(?i)\b(bar[ea]?\s+va?tat[ae]y|theek\s+ho\s+gaya|thik\s+ho\s+gaya|theek\s+hai\s+ab|aaram\s+hai|aram\s+ahe)\b",
+    r"(?<!\S)(आता\s+बरे\s+वाटते|आता\s+ठीक\s+आहे|बरे\s+वाटतेय|आराम\s+वाटतोय|आराम\s+आहे|आता\s+काही\s+त्रास\s+नाही)(?:[.,!?]|\s|$)",
+    r"(?<!\S)(अब\s+ठीक\s+है|दर्द\s+चला\s+गया|राहत\s+मिल\s+गई|दर्द\s+ठीक\s+हो\s+गया|अब\s+कोई\s+तकलीफ\s+नहीं)(?:[.,!?]|\s|$)",
+]
+
+SYMPTOM_LOCALIZED_NAMES = {
+    "neck_pain": {"en": "neck pain", "mr": "मानदुखी", "hi": "गर्दन का दर्द"},
+    "neck pain": {"en": "neck pain", "mr": "मानदुखी", "hi": "गर्दन का दर्द"},
+    "headache": {"en": "headache", "mr": "डोकेदुखी", "hi": "सिरदर्द"},
+    "fever": {"en": "fever", "mr": "ताप", "hi": "बुखार"},
+    "cough": {"en": "cough", "mr": "खोकला", "hi": "खांसी"},
+    "stomach_pain": {"en": "stomach pain", "mr": "पोटदुखी", "hi": "पेट दर्द"},
+    "stomach pain": {"en": "stomach pain", "mr": "पोटदुखी", "hi": "पेट दर्द"},
+    "back_pain": {"en": "back pain", "mr": "पाठदुखी", "hi": "पीठ दर्द"},
+    "back pain": {"en": "back pain", "mr": "पाठदुखी", "hi": "पीठ दर्द"},
+    "acidity": {"en": "acidity", "mr": "पित्त/छातीत जळजळ", "hi": "एसिडिटी"},
+    "cold": {"en": "cold", "mr": "सर्दी", "hi": "जुकाम"},
+    "body_pain": {"en": "body pain", "mr": "अंगदुखी", "hi": "बदन दर्द"},
+    "body pain": {"en": "body pain", "mr": "अंगदुखी", "hi": "बदन दर्द"},
+    "dizziness": {"en": "dizziness", "mr": "चक्कर येणे", "hi": "चक्कर आना"},
+    "weakness": {"en": "weakness", "mr": "अशक्तपणा", "hi": "कमजोरी"},
+    "vomiting": {"en": "vomiting", "mr": "उलटी", "hi": "उल्टी"},
+    "nausea": {"en": "nausea", "mr": "मळमळ", "hi": "जी मिचलाना"},
+    "joint_pain": {"en": "joint pain", "mr": "सांधेदुखी", "hi": "जोड़ों का दर्द"},
+    "joint pain": {"en": "joint pain", "mr": "सांधेदुखी", "hi": "जोड़ों का दर्द"},
+    "sore_throat": {"en": "sore throat", "mr": "घसा खवखवणे", "hi": "गले में खराश"},
+    "sore throat": {"en": "sore throat", "mr": "घसा खवखवणे", "hi": "गले में खराश"},
+}
+
+
+def is_greeting_message(text: str) -> bool:
+    """Checks if the user message is a standalone greeting."""
+    if not text:
+        return False
+    clean = text.strip().lower()
+    return any(re.search(pat, clean) for pat in GREETING_PATTERNS)
+
+
+def detect_symptom_resolution(text: str) -> Tuple[bool, Optional[str]]:
+    """
+    Detects if the user is reporting that their previous symptom has improved or resolved.
+    Returns (is_resolved, resolved_symptom_hint).
+    """
+    if not text:
+        return False, None
+    clean = text.strip().lower()
+    for pat in RESOLUTION_PATTERNS:
+        if re.search(pat, clean):
+            return True, None
+    return False, None
+
+
+def get_localized_symptom_name(symptom_name: str, language: str = "en") -> str:
+    """Translates symptom key into natural localized noun."""
+    lang = (language or "en").strip().lower()
+    clean = str(symptom_name or "").strip().lower()
+    if clean in SYMPTOM_LOCALIZED_NAMES:
+        mapping = SYMPTOM_LOCALIZED_NAMES[clean]
+        if lang in ("mr", "roman_mr"):
+            return mapping.get("mr", clean.replace("_", " "))
+        elif lang in ("hi", "hinglish"):
+            return mapping.get("hi", clean.replace("_", " "))
+        return mapping.get("en", clean.replace("_", " "))
+    return clean.replace("_", " ")
+
+
+def build_proactive_checkin_message(symptom_name: str, language: str = "en") -> str:
+    """
+    Constructs a warm, proactive check-in greeting for active symptoms:
+    - English: "Hello! Before we begin, I wanted to check in: how has your neck pain been feeling? Is it any better?"
+    - Marathi: "नमस्कार! सुरू करण्यापूर्वी, तुमची मानदुखी आता कशी आहे? थोडा आराम वाटतोय का?"
+    - Hindi: "नमस्ते! आगे बढ़ने से पहले, आपकी गर्दन का दर्द अब कैसा है? कुछ राहत मिली?"
+    """
+    lang = (language or "en").strip().lower()
+    loc_sym = get_localized_symptom_name(symptom_name, lang)
+
+    if lang in ("mr", "roman_mr"):
+        return f"नमस्कार! सुरू करण्यापूर्वी, तुमची {loc_sym} आता कशी आहे? थोडा आराम वाटतोय का?"
+    elif lang in ("hi", "hinglish"):
+        return f"नमस्ते! आगे बढ़ने से पहले, आपकी {loc_sym} अब कैसी है? कुछ राहत मिली?"
+    return f"Hello! Before we begin, I wanted to check in: how has your {loc_sym} been feeling? Is it any better?"
+
+
+def build_resolution_acknowledgment(language: str = "en") -> str:
+    """Warm acknowledgment when a tracked symptom is resolved."""
+    lang = (language or "en").strip().lower()
+    if lang in ("mr", "roman_mr"):
+        return "तुम्हाला बरे वाटत आहे हे ऐकून खूप आनंद झाला! स्वतःची काळजी घ्या. इतर काही लक्षणे किंवा प्रश्न असल्यास नक्की सांगा."
+    elif lang in ("hi", "hinglish"):
+        return "यह जानकर बहुत खुशी हुई कि अब आप बेहतर महसूस कर रहे हैं! अपना ध्यान रखें। यदि कोई अन्य समस्या या प्रश्न हो तो अवश्य बताएं।"
+    return "I'm really glad to hear that you're feeling better! Take care of yourself, and let me know if you need anything else or if any new symptoms appear."
+
+
+def get_quick_reply_chips(language: str = "en") -> List[str]:
+    """Returns standard clinical quick-reply chips localized to EN/MR/HI."""
+    lang = (language or "en").strip().lower()
+    if lang in ("mr", "roman_mr"):
+        return ["खूप बरे वाटते", "अजूनही दुखतेय", "त्रास वाढला", "नवीन लक्षण"]
+    elif lang in ("hi", "hinglish"):
+        return ["काफी बेहतर", "अभी भी दर्द है", "हालत बिगड़ गई", "नया लक्षण"]
+    return ["Much better", "Still hurting", "Got worse", "New symptom"]
+
+
+def generate_clinical_follow_up_questions(symptoms: List[str], language: str = "en") -> List[str]:
+    """
+    Generates 2 targeted follow-up clarifying questions for non-emergency symptom advice responses.
+    """
+    lang = (language or "en").strip().lower()
+    sym_set = {s.lower().replace("-", "_").replace(" ", "_") for s in (symptoms or [])}
+
+    if "headache" in sym_set:
+        if lang in ("mr", "roman_mr"):
+            return [
+                "ही डोकेदुखी किती दिवसांपासून जाणवते आहे?",
+                "डोकेदुखीसोबत मळमळ, प्रकाशाचा त्रास किंवा मान आखडणे असे काही होते का?"
+            ]
+        elif lang in ("hi", "hinglish"):
+            return [
+                "यह सिरदर्द कितने दिनों या घंटों से हो रहा है?",
+                "क्या सिरदर्द के साथ उल्टी, चक्कर या रोशनी से परेशानी महसूस हो रही है?"
+            ]
+        return [
+            "How long have you been experiencing this headache?",
+            "Is the headache accompanied by nausea, light sensitivity, or neck stiffness?"
+        ]
+
+    if "neck_pain" in sym_set:
+        if lang in ("mr", "roman_mr"):
+            return [
+                "ही मानदुखी खांद्यांकडे किंवा हाताकडे जाते का, किंवा मुंग्या येतात का?",
+                "चुकीच्या पद्धतीने झोपल्याने किंवा वजन उचलल्याने हा त्रास सुरू झाला का?"
+            ]
+        elif lang in ("hi", "hinglish"):
+            return [
+                "क्या गर्दन का दर्द कंधों या हाथों की तरफ फैलता है, या सुन्नपन होता है?",
+                "क्या यह गलत तरीके से सोने या भारी सामान उठाने के बाद शुरू हुआ?"
+            ]
+        return [
+            "Does the neck pain radiate into your shoulders or arms, or cause numbness?",
+            "Did this pain start after awkward sleep posture or lifting heavy objects?"
+        ]
+
+    if "fever" in sym_set:
+        if lang in ("mr", "roman_mr"):
+            return [
+                "सध्या अंगात किती ताप आहे, आणि थंडी वाजून येते का?",
+                "या तापासोबत अंगदुखी, खोकला किंवा घसा खवखवणे जाणवते का?"
+            ]
+        elif lang in ("hi", "hinglish"):
+            return [
+                "वर्तमान में शरीर का तापमान कितना है, और क्या कंपकंपी या ठंड लग रही है?",
+                "क्या बुखार के साथ बदन दर्द, खांसी या गले में खराश भी है?"
+            ]
+        return [
+            "What is your current temperature, and have you experienced chills or shivering?",
+            "Are there associated symptoms such as body ache, cough, or sore throat?"
+        ]
+
+    if "cough" in sym_set or "cold" in sym_set:
+        if lang in ("mr", "roman_mr"):
+            return [
+                "हा कोरडा खोकला आहे की कफ पडतोय?",
+                "हा खोकला किती दिवसांपासून आहे, आणि छातीत जडपणा जाणवतो का?"
+            ]
+        elif lang in ("hi", "hinglish"):
+            return [
+                "क्या यह सूखी खांसी है या बलगम निकल रहा है?",
+                "खांसी कितने दिनों से है, और क्या सीने में भारीपन महसूस हो रहा है?"
+            ]
+        return [
+            "Is it a dry cough or are you bringing up phlegm or mucus?",
+            "How many days has this cough lasted, and do you feel any chest congestion?"
+        ]
+
+    if "stomach_pain" in sym_set or "acidity" in sym_set:
+        if lang in ("mr", "roman_mr"):
+            return [
+                "पोटात सतत दुखतेय की जेवणानंतर कळा येतात?",
+                "यासोबत मळमळ, उलटी, छातीत जळजळ किंवा जुलाब असा त्रास आहे का?"
+            ]
+        elif lang in ("hi", "hinglish"):
+            return [
+                "क्या पेट दर्द लगातार बना हुआ है या खाने के बाद ऐंठन होती है?",
+                "क्या इसके साथ जी मिचलाना, उल्टी, सीने में जलन या दस्त की समस्या है?"
+            ]
+        return [
+            "Is the abdominal pain constant, sharp, or cramp-like after eating?",
+            "Are you experiencing nausea, heartburn, fever, or loose stools?"
+        ]
+
+    # Default general follow-ups
+    if lang in ("mr", "roman_mr"):
+        return [
+            "हा त्रास साधारण किती दिवसांपासून जाणवतो आहे?",
+            "या लक्षणासोबत ताप, चक्कर किंवा इतर काही त्रास दिसतोय का?"
+        ]
+    elif lang in ("hi", "hinglish"):
+        return [
+            "यह समस्या लगभग कितने दिनों से महसूस हो रही है?",
+            "क्या इस लक्षण के साथ बुखार, कमजोरी या कोई अन्य परेशानी भी है?"
+        ]
+    return [
+        "How many days have you been noticing these symptoms?",
+        "Are you experiencing any associated symptoms such as fever, fatigue, or dizziness?"
+    ]

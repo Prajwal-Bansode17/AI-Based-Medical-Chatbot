@@ -12,6 +12,8 @@ import uuid
 from datetime import datetime
 from pathlib import Path
 from urllib.parse import urlparse
+import urllib.error
+import urllib.request
 
 # Reconfigure console streams to UTF-8 on Windows to safely handle Devanagari (Hindi/Marathi)
 if hasattr(sys.stdout, "reconfigure"):
@@ -74,6 +76,12 @@ from conversation_engine import (
     check_for_ambiguous_query,
     detect_dialect_and_script,
     sanitize_prompt_input,
+    is_greeting_message,
+    detect_symptom_resolution,
+    build_proactive_checkin_message,
+    build_resolution_acknowledgment,
+    generate_clinical_follow_up_questions,
+    get_quick_reply_chips,
 )
 from memory_service import (
     init_memory_schema,
@@ -101,6 +109,11 @@ from memory_service import (
     get_user_medical_documents,
     delete_user_medical_document,
     clear_all_user_medical_documents,
+    record_or_update_symptom,
+    get_unresolved_symptoms,
+    resolve_symptom,
+    delete_all_user_symptoms,
+    update_symptom_last_checked,
 )
 from vision_service import (
     validate_and_decode_image,
@@ -967,6 +980,255 @@ def get_ollama_status(max_age=10.0):
     return result
 
 
+# ------------------------- Hugging Face (Custom 1B Model) -------------------------
+
+HF_MODEL_NAME = os.getenv("HF_MODEL_NAME", "hariom-peddawad/MedAssist-AI-1B")
+HF_TOKEN = (
+    os.getenv("HF_TOKEN")
+    or os.getenv("HUGGINGFACE_API_KEY")
+    or os.getenv("HUGGINGFACE_TOKEN")
+    or ""
+).strip()
+HF_API_URL = os.getenv(
+    "HF_API_URL",
+    f"https://router.huggingface.co/hf-inference/models/{HF_MODEL_NAME}",
+)
+HF_TIMEOUT = _env_float("HF_TIMEOUT", 12.0)
+HF_ENABLED = _env_bool("HF_ENABLED", True)
+HF_TEMPERATURE = _env_float("HF_TEMPERATURE", 0.3)
+HF_MAX_NEW_TOKENS = _env_int("HF_MAX_NEW_TOKENS", 512)
+
+
+def query_hf_chat(
+    system_prompt=None,
+    user_prompt="",
+    messages=None,
+    session_id=None,
+    language="en",
+    correlation_id=None,
+):
+    if not HF_ENABLED or not HF_TOKEN:
+        return None
+
+    api_url = HF_API_URL
+    token = HF_TOKEN
+
+    headers = {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "User-Agent": "MedAssistAI/1.0",
+    }
+    if token:
+        headers["Authorization"] = f"Bearer {token}"
+
+    full_prompt = ""
+    if system_prompt:
+        full_prompt += f"<|system|>\n{system_prompt}\n"
+    if messages and isinstance(messages, list):
+        for msg in messages:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+            if role == "system" and not system_prompt:
+                full_prompt += f"<|system|>\n{content}\n"
+            elif role in ("user", "assistant"):
+                full_prompt += f"<|{role}|>\n{content}\n"
+        if not full_prompt.endswith("<|assistant|>\n"):
+            full_prompt += "<|assistant|>\n"
+    else:
+        full_prompt += f"<|user|>\n{user_prompt}\n<|assistant|>\n"
+
+    payload = {
+        "inputs": full_prompt,
+        "parameters": {
+            "max_new_tokens": HF_MAX_NEW_TOKENS,
+            "temperature": HF_TEMPERATURE,
+            "return_full_text": False,
+        },
+    }
+
+    req_body = json.dumps(payload).encode("utf-8")
+    req = urllib.request.Request(api_url, data=req_body, headers=headers, method="POST")
+
+    try:
+        t0 = time.monotonic()
+        with urllib.request.urlopen(req, timeout=HF_TIMEOUT) as resp:
+            elapsed = time.monotonic() - t0
+            raw_body = resp.read().decode("utf-8")
+            data = json.loads(raw_body)
+            answer = ""
+            if isinstance(data, list) and len(data) > 0 and isinstance(data[0], dict):
+                answer = data[0].get("generated_text") or data[0].get("text") or ""
+            elif isinstance(data, dict):
+                if "generated_text" in data:
+                    answer = str(data["generated_text"])
+                elif "choices" in data and len(data["choices"]) > 0:
+                    choice = data["choices"][0]
+                    if "message" in choice and "content" in choice["message"]:
+                        answer = str(choice["message"]["content"])
+                    elif "text" in choice:
+                        answer = str(choice["text"])
+            if answer and answer.strip():
+                logger.info(
+                    "[%s] HF model inference succeeded in %.2fs",
+                    correlation_id or "HF",
+                    elapsed,
+                )
+                return answer.strip()
+    except urllib.error.HTTPError as err:
+        err_msg = ""
+        try:
+            err_msg = err.read().decode("utf-8", errors="ignore")
+        except Exception:
+            pass
+        logger.warning(
+            "[%s] HF model inference HTTP %d (failing over to Layer 3): %s",
+            correlation_id or "HF",
+            err.code,
+            err_msg[:160],
+        )
+        return None
+    except Exception as ex:
+        logger.warning(
+            "[%s] HF model inference failed (%s) - failing over to Layer 3",
+            correlation_id or "HF",
+            ex,
+        )
+        return None
+    return None
+
+
+# ------------------------- Layer 3 Local Semantic Retrieval -------------------------
+
+MEDICAL_DISCLAIMER_EN = (
+    "Disclaimer: I am an AI medical assistant, not a doctor. "
+    "Please consult a qualified healthcare professional for formal diagnosis and personalized treatment."
+)
+MEDICAL_DISCLAIMER_MR = (
+    "अस्वीकरण: मी एक एआय वैद्यकीय सहाय्यक आहे, डॉक्टर नाही. "
+    "योग्य तपासणी आणि उपचारांसाठी कृपया तज्ज्ञ डॉक्टरांचा सल्ला घ्या."
+)
+MEDICAL_DISCLAIMER_HI = (
+    "अस्वीकरण: मैं एक एआई मेडिकल असिस्टेंट हूँ, डॉक्टर नहीं। "
+    "सटीक निदान और उपचार के लिए कृपया योग्य चिकित्सक से परामर्श लें।"
+)
+
+
+def get_medical_disclaimer(language: str = "en") -> str:
+    lang = (language or "en").strip().lower()
+    if lang == "mr":
+        return MEDICAL_DISCLAIMER_MR
+    elif lang == "hi":
+        return MEDICAL_DISCLAIMER_HI
+    return MEDICAL_DISCLAIMER_EN
+
+
+def _ensure_medical_disclaimer(text: str, language: str = "en") -> str:
+    if not text:
+        return ""
+    text = text.strip()
+    lang = (language or "en").strip().lower()
+
+    if "disclaimer" in text.lower() or "अस्वीकरण" in text:
+        return text
+
+    disclaimer = get_medical_disclaimer(lang)
+    return f"{text}\n\n{disclaimer}"
+
+
+_finetune_retriever_lock = threading.Lock()
+_finetune_vectorizer = None
+_finetune_matrix = None
+_finetune_records = None
+
+
+def init_local_finetune_retriever():
+    global _finetune_vectorizer, _finetune_matrix, _finetune_records
+    if _finetune_vectorizer is not None:
+        return
+    with _finetune_retriever_lock:
+        if _finetune_vectorizer is not None:
+            return
+        train_path = BASE_DIR / "data" / "finetune" / "train.jsonl"
+        if not train_path.exists():
+            logger.warning("Finetune dataset not found at %s", train_path)
+            return
+        records = []
+        texts = []
+        try:
+            with open(train_path, "r", encoding="utf-8") as f:
+                for line in f:
+                    line = line.strip()
+                    if not line:
+                        continue
+                    item = json.loads(line)
+                    instr = str(item.get("instruction") or "")
+                    inp = str(item.get("input") or "")
+                    out = str(item.get("output") or "")
+                    lang = str(item.get("language") or "en")
+                    cat = str(item.get("category") or "general")
+                    full_text = f"{instr} {inp}".strip()
+                    texts.append(full_text)
+                    records.append({
+                        "instruction": instr,
+                        "input": inp,
+                        "output": out,
+                        "language": lang,
+                        "category": cat,
+                    })
+            vec = TfidfVectorizer(max_features=5000, ngram_range=(1, 2))
+            mat = vec.fit_transform(texts)
+            _finetune_records = records
+            _finetune_vectorizer = vec
+            _finetune_matrix = mat
+            logger.info("Initialized local finetune retriever with %d records", len(records))
+        except Exception as ex:
+            logger.error("Failed to initialize local finetune retriever: %s", ex)
+
+
+def retrieve_local_finetune_answer(query: str, language: str = "en", threshold: float = 0.15) -> str:
+    init_local_finetune_retriever()
+    if _finetune_vectorizer is None or _finetune_matrix is None or not _finetune_records:
+        return ""
+    try:
+        q_vec = _finetune_vectorizer.transform([query])
+        sims = cosine_similarity(q_vec, _finetune_matrix)[0]
+
+        target_lang = (language or "en").strip().lower()
+        lang_weights = np.array([
+            1.35 if r.get("language") == target_lang else 0.75
+            for r in _finetune_records
+        ])
+        weighted_sims = sims * lang_weights
+        best_idx = int(np.argmax(weighted_sims))
+        best_score = float(sims[best_idx])
+
+        if best_score >= threshold or len(_finetune_records) > 0:
+            match = _finetune_records[best_idx]
+            out = match.get("output") or ""
+            return out.strip()
+    except Exception as ex:
+        logger.warning("Local finetune retrieval error: %s", ex)
+    return ""
+
+
+def build_safe_general_advice(query: str, language: str = "en") -> str:
+    lang = (language or "en").strip().lower()
+    if lang == "mr":
+        return (
+            "तुमच्या लक्षणांवरून पुरेसा आराम करा आणि भरपूर पाणी किंवा द्रवपदार्थ प्या. "
+            "लक्षणे अधिक तीव्र झाल्यास किंवा २-३ दिवसांपेक्षा जास्त राहिल्यास कृपया डॉक्टरांचा सल्ला घ्या."
+        )
+    elif lang == "hi":
+        return (
+            "आपके लक्षणों के आधार पर, पर्याप्त आराम करें और खूब पानी या तरल पदार्थ पिएं। "
+            "यदि लक्षण अधिक गंभीर हों या २-३ दिनों से अधिक बने रहें, तो कृपया डॉक्टर से परामर्श लें।"
+        )
+    return (
+        "Based on your symptoms, ensure adequate rest and stay well hydrated. "
+        "If symptoms worsen or persist for more than a couple of days, please consult a qualified healthcare provider."
+    )
+
+
 def get_ai_status_fields():
     try:
         ollama = get_ollama_status()
@@ -981,10 +1243,23 @@ def get_ai_status_fields():
             primary = "gemini"
         elif OLLAMA_ENABLED:
             primary = "ollama"
+        elif HF_ENABLED and bool(HF_TOKEN):
+            primary = "huggingface"
         else:
             primary = "none"
     elif primary_pref == "ollama":
         if OLLAMA_ENABLED:
+            primary = "ollama"
+        elif gemini_configured:
+            primary = "gemini"
+        elif HF_ENABLED and bool(HF_TOKEN):
+            primary = "huggingface"
+        else:
+            primary = "none"
+    elif primary_pref == "huggingface":
+        if HF_ENABLED:
+            primary = "huggingface"
+        elif OLLAMA_ENABLED:
             primary = "ollama"
         elif gemini_configured:
             primary = "gemini"
@@ -1006,6 +1281,10 @@ def get_ai_status_fields():
         "ollama_model_available": bool(ollama.get("model_available")),
         "gemini_configured": gemini_configured,
         "vision_provider": "gemini" if gemini_configured else "none",
+        "hf_model": HF_MODEL_NAME,
+        "hf_configured": bool(HF_TOKEN),
+        "hf_enabled": HF_ENABLED,
+        "hf_api_url": HF_API_URL,
     }
 
 
@@ -1238,7 +1517,8 @@ def generate_medical_response_with_provider(
 ):
     ollama_available = OLLAMA_ENABLED
     gemini_available = gemini_client is not None
-    if not ollama_available and not gemini_available:
+    hf_available = HF_ENABLED
+    if not ollama_available and not gemini_available and not hf_available:
         return None, None
 
     memory_summary = build_session_memory_summary(session_id) if session_id else ""
@@ -1292,11 +1572,28 @@ def generate_medical_response_with_provider(
             else:
                 providers.append(("ollama", lambda: ollama_chat(system_instruction, prompt, correlation_id=correlation_id)))
 
+    def _add_hf():
+        if hf_available and not image_bytes:
+            providers.append(("huggingface", lambda: query_hf_chat(
+                system_prompt=system_instruction,
+                user_prompt=prompt,
+                messages=structured_messages,
+                session_id=session_id,
+                language=language,
+                correlation_id=correlation_id,
+            )))
+
     if primary_pref == "gemini":
         _add_gemini()
         _add_ollama()
-    else:  # "auto" or "ollama" -> local Ollama first, then cloud fallback
+        _add_hf()
+    elif primary_pref == "huggingface":
+        _add_hf()
         _add_ollama()
+        _add_gemini()
+    else:  # "auto" or "ollama" -> local Ollama first, then HF, then Gemini cloud fallback
+        _add_ollama()
+        _add_hf()
         _add_gemini()
 
     for provider_name, call in providers:
@@ -1598,6 +1895,14 @@ def clear_medical_memory(session_id):
 
 init_chat_database()
 init_medical_memory_table()
+try:
+    init_memory_schema(CHAT_DB_FILE)
+except Exception as _ex:
+    logger.warning("Could not initialize memory schema on startup: %s", _ex)
+try:
+    init_local_finetune_retriever()
+except Exception as _ex:
+    logger.warning("Could not initialize local finetune retriever on startup: %s", _ex)
 
 
 # ============================================================
@@ -1801,6 +2106,17 @@ SYMPTOM_ALIASES = {
         "shortness of breath",
     ],
     "sore_throat": ["sore throat", "sorethroat", "throat pain", "throat ache"],
+    "neck_pain": [
+        "neck pain", "neckpain", "neck ache", "neckache", "stiff neck", "neck stiffness",
+        "मानदुखी", "मान दुखत", "मान दुखणे", "मानेत वेदना", "मानेत कळ",
+        "गर्दन दर्द", "गर्दन में दर्द", "गले में दर्द",
+        "man dukhat", "maan dukhat", "gardan dard",
+    ],
+    "acidity": [
+        "acidity", "acid reflux", "heartburn", "heart burn", "acid", "gastric", "gas problem",
+        "पित्त", "छातीत जळजळ", "आंबट ढेकर", "एसिडिटी", "गॅस",
+        "सीने में जलन", "खट्टी डकार",
+    ],
     "rash": ["rash", "skin rash", "itchy rash"],
     "swelling": ["swelling", "swollen"],
 }
@@ -1905,6 +2221,7 @@ MEDICAL_KEYWORDS = {
     "dukhat", "dukh", "ulti", "malmal", "chakkar", "garagar", "kamjori",
     "ashaktpana", "pathi", "path", "kamar", "peeth", "कमर", "पीठ", "पाठ",
     "azaala", "aazar", "ang", "tapa", "dawa", "dawai", "goli", "bukhar", "back",
+    "neck", "man", "maan", "gardan", "acidity", "pitta", "heartburn", "acid",
 }
 
 
@@ -3171,6 +3488,224 @@ MAX_TEXT_LENGTH = 2000
 MAX_SESSION_ID_LENGTH = 128
 
 
+# ============================================================
+# ZERO-FAILURE 3-LAYER CHAT ENDPOINT
+# ============================================================
+
+@app.route("/chat", methods=["POST", "GET"])
+def chat():
+    """
+    3-Layer Zero-Failure Conversational Endpoint:
+    Layer 1: Statutory Emergency/Crisis Filter (Heart attack, stroke FAST, acute suicide crisis).
+    Layer 2: Primary Hugging Face Model Inference (hariom-peddawad/MedAssist-AI-1B, 12s timeout).
+    Layer 3: Instant Local Fallback (Lightweight semantic retrieval over fine-tune dataset).
+    """
+    correlation_id = str(uuid.uuid4())[:8]
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or {}
+    else:
+        payload = request.args.to_dict()
+
+    raw_message = (
+        payload.get("message")
+        or payload.get("text")
+        or payload.get("query")
+        or payload.get("prompt")
+        or ""
+    ).strip()
+
+    if not raw_message:
+        return jsonify({
+            "status": "error",
+            "message": "Message is required (provide 'message' or 'text' field)",
+        }), 400
+
+    session_id = (payload.get("session_id") or f"chat_{uuid.uuid4().hex[:12]}").strip()
+    req_lang = (payload.get("language") or "").strip().lower()
+    user_id = (payload.get("user_id") or extract_auth_user(request)[0] or session_id).strip()
+
+    # Pre-processing: sanitize and detect dialect/language
+    sanitized_message, was_sanitized = sanitize_prompt_input(raw_message)
+    dialect_info = detect_dialect_and_script(sanitized_message)
+    detected_lang = dialect_info.get("language") or dialect_info.get("primary_language") or "en"
+    final_language = req_lang if req_lang and req_lang not in {"auto", ""} else detected_lang
+
+    def _record_chat(role, text, symptoms=None):
+        try:
+            save_chat_message(
+                session_id=session_id,
+                role=role,
+                message=text,
+                detected_symptoms=symptoms or "",
+                user_id=user_id,
+            )
+        except Exception as e:
+            logger.debug("[%s] Chat record failed: %s", correlation_id, e)
+
+    # ------------------------------------------------------------
+    # LAYER 0A: Symptom Resolution Intercept
+    # ------------------------------------------------------------
+    is_resolved, resolved_sym = detect_symptom_resolution(sanitized_message)
+    if is_resolved:
+        resolve_symptom(user_id, resolved_sym)
+        resolution_ack = build_resolution_acknowledgment(final_language)
+        _record_chat("user", raw_message)
+        _record_chat("assistant", resolution_ack)
+        return jsonify({
+            "status": "success",
+            "session_id": session_id,
+            "response": resolution_ack,
+            "answer": resolution_ack,
+            "layer": 1,
+            "source": "symptom_resolution",
+            "emergency": False,
+            "proactive_check_in": False,
+            "follow_up_questions": [],
+            "quick_replies": get_quick_reply_chips(final_language),
+            "language": final_language,
+        }), 200
+
+    # ------------------------------------------------------------
+    # LAYER 0B: Proactive Cross-Session Symptom Check-in
+    # ------------------------------------------------------------
+    if is_greeting_message(sanitized_message):
+        unresolved = get_unresolved_symptoms(user_id, min_hours_elapsed=12.0)
+        if unresolved:
+            target_sym = unresolved[0]["symptom_name"]
+            checkin_msg = build_proactive_checkin_message(target_sym, final_language)
+            update_symptom_last_checked(user_id, target_sym)
+            _record_chat("user", raw_message, symptoms=target_sym)
+            _record_chat("assistant", checkin_msg, symptoms=target_sym)
+            checkin_followups = [
+                "How has the pain or discomfort been progressing?",
+                "Have you noticed any new symptoms or fever?"
+            ] if final_language == "en" else [
+                "त्रास कमी होतोय की वाढला आहे?",
+                "ताप किंवा इतर काही नवीन लक्षणे जाणवतात का?"
+            ] if final_language in ("mr", "roman_mr") else [
+                "तकलीफ कम हो रही है या बढ़ गई है?",
+                "क्या बुखार या कोई अन्य नया लक्षण महसूस हो रहा है?"
+            ]
+            return jsonify({
+                "status": "success",
+                "session_id": session_id,
+                "response": checkin_msg,
+                "answer": checkin_msg,
+                "layer": 1,
+                "source": "proactive_symptom_checkin",
+                "emergency": False,
+                "proactive_check_in": True,
+                "follow_up_questions": checkin_followups,
+                "quick_replies": get_quick_reply_chips(final_language),
+                "language": final_language,
+            }), 200
+
+    # ------------------------------------------------------------
+    # LAYER 1: Emergency & Crisis Pre-Filter
+    # ------------------------------------------------------------
+    safety_flag = detect_safety_flag(raw_message, sanitized_message, sanitized_message)
+    if safety_flag:
+        safety_response = build_safety_response(safety_flag, final_language)
+        _record_chat("user", raw_message, symptoms=safety_flag)
+        _record_chat("assistant", safety_response, symptoms=safety_flag)
+        emergency_chips = (
+            ["112 Emergency", "Nearest Hospital", "Doctor Advice"]
+            if final_language == "en"
+            else ["112 आपत्कालीन", "जवळचे रुग्णालय", "डॉक्टरांचा सल्ला"]
+            if final_language in ("mr", "roman_mr")
+            else ["112 आपातकालीन", "नज़दीकी अस्पताल", "डॉक्टर की सलाह"]
+        )
+        return jsonify({
+            "status": "success",
+            "session_id": session_id,
+            "response": safety_response,
+            "answer": safety_response,
+            "layer": 1,
+            "source": "safety_rules",
+            "safety_flag": safety_flag,
+            "emergency": True,
+            "proactive_check_in": False,
+            "follow_up_questions": [],
+            "quick_replies": emergency_chips,
+            "language": final_language,
+        }), 200
+
+    # Extract & record active symptoms for longitudinal health memory
+    detected_symptoms = extract_symptoms(sanitized_message)
+    for sym in detected_symptoms:
+        try:
+            record_or_update_symptom(user_id, sym, language=final_language)
+        except Exception as _sym_err:
+            logger.debug("[%s] Active symptom tracking error: %s", correlation_id, _sym_err)
+
+    follow_up_questions = generate_clinical_follow_up_questions(detected_symptoms, final_language)
+    quick_replies = get_quick_reply_chips(final_language)
+
+    # ------------------------------------------------------------
+    # LAYER 2: Primary Hugging Face Model Inference
+    # ------------------------------------------------------------
+    hf_answer = None
+    if HF_ENABLED:
+        try:
+            memory_summary = build_session_memory_summary(session_id) if session_id else ""
+            system_instruction = _build_medical_system_instruction(
+                final_language, memory_summary=memory_summary
+            )
+            hf_answer = query_hf_chat(
+                system_prompt=system_instruction,
+                user_prompt=sanitized_message,
+                session_id=session_id,
+                language=final_language,
+                correlation_id=correlation_id,
+            )
+        except Exception as ex:
+            logger.warning("[%s] HF Layer 2 exception: %s", correlation_id, ex)
+            hf_answer = None
+
+    if hf_answer and hf_answer.strip():
+        final_answer = _ensure_medical_disclaimer(hf_answer.strip(), final_language)
+        _record_chat("user", raw_message, symptoms=",".join(detected_symptoms))
+        _record_chat("assistant", final_answer, symptoms=",".join(detected_symptoms))
+        return jsonify({
+            "status": "success",
+            "session_id": session_id,
+            "response": final_answer,
+            "answer": final_answer,
+            "layer": 2,
+            "source": "huggingface",
+            "model": HF_MODEL_NAME,
+            "emergency": False,
+            "proactive_check_in": False,
+            "follow_up_questions": follow_up_questions,
+            "quick_replies": quick_replies,
+            "language": final_language,
+        }), 200
+
+    # ------------------------------------------------------------
+    # LAYER 3: Instant Local Semantic Retrieval Fallback
+    # ------------------------------------------------------------
+    fallback_text = retrieve_local_finetune_answer(sanitized_message, language=final_language)
+    if not fallback_text or not fallback_text.strip():
+        fallback_text = build_safe_general_advice(sanitized_message, final_language)
+
+    final_answer = _ensure_medical_disclaimer(fallback_text.strip(), final_language)
+    _record_chat("user", raw_message, symptoms=",".join(detected_symptoms))
+    _record_chat("assistant", final_answer, symptoms=",".join(detected_symptoms))
+    return jsonify({
+        "status": "success",
+        "session_id": session_id,
+        "response": final_answer,
+        "answer": final_answer,
+        "layer": 3,
+        "source": "local_finetune_retrieval",
+        "emergency": False,
+        "proactive_check_in": False,
+        "follow_up_questions": follow_up_questions,
+        "quick_replies": quick_replies,
+        "language": final_language,
+    }), 200
+
+
 @app.post("/predict")
 def predict():
     t_start = time.monotonic()
@@ -3185,6 +3720,19 @@ def predict():
     def _json_response(payload, status_code=200):
         if isinstance(payload, dict):
             payload["correlation_id"] = correlation_id
+            if status_code == 200:
+                if "response" not in payload and "answer" in payload:
+                    payload["response"] = payload["answer"]
+                if "proactive_check_in" not in payload:
+                    payload["proactive_check_in"] = False
+                resp_lang = payload.get("language") or (final_language if 'final_language' in locals() else "en")
+                if "quick_replies" not in payload:
+                    payload["quick_replies"] = get_quick_reply_chips(resp_lang)
+                if "follow_up_questions" not in payload:
+                    payload["follow_up_questions"] = generate_clinical_follow_up_questions(
+                        payload.get("symptoms") or (symptoms if 'symptoms' in locals() else []),
+                        resp_lang,
+                    )
         resp = jsonify(payload)
         resp.headers["X-Correlation-ID"] = correlation_id
         total_time = time.monotonic() - t_start
@@ -3206,6 +3754,7 @@ def predict():
         return _json_response({"status": "error", "message": err}, status)
 
     user_id = auth_user or requested_user_id
+    effective_user_id = str(user_id or (_raw_sid if '_raw_sid' in locals() and _raw_sid else "anon_user")).strip()
     is_guest = not user_id or str(user_id).startswith("guest_") or str(user_id) == "guest"
     is_temporary = bool(data.get("is_temporary", False))
     conversation_id = data.get("conversation_id")
@@ -3241,6 +3790,7 @@ def predict():
 
     _raw_sid = str(data.get("session_id") or "").strip()[:MAX_SESSION_ID_LENGTH]
     session_id = _raw_sid if _raw_sid else ("anon_" + uuid.uuid4().hex)
+    effective_user_id = str(user_id or session_id).strip()
     previous_response_language = get_last_response_language(session_id)
 
     requested_output_language = detect_requested_output_language(text)
@@ -3611,6 +4161,84 @@ def predict():
             })
 
         # ----------------------------------------------------
+        # SYMPTOM RESOLUTION CHECK
+        # ----------------------------------------------------
+        is_resolved, resolved_sym = detect_symptom_resolution(text)
+        if is_resolved and not safety_flag:
+            resolve_symptom(effective_user_id, resolved_sym)
+            ack_msg = build_resolution_acknowledgment(final_language)
+            _record_message("user", text, [])
+            _record_message("assistant", ack_msg, [])
+            _maybe_save_user_prefs()
+            return _json_response({
+                "status": "success",
+                "session_id": session_id,
+                "question": text,
+                "intent": "symptom_resolution",
+                "confidence": 1.0,
+                "symptoms": [],
+                "previous_symptoms": previous_symptoms,
+                "medical_query": False,
+                "answer": ack_msg,
+                "response": ack_msg,
+                "source": "symptom_resolution",
+                "proactive_check_in": False,
+                "follow_up_questions": [],
+                "quick_replies": get_quick_reply_chips(final_language),
+                "language": final_language,
+            })
+
+        # ----------------------------------------------------
+        # PROACTIVE CROSS-SESSION SYMPTOM CHECK-IN ON GREETING
+        # ----------------------------------------------------
+        if is_greeting_message(text) and not safety_flag:
+            unresolved = get_unresolved_symptoms(effective_user_id, min_hours_elapsed=12.0)
+            if unresolved:
+                target_sym = unresolved[0]["symptom_name"]
+                checkin_msg = build_proactive_checkin_message(target_sym, final_language)
+                update_symptom_last_checked(effective_user_id, target_sym)
+                _record_message("user", text, [target_sym])
+                _record_message("assistant", checkin_msg, [target_sym])
+                _maybe_save_user_prefs()
+                checkin_followups = [
+                    "How has the pain or discomfort been progressing?",
+                    "Have you noticed any new symptoms or fever?"
+                ] if final_language == "en" else [
+                    "त्रास कमी होतोय की वाढला आहे?",
+                    "ताप किंवा इतर काही नवीन लक्षणे जाणवतात का?"
+                ] if final_language in ("mr", "roman_mr") else [
+                    "तकलीफ कम हो रही है या बढ़ गई है?",
+                    "क्या बुखार या कोई अन्य नया लक्षण महसूस हो रहा है?"
+                ]
+                return _json_response({
+                    "status": "success",
+                    "session_id": session_id,
+                    "question": text,
+                    "intent": "proactive_symptom_checkin",
+                    "confidence": 1.0,
+                    "symptoms": [target_sym],
+                    "previous_symptoms": previous_symptoms,
+                    "medical_query": True,
+                    "answer": checkin_msg,
+                    "response": checkin_msg,
+                    "source": "proactive_symptom_checkin",
+                    "proactive_check_in": True,
+                    "follow_up_questions": checkin_followups,
+                    "quick_replies": get_quick_reply_chips(final_language),
+                    "language": final_language,
+                })
+
+        # ----------------------------------------------------
+        # ACTIVE SYMPTOM TRACKING (LONGITUDINAL MEMORY)
+        # ----------------------------------------------------
+        if symptoms and safety_flag != "emergency":
+            for s in symptoms:
+                try:
+                    record_or_update_symptom(effective_user_id, s, language=final_language)
+                except Exception as _sym_err:
+                    logger.debug("[%s] Active symptom tracking error: %s", correlation_id, _sym_err)
+
+        # ----------------------------------------------------
         # CLARIFYING QUESTIONS FOR AMBIGUOUS INPUT (B2)
         # ----------------------------------------------------
         if not image_bytes:
@@ -3675,11 +4303,15 @@ def predict():
         # ----------------------------------------------------
         # MULTIMODAL DOCUMENT FOLLOW-UP QUESTION ANSWERING
         # ----------------------------------------------------
-        active_doc = get_active_session_document(session_id, user_id=user_id)
-        if not active_doc and can_use_memory:
-            past_docs = get_user_medical_documents(user_id, is_temporary=is_temporary)
-            if past_docs:
-                active_doc = past_docs[0]
+        active_doc = None
+        try:
+            active_doc = get_active_session_document(session_id, user_id=user_id)
+            if not active_doc and can_use_memory:
+                past_docs = get_user_medical_documents(user_id, is_temporary=is_temporary)
+                if past_docs:
+                    active_doc = past_docs[0]
+        except Exception as _doc_ex:
+            logger.debug("[%s] Document lookup skipped: %s", correlation_id, _doc_ex)
 
         is_doc_query = any(w in text.lower() for w in [
             "report", "prescription", "abnormal", "dose", "dosage", "timing", "result", "findings",
