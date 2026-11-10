@@ -90,6 +90,10 @@ from environmental_health import (
     get_citizen_advisory,
     format_atmospheric_advisory_block,
 )
+from lab_report_analyzer import (
+    analyze_lab_report,
+    extract_biomarkers_from_text,
+)
 from memory_service import (
     init_memory_schema,
     init_user_memory_db,
@@ -4762,6 +4766,38 @@ def predict():
             "message": "Prediction failed",
             "error": str(e),
         }, 500)
+
+
+# ============================================================
+# SMART MEDICAL LAB REPORT ANALYZER & LAYMAN DECODER
+# ============================================================
+
+@app.route("/analyze-lab-report", methods=["POST"])
+def api_analyze_lab_report():
+    """
+    Parses and decodes laboratory blood test reports into layman explanations,
+    speedometer gauge percentages, doctor consultation questions, and dietary advice.
+    Accepts JSON:
+    {
+        "text": "...",               # Raw text or OCR output
+        "biomarkers": {...},         # Or optional pre-extracted biomarker dictionary
+        "language": "en"|"mr"|"hi"   # Output language (default: en)
+    }
+    """
+    data = request.get_json(silent=True) or {}
+    raw_text = data.get("text") or data.get("report_text") or data.get("query") or ""
+    biomarkers = data.get("biomarkers")
+    language = (data.get("language") or "en").strip().lower()
+
+    if not raw_text and not biomarkers:
+        return jsonify({
+            "status": "error",
+            "message": "Report text or biomarkers dictionary is required (provide 'text' or 'biomarkers' field)"
+        }), 400
+
+    input_data = biomarkers if biomarkers else raw_text
+    result = analyze_lab_report(input_data=input_data, user_language=language)
+    return jsonify(result), 200
 
 
 if __name__ == "__main__":
