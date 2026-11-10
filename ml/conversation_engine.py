@@ -43,9 +43,101 @@ REFERENCE_TRIGGERS = [
     "take it after food", "take that with", "take it with",
     "why is it happening", "will it get worse", "does it spread",
     "prevent that", "prevent it", "treat that", "treat it", "cure it",
+    "explain", "report", "above", "result", "results", "what does this mean",
+    "what do these mean", "meaning of this", "what does it mean",
+    "is this normal", "are these normal", "explain this", "explain that",
+    "explain above", "above report", "above results", "check my report",
     "te ghyava ka", "te kadhi ghyayche", "tyache side effects", "tyacha dushparinam",
-    "ye kab lena hai", "iski dose", "iske side effect", "kya ye safe hai"
+    "ye kab lena hai", "iski dose", "iske side effect", "kya ye safe hai",
+    "iska matlab", "kya matlab", "arth kay", "arth kya", "sang", "sanga"
 ]
+
+CLINICAL_FOLLOWUP_TRIGGERS = [
+    "explain", "report", "above", "result", "results", "what does this mean",
+    "what do these mean", "what does that mean", "meaning", "interpretation",
+    "test", "tests", "normal", "abnormal", "high", "low", "bad", "risky",
+    "dangerous", "serious", "why", "what should i do", "what to do",
+    "kya matlab", "iska matlab", "arth kay", "arth kya", "sang", "sanga",
+    "samjhav", "samjhao", "spasht kara", "theek hai kya", "bar ahe ka",
+    "kasa ahe", "kaisa hai"
+]
+
+def sanitize_kgmu_references(text: str) -> str:
+    """
+    Purges and sanitizes any external hospital branding (KGMU / King George's Medical University)
+    from answers so no legacy portal references leak into user responses.
+    """
+    if not text or not isinstance(text, str):
+        return text
+
+    t = re.sub(r"https?://\S*kgmu\S*", "https://medassist.ai", text, flags=re.IGNORECASE)
+    t = re.sub(r"www\.kgmu\.org\S*", "www.medassist.ai", t, flags=re.IGNORECASE)
+    t = re.sub(r"\b\S*kgmu\S*@\S*", "support@medassist.ai", t, flags=re.IGNORECASE)
+    t = re.sub(r"[a-zA-Z0-9._%+-]*kgmu[a-zA-Z0-9._%+-]*@[a-zA-Z0-9.-]+", "support@medassist.ai", t, flags=re.IGNORECASE)
+    t = re.sub(r"\bKing George[’']?s? Medical University\s*(?:\(KGMU\))?", "MedAssist AI", t, flags=re.IGNORECASE)
+    t = re.sub(r"\bKing George[’']?s?\b", "MedAssist AI", t, flags=re.IGNORECASE)
+    t = re.sub(r"\bKGMU\b", "MedAssist AI", t, flags=re.IGNORECASE)
+
+    t = re.sub(r"(?i)\bbook an appointment at MedAssist AI\b", "consult a qualified doctor or healthcare facility", t)
+    t = re.sub(r"(?i)\bat MedAssist AI\b", "with your healthcare provider", t)
+    t = re.sub(r"(?i)\bfrom MedAssist AI\b", "from your healthcare provider", t)
+    t = re.sub(r"(?i)\bto MedAssist AI\b", "to your medical specialist", t)
+
+    return t
+
+def has_clinical_history_context(session_history: List[dict]) -> bool:
+    """
+    Checks if recent messages in session history contain clinical context,
+    symptoms, or a lab report summary.
+    """
+    if not session_history:
+        return False
+
+    clinical_markers = [
+        "[clinical lab report context]", "lab report", "biomarker", "hemoglobin",
+        "glucose", "creatinine", "sugar", "cholesterol", "platelet", "wbc", "rbc",
+        "urea", "uric acid", "bilirubin", "sgpt", "sgot", "tsh", "mg/dl", "g/dl",
+        "doctor", "hospital", "medicine", "prescription", "symptom", "pain", "fever",
+        "cough", "diagnosis", "treatment", "infection", "blood test", "flagged parameters"
+    ]
+
+    for item in session_history[-6:]:
+        msg = str(item.get("message") or item.get("content") or "").lower()
+        syms = item.get("symptoms") or []
+        if syms:
+            return True
+        if any(marker in msg for marker in clinical_markers):
+            return True
+    return False
+
+def is_conversational_followup_query(text: str, session_history: Optional[List[dict]] = None) -> bool:
+    """
+    Detects if a user query is a conversational follow-up to ongoing clinical discussion,
+    such as 'explain me', 'what does this mean', 'explain above results',
+    even when preceded by a casual greeting ('helo explain me...').
+    """
+    if not text:
+        return False
+    lower = text.lower().strip()
+
+    # Strip leading casual greeting formulas like 'helo ', 'hi ', 'hey '
+    stripped = re.sub(r"^(?:hi|hello|helo|hey|namaste|namaskar|pranam|hlo|hii)\b[\s,!-]*", "", lower).strip()
+    target = stripped if stripped else lower
+
+    has_trigger = any(re.search(r"\b" + re.escape(trig) + r"\b", target) for trig in CLINICAL_FOLLOWUP_TRIGGERS)
+    if not has_trigger:
+        has_trigger = any(trig in target for trig in [
+            "what does this mean", "what do these mean", "what does that mean",
+            "explain me", "explain this", "explain that", "explain above",
+            "above report", "above result", "above results", "check my report"
+        ])
+
+    if has_trigger:
+        if session_history is not None:
+            return has_clinical_history_context(session_history)
+        return True
+
+    return False
 
 # Ambiguous, underspecified single-word or short symptom queries
 AMBIGUOUS_PATTERNS = {
@@ -215,10 +307,11 @@ def sanitize_prompt_input(text: str) -> Tuple[str, bool]:
 def extract_referenced_entities_from_history(history: List[dict]) -> Dict[str, str]:
     """
     Scans the recent conversation history to identify the last mentioned medicine,
-    symptom, or clinical condition for anaphoric pronoun resolution.
+    symptom, clinical condition, or lab report for anaphoric pronoun resolution.
     """
     last_medicine = ""
     last_condition = ""
+    last_lab_report = ""
 
     for item in reversed(history[-6:]):
         msg = str(item.get("message") or item.get("content") or "").lower()
@@ -235,37 +328,50 @@ def extract_referenced_entities_from_history(history: List[dict]) -> Dict[str, s
                     last_condition = cond
                     break
 
-        if last_medicine and last_condition:
+        if not last_lab_report:
+            if any(k in msg for k in ["[clinical lab report context]", "flagged parameters", "biomarkers evaluated", "blood test", "hemoglobin", "glucose", "creatinine"]):
+                last_lab_report = "the laboratory blood test results"
+
+        if last_medicine and last_condition and last_lab_report:
             break
 
     return {
         "last_medicine": last_medicine,
-        "last_condition": last_condition
+        "last_condition": last_condition,
+        "last_lab_report": last_lab_report,
     }
 
 
 def resolve_followup_references(user_text: str, history: List[dict]) -> Tuple[str, Optional[str]]:
     """
-    Resolves conversational pronouns ('it', 'that', 'its side effects')
-    using tracked entities from the recent conversation history.
+    Resolves conversational pronouns ('it', 'that', 'its side effects') and
+    follow-up requests ('explain', 'what does this mean', 'above report')
+    using tracked entities from recent conversation history.
     Returns (enriched_prompt, resolved_entity_note).
     """
     if not user_text or not history:
         return user_text, None
 
     lower = user_text.lower().strip()
-    is_reference = any(trig in lower for trig in REFERENCE_TRIGGERS) or bool(re.search(r"\b(?:that|it|its|this)\b", lower))
+    is_reference = (
+        any(trig in lower for trig in REFERENCE_TRIGGERS)
+        or bool(re.search(r"\b(?:that|it|its|this|these|above|report|results)\b", lower))
+        or is_conversational_followup_query(user_text, history)
+    )
     if not is_reference:
         return user_text, None
 
     entities = extract_referenced_entities_from_history(history)
-    resolved_entity = entities["last_medicine"] or entities["last_condition"]
+    resolved_entity = entities["last_medicine"] or entities["last_condition"] or entities.get("last_lab_report")
+    if not resolved_entity and has_clinical_history_context(history):
+        resolved_entity = "the medical findings and test results discussed earlier in this conversation"
+
     if not resolved_entity:
         return user_text, None
 
     enriched_prompt = (
         f"{user_text}\n"
-        f"[Context resolution: The user's pronouns ('it' / 'that') refer to '{resolved_entity}' "
+        f"[Context resolution: The user is asking to explain or interpret '{resolved_entity}' "
         f"discussed in recent turns of this conversation.]"
     )
     return enriched_prompt, resolved_entity
@@ -367,6 +473,8 @@ def is_greeting_message(text: str) -> bool:
     if not text:
         return False
     clean = text.strip().lower()
+    if is_conversational_followup_query(clean):
+        return False
     return any(re.search(pat, clean) for pat in GREETING_PATTERNS)
 
 

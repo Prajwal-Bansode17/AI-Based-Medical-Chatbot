@@ -160,7 +160,8 @@ class TestPhasePY2Robustness(unittest.TestCase):
     # ================================================================
     def test_ollama_timeout_fallback_to_gemini_or_offline(self):
         # Mock _ollama_request directly on api module
-        with patch.object(api, "OLLAMA_ENABLED", True), \
+        with patch.dict(os.environ, {"AI_PRIMARY_PROVIDER": "ollama"}), \
+             patch.object(api, "OLLAMA_ENABLED", True), \
              patch.object(api, "_ollama_request", side_effect=api.OllamaError("Ollama request timed out after 25.0s")):
 
             sess = "test_timeout_fallback_session"
@@ -171,7 +172,7 @@ class TestPhasePY2Robustness(unittest.TestCase):
             # The request must succeed without crashing or blocking, using Gemini or MEDIQ/knowledge-base/general fallback
             self.assertIn("answer", data)
             self.assertTrue(len(data["answer"]) > 10)
-            self.assertIn(data["source"], ["gemini", "mediq", "medical_knowledge", "safe_fallback", "general_fallback"])
+            self.assertIn(data["source"], ["gemini", "mediq", "medical_knowledge", "safe_fallback", "general_fallback", "local_medical_retrieval"])
 
             # Ollama should have been placed into cooldown
             self.assertTrue(api._ollama_in_cooldown())
@@ -180,7 +181,8 @@ class TestPhasePY2Robustness(unittest.TestCase):
 
     def test_ollama_connection_refused_fallback(self):
         # Mock _ollama_request directly on api module
-        with patch.object(api, "OLLAMA_ENABLED", True), \
+        with patch.dict(os.environ, {"AI_PRIMARY_PROVIDER": "ollama"}), \
+             patch.object(api, "OLLAMA_ENABLED", True), \
              patch.object(api, "_ollama_request", side_effect=api.OllamaError("cannot reach Ollama at http://localhost:11434: Connection refused")):
 
             sess = "test_conn_error_session"
@@ -190,7 +192,7 @@ class TestPhasePY2Robustness(unittest.TestCase):
 
         self.assertIn("answer", data)
         self.assertIn("sore_throat", data.get("symptoms", []))
-        self.assertIn(data["source"], ["gemini", "medical_knowledge", "mediq", "symptom_fallback", "conversation_memory", "safe_fallback"])
+        self.assertIn(data["source"], ["gemini", "medical_knowledge", "mediq", "symptom_fallback", "conversation_memory", "safe_fallback", "local_medical_retrieval"])
 
         api._ollama_mark_up()
 

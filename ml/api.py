@@ -83,6 +83,9 @@ from conversation_engine import (
     generate_clinical_follow_up_questions,
     get_quick_reply_chips,
     attach_atmospheric_advisory,
+    has_clinical_history_context,
+    is_conversational_followup_query,
+    sanitize_kgmu_references,
 )
 from environmental_health import (
     get_atmospheric_context,
@@ -770,7 +773,7 @@ def _normalize_ollama_base_url(value):
     return value.rstrip("/")
 
 
-OLLAMA_ENABLED = _env_bool("OLLAMA_ENABLED", True)
+OLLAMA_ENABLED = _env_bool("OLLAMA_ENABLED", False)  # Demoted to optional local debug flag
 OLLAMA_BASE_URL = _normalize_ollama_base_url(
     os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
 )
@@ -1002,7 +1005,7 @@ HF_TOKEN = (
 ).strip()
 HF_API_URL = os.getenv(
     "HF_API_URL",
-    f"https://router.huggingface.co/hf-inference/models/{HF_MODEL_NAME}",
+    f"https://api-inference.huggingface.co/models/{HF_MODEL_NAME}",
 )
 HF_TIMEOUT = _env_float("HF_TIMEOUT", 12.0)
 HF_ENABLED = _env_bool("HF_ENABLED", True)
@@ -1018,10 +1021,9 @@ def query_hf_chat(
     language="en",
     correlation_id=None,
 ):
-    if not HF_ENABLED or not HF_TOKEN:
+    if not HF_ENABLED:
         return None
 
-    api_url = HF_API_URL
     token = HF_TOKEN
 
     headers = {
@@ -1032,11 +1034,24 @@ def query_hf_chat(
     if token:
         headers["Authorization"] = f"Bearer {token}"
 
+    # Multi-turn context synthesis
+    effective_messages = list(messages) if messages and isinstance(messages, list) else []
+    if not effective_messages and session_id:
+        try:
+            hist = get_chat_history(session_id, limit=6)
+            for h in hist:
+                r = "assistant" if h.get("role") == "assistant" else "user"
+                m = str(h.get("message") or "").strip()
+                if m:
+                    effective_messages.append({"role": r, "content": m})
+        except Exception:
+            pass
+
     full_prompt = ""
     if system_prompt:
         full_prompt += f"<|system|>\n{system_prompt}\n"
-    if messages and isinstance(messages, list):
-        for msg in messages:
+    if effective_messages:
+        for msg in effective_messages:
             role = msg.get("role", "user")
             content = msg.get("content", "")
             if role == "system" and not system_prompt:
@@ -1058,53 +1073,61 @@ def query_hf_chat(
     }
 
     req_body = json.dumps(payload).encode("utf-8")
-    req = urllib.request.Request(api_url, data=req_body, headers=headers, method="POST")
 
-    try:
-        t0 = time.monotonic()
-        with urllib.request.urlopen(req, timeout=HF_TIMEOUT) as resp:
-            elapsed = time.monotonic() - t0
-            raw_body = resp.read().decode("utf-8")
-            data = json.loads(raw_body)
-            answer = ""
-            if isinstance(data, list) and len(data) > 0 and isinstance(data[0], dict):
-                answer = data[0].get("generated_text") or data[0].get("text") or ""
-            elif isinstance(data, dict):
-                if "generated_text" in data:
-                    answer = str(data["generated_text"])
-                elif "choices" in data and len(data["choices"]) > 0:
-                    choice = data["choices"][0]
-                    if "message" in choice and "content" in choice["message"]:
-                        answer = str(choice["message"]["content"])
-                    elif "text" in choice:
-                        answer = str(choice["text"])
-            if answer and answer.strip():
-                logger.info(
-                    "[%s] HF model inference succeeded in %.2fs",
-                    correlation_id or "HF",
-                    elapsed,
-                )
-                return answer.strip()
-    except urllib.error.HTTPError as err:
-        err_msg = ""
+    candidate_endpoints = [HF_API_URL]
+    router_fallback = f"https://router.huggingface.co/hf-inference/models/{HF_MODEL_NAME}"
+    if router_fallback not in candidate_endpoints:
+        candidate_endpoints.append(router_fallback)
+
+    for api_url in candidate_endpoints:
+        req = urllib.request.Request(api_url, data=req_body, headers=headers, method="POST")
         try:
-            err_msg = err.read().decode("utf-8", errors="ignore")
-        except Exception:
-            pass
-        logger.warning(
-            "[%s] HF model inference HTTP %d (failing over to Layer 3): %s",
-            correlation_id or "HF",
-            err.code,
-            err_msg[:160],
-        )
-        return None
-    except Exception as ex:
-        logger.warning(
-            "[%s] HF model inference failed (%s) - failing over to Layer 3",
-            correlation_id or "HF",
-            ex,
-        )
-        return None
+            t0 = time.monotonic()
+            with urllib.request.urlopen(req, timeout=HF_TIMEOUT) as resp:
+                elapsed = time.monotonic() - t0
+                raw_body = resp.read().decode("utf-8")
+                data = json.loads(raw_body)
+                answer = ""
+                if isinstance(data, list) and len(data) > 0 and isinstance(data[0], dict):
+                    answer = data[0].get("generated_text") or data[0].get("text") or ""
+                elif isinstance(data, dict):
+                    if "generated_text" in data:
+                        answer = str(data["generated_text"])
+                    elif "choices" in data and len(data["choices"]) > 0:
+                        choice = data["choices"][0]
+                        if "message" in choice and "content" in choice["message"]:
+                            answer = str(choice["message"]["content"])
+                        elif "text" in choice:
+                            answer = str(choice["text"])
+                if answer and answer.strip():
+                    logger.info(
+                        "[%s] HF model inference succeeded in %.2fs via %s",
+                        correlation_id or "HF",
+                        elapsed,
+                        api_url,
+                    )
+                    return sanitize_kgmu_references(answer.strip())
+        except urllib.error.HTTPError as err:
+            err_msg = ""
+            try:
+                err_msg = err.read().decode("utf-8", errors="ignore")
+            except Exception:
+                pass
+            logger.warning(
+                "[%s] HF model inference HTTP %d on %s: %s",
+                correlation_id or "HF",
+                err.code,
+                api_url,
+                err_msg[:160],
+            )
+        except Exception as ex:
+            logger.warning(
+                "[%s] HF model inference exception on %s: %s",
+                correlation_id or "HF",
+                api_url,
+                ex,
+            )
+
     return None
 
 
@@ -1252,35 +1275,37 @@ def get_ai_status_fields():
     if primary_pref == "gemini":
         if gemini_configured:
             primary = "gemini"
+        elif HF_ENABLED:
+            primary = "huggingface"
         elif OLLAMA_ENABLED:
             primary = "ollama"
-        elif HF_ENABLED and bool(HF_TOKEN):
-            primary = "huggingface"
         else:
             primary = "none"
     elif primary_pref == "ollama":
         if OLLAMA_ENABLED:
             primary = "ollama"
+        elif HF_ENABLED:
+            primary = "huggingface"
         elif gemini_configured:
             primary = "gemini"
-        elif HF_ENABLED and bool(HF_TOKEN):
-            primary = "huggingface"
         else:
             primary = "none"
     elif primary_pref == "huggingface":
         if HF_ENABLED:
             primary = "huggingface"
+        elif gemini_configured:
+            primary = "gemini"
         elif OLLAMA_ENABLED:
             primary = "ollama"
-        elif gemini_configured:
-            primary = "gemini"
         else:
             primary = "none"
-    else:  # "auto" -> accurately reflects text-query execution priority (Ollama first, then Gemini)
-        if OLLAMA_ENABLED:
-            primary = "ollama"
+    else:  # "auto" -> Custom Model (Hugging Face) is primary, then Gemini, then Ollama debug
+        if HF_ENABLED:
+            primary = "huggingface"
         elif gemini_configured:
             primary = "gemini"
+        elif OLLAMA_ENABLED:
+            primary = "ollama"
         else:
             primary = "none"
 
@@ -1354,7 +1379,7 @@ def _build_medical_system_instruction(language, memory_summary=""):
     target_language = language_names.get(language, "English")
 
     instruction = (
-        f"You are MEDASSIST AI, an expert medical communication assistant.\n"
+        f"You are MedAssist AI, a specialized intelligent clinical assistant. Never reference external hospital websites like KGMU.\n"
         f"TARGET RESPONSE LANGUAGE: {target_language}.\n\n"
         f"INPUT UNDERSTANDING:\n"
         f"- The user may communicate in English, Hindi, Marathi, Romanized Marathi, Romanized Hindi, "
@@ -1365,13 +1390,14 @@ def _build_medical_system_instruction(language, memory_summary=""):
         f"acknowledge that detail and move forward.\n"
         f"3. DO NOT repeatedly ask for details the patient has already provided.\n"
         f"4. If essential clinical information is still missing, ask AT MOST ONE focused, relevant follow-up question.\n"
-        f"5. Resolve pronouns and references (e.g. 'that pain', 'it is getting worse', 'what should I do now?') using recent conversation turns.\n"
+        f"5. Resolve pronouns and references (e.g. 'that pain', 'it is getting worse', 'what should I do now?', 'explain above results') using recent conversation turns.\n"
         f"6. Explain common causes clearly, offer practical general self-care advice, and highlight red-flag warning signs requiring urgent medical attention.\n"
         f"7. Do not provide a definitive diagnosis or claim certainty. Do not prescribe specific drug dosages.\n"
         f"8. OUTPUT LANGUAGE REQUIREMENT: Write the ENTIRE response in {target_language}. "
         f"If the target is Marathi or Hindi, use native Devanagari script. Standard medicine names, units, and proper names may remain intact.\n"
         f"9. NEVER repeat self-introductions (such as 'Hello! I am MEDASSIST AI...' or 'Welcome to MEDASSIST AI'). "
         f"Do not start every message with greeting formulas. Address the user's question directly and concisely.\n"
+        f"10. SYSTEM IDENTITY: You are MedAssist AI. Never reference external hospital portals, OPD booking counters, or institutions like KGMU (King George's Medical University). All clinical guidance is provided directly by MedAssist AI.\n"
     )
     if memory_summary:
         instruction += f"\nCONFIRMED PATIENT FACTS IN THIS CONVERSATION:\n{memory_summary}\n"
@@ -1596,16 +1622,16 @@ def generate_medical_response_with_provider(
 
     if primary_pref == "gemini":
         _add_gemini()
-        _add_ollama()
-        _add_hf()
-    elif primary_pref == "huggingface":
         _add_hf()
         _add_ollama()
-        _add_gemini()
-    else:  # "auto" or "ollama" -> local Ollama first, then HF, then Gemini cloud fallback
+    elif primary_pref == "ollama":
         _add_ollama()
         _add_hf()
         _add_gemini()
+    else:  # "auto" or "huggingface" -> Custom Model (Hugging Face) is primary, then Gemini, then Ollama debug
+        _add_hf()
+        _add_gemini()
+        _add_ollama()
 
     for provider_name, call in providers:
         t_prov_start = time.monotonic()
@@ -1626,7 +1652,14 @@ def generate_medical_response_with_provider(
             if translated:
                 answer = translated.strip()
 
-        return answer, provider_name
+        return sanitize_kgmu_references(answer), provider_name
+
+    # Secondary / Graceful Fallback: Local curated medical retrieval (MEDIQ / Clinical KB) for text queries
+    if not image_bytes:
+        local_answer = retrieve_local_finetune_answer(user_text, language=language)
+        if local_answer and local_answer.strip():
+            logger.info("[%s] Graceful fallback to local curated medical retrieval", correlation_id or "AI")
+            return sanitize_kgmu_references(local_answer.strip()), "local_medical_retrieval"
 
     return None, None
 
@@ -2236,7 +2269,7 @@ MEDICAL_KEYWORDS = {
 }
 
 
-def is_medical_query(text):
+def is_medical_query(text, session_id=None):
     normalized = normalize_text(text)
     words = set(normalized.split())
 
@@ -2246,6 +2279,13 @@ def is_medical_query(text):
         return True
     if extract_medical_measurements(text):
         return True
+    if session_id:
+        try:
+            hist = get_chat_history(session_id, limit=6)
+            if is_conversational_followup_query(text, hist):
+                return True
+        except Exception:
+            pass
 
     return False
 
@@ -2257,8 +2297,15 @@ FOLLOWUP_PATTERNS = [
     "what should i do", "what can i do", "what to do",
     "what care", "care should i take", "what precautions",
     "how should i care", "how to take care", "home care",
+    # Contextual follow-up triggers for reports, results, interpretations
+    "explain", "report", "above", "results", "result", "findings",
+    "what does this mean", "what do these mean", "what does that mean",
+    "meaning of this", "what does it mean", "is this normal", "are these normal",
+    "is it risky", "is it dangerous", "explain this", "explain that",
+    "explain above", "above report", "above results", "check my report",
     # Marathi/Hindi conversational continuations (normalize_text maps 'kay'/'kya' -> 'what')
-    "aata", "ata", "kya karu", "kay karu", "what karu",
+    "aata", "ata", "kya karu", "kay karu", "what karu", "kya matlab", "arth kay",
+    "theek hai ka", "thik hai kya", "sang", "sanga",
 ]
 
 _FOLLOWUP_RE = re.compile(
@@ -2290,7 +2337,7 @@ def is_greeting(text):
 def is_contextual_followup(text, session_id=None, previous_symptoms=None):
     """
     Determines if text is a conversational continuation or follow-up to an
-    ongoing symptom discussion, even if it does not repeat a symptom keyword.
+    ongoing symptom discussion or clinical/lab-report context.
     """
     if not text:
         return False
@@ -2302,7 +2349,16 @@ def is_contextual_followup(text, session_id=None, previous_symptoms=None):
     if is_followup_query(text):
         return True
 
-    # 2. Reference to previous symptoms/pain/condition
+    # 2. Conversational follow-up triggers ('explain', 'report', 'above', 'results', 'what does this mean', 'helo explain me...')
+    if session_id:
+        try:
+            hist = get_chat_history(session_id, limit=6)
+            if is_conversational_followup_query(text, hist):
+                return True
+        except Exception:
+            pass
+
+    # 3. Reference to previous symptoms/pain/condition
     reference_patterns = [
         "that pain", "this pain", "the pain", "that ache", "this ache",
         "that discomfort", "it is getting", "it gets", "it started",
@@ -2314,7 +2370,7 @@ def is_contextual_followup(text, session_id=None, previous_symptoms=None):
     if any(p in lower or p in norm for p in reference_patterns):
         return True
 
-    # 3. If there is active previous symptom context in the session:
+    # 4. If there is active previous symptom context in the session:
     if previous_symptoms:
         # User is answering with a duration or time reference
         time_reference_phrases = (
@@ -2840,10 +2896,20 @@ def build_followup_response(session_id, text):
             "If your symptoms worsen or do not improve, please consult a healthcare professional."
         )
 
+    # Contextual continuity for lab report or clinical history
+    if has_clinical_history_context(history):
+        return (
+            "Based on the laboratory test results and clinical details discussed above, "
+            "I am reviewing your parameters. For any flagged or out-of-range values, "
+            "it is recommended to review them with your consulting physician. "
+            "In general, maintaining a balanced diet, proper hydration, and lifestyle moderation "
+            "can support healthy levels. Please let me know which specific biomarker or concern you would like me to explain further."
+        )
+
     return None
 
 
-def general_fallback(text):
+def general_fallback(text, session_id=None):
     query = normalize_text(text)
 
     if "mobile phone" in query or ("mobile" in query and "phone" in query):
@@ -2865,6 +2931,18 @@ def general_fallback(text):
             "for web development, data analysis, automation, artificial "
             "intelligence and machine learning."
         )
+
+    if session_id:
+        try:
+            hist = get_chat_history(session_id, limit=6)
+            if has_clinical_history_context(hist):
+                return (
+                    "Regarding your previous health discussion and results above: "
+                    "I am monitoring this conversation context. Please let me know which "
+                    "specific symptom, medication, or test result you would like me to explain further."
+                )
+        except Exception:
+            pass
 
     return (
         "I can mainly help with medical and health-related questions. "
@@ -3751,6 +3829,10 @@ def predict():
     def _json_response(payload, status_code=200):
         if isinstance(payload, dict):
             payload["correlation_id"] = correlation_id
+            if "answer" in payload and isinstance(payload["answer"], str):
+                payload["answer"] = sanitize_kgmu_references(payload["answer"])
+            if "response" in payload and isinstance(payload["response"], str):
+                payload["response"] = sanitize_kgmu_references(payload["response"])
             if status_code == 200:
                 if "response" not in payload and "answer" in payload:
                     payload["response"] = payload["answer"]
@@ -4177,7 +4259,7 @@ def predict():
         measurements = extract_medical_measurements(analysis_text)
         previous_symptoms = get_previous_symptoms(session_id)
         conversation_context = build_conversation_context(session_id, limit=12)
-        medical_query = is_medical_query(analysis_text)
+        medical_query = is_medical_query(analysis_text, session_id=session_id)
         normalized_query = normalize_text(text)
 
         # ----------------------------------------------------
@@ -4454,9 +4536,12 @@ def predict():
         # FOLLOW-UP
         # ----------------------------------------------------
         is_followup = is_contextual_followup(text, session_id=session_id, previous_symptoms=previous_symptoms)
-        if is_followup and previous_symptoms and (not symptoms or set(symptoms).issubset(set(previous_symptoms)) or bool(_resolved_note)):
+        has_clinical_context = has_clinical_history_context(recent_history) if recent_history else bool(previous_symptoms)
+        is_conv_followup = is_conversational_followup_query(text, recent_history) if recent_history else False
+
+        if (is_followup or is_conv_followup) and (previous_symptoms or has_clinical_context) and (not symptoms or set(symptoms).issubset(set(previous_symptoms)) or bool(_resolved_note) or has_clinical_context):
             followup_context = ""
-            if any(phrase in normalized_query for phrase in CARE_PHRASES):
+            if previous_symptoms and any(phrase in normalized_query for phrase in CARE_PHRASES):
                 followup_context = build_multi_symptom_response(
                     previous_symptoms, "assistance"
                 ) or ""
@@ -4477,10 +4562,21 @@ def predict():
                 source = ai_provider
             else:
                 followup_raw = build_followup_response(session_id, text)
-                followup_answer = localize_answer(followup_raw, final_language) if followup_raw else None
-                source = "conversation_memory"
+                if followup_raw:
+                    followup_answer = localize_answer(followup_raw, final_language)
+                    source = "conversation_memory"
+                elif has_clinical_context:
+                    followup_answer = localize_answer(
+                        "Based on our discussion and your recent reports, please discuss these specific values and symptoms directly with your healthcare professional for clinical correlation and diagnosis.",
+                        final_language
+                    )
+                    source = "clinical_continuity"
+                else:
+                    followup_answer = None
+                    source = "conversation_memory"
 
             if followup_answer:
+                effective_symptoms = previous_symptoms or symptoms or []
                 save_structured_memories(
                     session_id=session_id,
                     text=text,
@@ -4488,8 +4584,8 @@ def predict():
                     duration=duration,
                     previous_symptoms=previous_symptoms,
                 )
-                _record_message("user", text, previous_symptoms)
-                _record_message("assistant", followup_answer, previous_symptoms)
+                _record_message("user", text, effective_symptoms)
+                _record_message("assistant", followup_answer, effective_symptoms)
                 _maybe_save_user_prefs()
 
                 return _json_response({
@@ -4498,7 +4594,7 @@ def predict():
                     "question": text,
                     "intent": "follow_up",
                     "confidence": round(confidence, 4),
-                    "symptoms": previous_symptoms,
+                    "symptoms": effective_symptoms,
                     "previous_symptoms": previous_symptoms,
                     "duration": duration,
                     "measurements": measurements,
@@ -4512,7 +4608,7 @@ def predict():
         # ----------------------------------------------------
         # GENERAL (non-medical) QUERY
         # ----------------------------------------------------
-        if not medical_query and not is_followup:
+        if not medical_query and not is_followup and not is_conv_followup:
             ai_answer, ai_provider = generate_medical_response_with_provider(
                 user_text=text,
                 language=final_language,
@@ -4543,7 +4639,7 @@ def predict():
                     "language": final_language,
                 })
 
-            answer = localize_answer(general_fallback(analysis_text), final_language)
+            answer = localize_answer(general_fallback(analysis_text, session_id=session_id), final_language)
 
             _record_message("user", text, symptoms)
             _record_message("assistant", answer, symptoms)
