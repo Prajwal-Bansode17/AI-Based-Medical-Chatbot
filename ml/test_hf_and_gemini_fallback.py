@@ -124,6 +124,59 @@ class TestHuggingFaceAndGeminiFallback(unittest.TestCase):
             self.assertEqual(prov, "local_medical_retrieval")
             self.assertLess(elapsed, 3.0)  # Zero 15-second delay!
 
+    def test_predict_lab_report_context_long_text_no_400(self):
+        client = api.app.test_client()
+        # Simulated long lab report context (e.g. 3500 characters)
+        long_lab_context = "[CLINICAL LAB REPORT CONTEXT]\nSummary: Routine health check.\n" + (
+            "Flagged Parameters:\n- Hemoglobin: 10.2 g/dL (Normal: 12.0-15.5 g/dL, Status: Low)\n"
+            "- Fasting Blood Sugar: 145 mg/dL (Normal: 70-99 mg/dL, Status: High)\n"
+            "- Serum Creatinine: 1.1 mg/dL (Normal: 0.6-1.2 mg/dL, Status: Normal)\n"
+        ) * 20 + "\nUser Question: What do these results mean?"
+
+        res = client.post("/predict", json={
+            "session_id": "test_lab_session_123",
+            "text": long_lab_context,
+            "user_id": "user_supabase_uuid_999",
+            "user_name": "Aarav",
+            "user_age": 30,
+            "user_gender": "Male",
+            "age": 30,
+            "gender": "Male",
+        })
+        self.assertEqual(res.status_code, 200, f"Predict failed: {res.get_json()}")
+        data = res.get_json()
+        self.assertEqual(data.get("status"), "success")
+        self.assertIsNotNone(data.get("answer"))
+
+    def test_predict_null_or_missing_optional_fields_no_400(self):
+        client = api.app.test_client()
+        # All optional demographic fields null or missing
+        res = client.post("/predict", json={
+            "session_id": "test_null_demographics",
+            "text": "I have mild fever and sore throat",
+            "user_name": None,
+            "user_age": None,
+            "user_gender": None,
+            "age": None,
+            "gender": None,
+            "ocr_text": None,
+            "image_base64": None,
+        })
+        self.assertEqual(res.status_code, 200, f"Predict failed: {res.get_json()}")
+        data = res.get_json()
+        self.assertEqual(data.get("status"), "success")
+
+    def test_predict_message_field_alternative_no_400(self):
+        client = api.app.test_client()
+        # Client sends 'message' instead of 'text'
+        res = client.post("/predict", json={
+            "session_id": "test_msg_field",
+            "message": "What is the recommended treatment for dehydration?",
+        })
+        self.assertEqual(res.status_code, 200, f"Predict failed: {res.get_json()}")
+        data = res.get_json()
+        self.assertEqual(data.get("status"), "success")
+
 
 if __name__ == "__main__":
     unittest.main()

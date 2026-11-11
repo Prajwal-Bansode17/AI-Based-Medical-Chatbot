@@ -9,6 +9,12 @@ data class PredictionRequest(
     @SerializedName("text")
     val text: String,
 
+    @SerializedName("message")
+    val message: String? = null,
+
+    @SerializedName("symptoms")
+    val symptoms: List<String>? = null,
+
     @SerializedName("image_base64")
     val imageBase64: String? = null,
 
@@ -33,8 +39,14 @@ data class PredictionRequest(
     @SerializedName("user_age")
     val userAge: Int? = null,
 
+    @SerializedName("age")
+    val age: Int? = null,
+
     @SerializedName("user_gender")
-    val userGender: String? = null
+    val userGender: String? = null,
+
+    @SerializedName("gender")
+    val gender: String? = null
 )
 
 data class PredictionResponse(
@@ -89,8 +101,17 @@ data class PredictionResponse(
     @SerializedName("user_age")
     val userAge: Int? = null,
 
+    @SerializedName("age")
+    val age: Int? = null,
+
     @SerializedName("user_gender")
-    val userGender: String? = null
+    val userGender: String? = null,
+
+    @SerializedName("gender")
+    val gender: String? = null,
+
+    @SerializedName("message")
+    val message: String? = null
 )
 
 data class Measurement(

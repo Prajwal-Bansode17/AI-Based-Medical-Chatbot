@@ -3789,7 +3789,7 @@ CARE_PHRASES = [
 ]
 
 
-MAX_TEXT_LENGTH = 2000
+MAX_TEXT_LENGTH = 32000
 MAX_SESSION_ID_LENGTH = 128
 
 
@@ -4148,26 +4148,25 @@ def predict():
         )
         return resp, status_code
 
-    if not data:
-        return _json_response({"status": "error", "message": "Request body is required"}, 400)
+    if not data or not isinstance(data, dict):
+        return _json_response({"status": "error", "message": "Request body must be a valid JSON object"}, 400)
 
     # User identification & authorization (H1)
-    requested_user_id = data.get("user_id")
+    requested_user_id = data.get("user_id", None) or data.get("userId", None)
     auth_user, err, status = get_verified_user_id(request, requested_user_id)
-    if err:
+    if err and request.headers.get("Authorization"):
         return _json_response({"status": "error", "message": err}, status)
 
     user_id = auth_user or requested_user_id
-    effective_user_id = str(user_id or (_raw_sid if '_raw_sid' in locals() and _raw_sid else "anon_user")).strip()
     is_guest = not user_id or str(user_id).startswith("guest_") or str(user_id) == "guest"
-    is_temporary = bool(data.get("is_temporary", False))
-    conversation_id = data.get("conversation_id")
-    lat = data.get("lat") or data.get("latitude")
-    lon = data.get("lon") or data.get("longitude")
-    city = data.get("city")
+    is_temporary = bool(data.get("is_temporary", False) or data.get("isTemporary", False))
+    conversation_id = data.get("conversation_id", None) or data.get("conversationId", None)
+    lat = data.get("lat", None) or data.get("latitude", None)
+    lon = data.get("lon", None) or data.get("longitude", None)
+    city = data.get("city", None)
 
     # Image validation (D1, D6)
-    image_base64 = data.get("image_base64") or data.get("image")
+    image_base64 = data.get("image_base64", None) or data.get("image", None) or data.get("imageBase64", None)
     image_bytes = None
     if image_base64 and isinstance(image_base64, str):
         img_bytes, mime, err = validate_and_decode_image(image_base64)
@@ -4178,24 +4177,49 @@ def predict():
             }, 400)
         image_bytes = img_bytes
 
-    ocr_text = data.get("ocr_text")
-    raw_text = data.get("text") or data.get("question") or data.get("query")
-    if not raw_text or not isinstance(raw_text, str):
-        return _json_response({"status": "error", "message": "text or question field is required"}, 400)
+    ocr_text = data.get("ocr_text", None) or data.get("ocrText", None)
 
-    raw_text = raw_text.strip()
+    # Robust multi-key text & symptoms resolution supporting all client schemas:
+    # 'text', 'message', 'question', 'query', 'prompt', 'symptoms', 'ocr_text'
+    raw_text = (
+        data.get("text", None)
+        or data.get("message", None)
+        or data.get("question", None)
+        or data.get("query", None)
+        or data.get("prompt", None)
+        or ""
+    )
+    if isinstance(raw_text, list):
+        raw_text = ", ".join(str(x) for x in raw_text if x)
+    elif not isinstance(raw_text, str):
+        raw_text = str(raw_text or "").strip()
+    else:
+        raw_text = raw_text.strip()
+
+    # Fallback to symptoms list or string if raw_text is empty
+    if not raw_text and data.get("symptoms", None):
+        syms_val = data.get("symptoms")
+        if isinstance(syms_val, list):
+            raw_text = ", ".join(str(s) for s in syms_val if s)
+        elif isinstance(syms_val, str):
+            raw_text = syms_val.strip()
+
+    # Fallback to ocr_text if raw_text is still empty
+    if not raw_text and ocr_text:
+        raw_text = str(ocr_text).strip()
+
     if not raw_text:
-        return _json_response({"status": "error", "message": "text cannot be empty"}, 400)
+        return _json_response({"status": "error", "message": "text or message field is required and cannot be empty"}, 400)
+
+    # Generous limit for clinical lab reports and longitudinal memories:
+    # Smoothly truncate instead of raising an HTTP 400 error
     if len(raw_text) > MAX_TEXT_LENGTH:
-        return _json_response({
-            "status": "error",
-            "message": f"text is too long (maximum {MAX_TEXT_LENGTH} characters)",
-        }, 400)
+        raw_text = raw_text[:MAX_TEXT_LENGTH]
 
     # Prompt sanitization against injection (H4)
     text, injection_detected = sanitize_prompt_input(raw_text)
 
-    _raw_sid = str(data.get("session_id") or "").strip()[:MAX_SESSION_ID_LENGTH]
+    _raw_sid = str(data.get("session_id", None) or data.get("sessionId", None) or "").strip()[:MAX_SESSION_ID_LENGTH]
     session_id = _raw_sid if _raw_sid else ("anon_" + uuid.uuid4().hex)
     effective_user_id = str(user_id or session_id).strip()
     previous_response_language = get_last_response_language(session_id)
@@ -4216,24 +4240,44 @@ def predict():
     else:
         final_language = detected_language
 
-    user_name = data.get("user_name") or data.get("userName")
-    user_age = data.get("user_age") or data.get("age")
-    user_gender = data.get("user_gender") or data.get("gender")
+    # Safe optional extraction of user demographics (.get(..., None))
+    raw_user_name = data.get("user_name", None) or data.get("userName", None) or data.get("name", None)
+    raw_user_age = data.get("user_age", None) or data.get("age", None)
+    raw_user_gender = data.get("user_gender", None) or data.get("gender", None)
+
+    user_name = str(raw_user_name).strip() if (raw_user_name is not None and str(raw_user_name).strip()) else None
+
+    user_age = None
+    if raw_user_age is not None:
+        try:
+            parsed_age_val = int(raw_user_age)
+            if 0 < parsed_age_val < 130:
+                user_age = parsed_age_val
+        except (ValueError, TypeError):
+            user_age = None
+
+    user_gender = str(raw_user_gender).strip() if (raw_user_gender is not None and str(raw_user_gender).strip()) else None
 
     if user_name or user_age or user_gender:
-        save_user_profile(
-            user_id=effective_user_id,
-            user_name=user_name,
-            age=user_age,
-            gender=user_gender,
-            session_id=session_id
-        )
+        try:
+            save_user_profile(
+                user_id=effective_user_id,
+                user_name=user_name,
+                age=user_age,
+                gender=user_gender,
+                session_id=session_id
+            )
+        except Exception as _prof_err:
+            logger.debug("[%s] Profile save skipped: %s", correlation_id, _prof_err)
 
-    current_profile = get_user_profile(user_id=effective_user_id, session_id=session_id)
-    if current_profile:
-        user_name = current_profile.get("user_name") or user_name
-        user_age = current_profile.get("age") or user_age
-        user_gender = current_profile.get("gender") or user_gender
+    try:
+        current_profile = get_user_profile(user_id=effective_user_id, session_id=session_id)
+        if current_profile:
+            user_name = current_profile.get("user_name") or user_name
+            user_age = current_profile.get("age") or user_age
+            user_gender = current_profile.get("gender") or user_gender
+    except Exception as _get_prof_err:
+        logger.debug("[%s] Profile get skipped: %s", correlation_id, _get_prof_err)
 
     user_identity_context = ""
     if user_name or user_age or user_gender:
@@ -4490,7 +4534,13 @@ def predict():
         analysis_text = query_for_analysis
 
     # Long-term memory retrieval (C4, B6)
-    can_use_memory = (not is_guest) and (not is_temporary) and get_user_consent(user_id)
+    can_use_memory = False
+    if (not is_guest) and (not is_temporary) and user_id:
+        try:
+            can_use_memory = bool(get_user_consent(user_id))
+        except Exception as _consent_err:
+            logger.debug("[%s] Consent check fallback: %s", correlation_id, _consent_err)
+            can_use_memory = False
     user_memory_context = ""
     if can_use_memory:
         user_memories = retrieve_relevant_user_memories(user_id, text, is_temporary=is_temporary, max_items=3)

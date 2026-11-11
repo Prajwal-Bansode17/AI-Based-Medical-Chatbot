@@ -1249,6 +1249,7 @@ fun ChatbotScreen(
                                 PredictionRequest(
                                     sessionId = currentSessionId,
                                     text = chatbotText,
+                                    message = chatbotText,
                                     imageBase64 = imageBase64,
                                     ocrText = ocrText.ifBlank { null },
                                     userId = savedUser?.id,
@@ -1257,7 +1258,9 @@ fun ChatbotScreen(
                                     correlationId = requestCorrelationId,
                                     userName = resolvedUserName,
                                     userAge = resolvedUserAge,
-                                    userGender = resolvedUserGender
+                                    age = resolvedUserAge,
+                                    userGender = resolvedUserGender,
+                                    gender = resolvedUserGender
                                 )
                             )
                     }
@@ -1552,6 +1555,7 @@ fun ChatbotScreen(
                         PredictionRequest(
                             sessionId = currentSessionId,
                             text = chatbotText,
+                            message = chatbotText,
                             imageBase64 = imageBase64,
                             ocrText = ocrText.ifBlank { null },
                             userId = savedUser?.id,
@@ -1560,7 +1564,9 @@ fun ChatbotScreen(
                             correlationId = retryCorrelationId,
                             userName = retryResolvedUserName,
                             userAge = retryResolvedUserAge,
-                            userGender = retryResolvedUserGender
+                            age = retryResolvedUserAge,
+                            userGender = retryResolvedUserGender,
+                            gender = retryResolvedUserGender
                         )
                     )
                 }

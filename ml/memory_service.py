@@ -287,16 +287,21 @@ def get_user_consent(user_id: Optional[str]) -> bool:
     if is_guest_user(user_id):
         return False
 
-    conn = _connect()
-    row = conn.execute(
-        "SELECT consent_enabled FROM user_memory_consent WHERE user_id = ?",
-        (str(user_id).strip(),)
-    ).fetchone()
-    conn.close()
-
-    if not row:
+    try:
+        conn = _connect()
+        try:
+            row = conn.execute(
+                "SELECT consent_enabled FROM user_memory_consent WHERE user_id = ?",
+                (str(user_id).strip(),)
+            ).fetchone()
+            if not row:
+                return False
+            return bool(row[0])
+        finally:
+            conn.close()
+    except Exception as ex:
+        logger.debug("get_user_consent error: %s", ex)
         return False
-    return bool(row[0])
 
 
 def set_user_consent(user_id: Optional[str], enabled: bool) -> bool:
@@ -307,20 +312,24 @@ def set_user_consent(user_id: Optional[str], enabled: bool) -> bool:
         return False
 
     clean_id = str(user_id).strip()
-    conn = _connect()
     now = datetime.utcnow().isoformat()
-
-    conn.execute("""
-        INSERT INTO user_memory_consent (user_id, consent_enabled, updated_at)
-        VALUES (?, ?, ?)
-        ON CONFLICT(user_id) DO UPDATE SET
-            consent_enabled = excluded.consent_enabled,
-            updated_at = excluded.updated_at
-    """, (clean_id, 1 if enabled else 0, now))
-
-    conn.commit()
-    conn.close()
-    return True
+    try:
+        conn = _connect()
+        try:
+            conn.execute("""
+                INSERT INTO user_memory_consent (user_id, consent_enabled, updated_at)
+                VALUES (?, ?, ?)
+                ON CONFLICT(user_id) DO UPDATE SET
+                    consent_enabled = excluded.consent_enabled,
+                    updated_at = excluded.updated_at
+            """, (clean_id, 1 if enabled else 0, now))
+            conn.commit()
+            return True
+        finally:
+            conn.close()
+    except Exception as ex:
+        logger.warning("set_user_consent error: %s", ex)
+        return False
 
 
 def save_user_profile(
