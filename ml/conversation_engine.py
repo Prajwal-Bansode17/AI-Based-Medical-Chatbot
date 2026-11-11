@@ -85,6 +85,46 @@ def sanitize_kgmu_references(text: str) -> str:
 
     return t
 
+
+def format_hf_chat_prompt(
+    system_prompt: Optional[str] = None,
+    user_prompt: str = "",
+    messages: Optional[List[dict]] = None,
+) -> str:
+    """
+    Formats multi-turn messages into Hugging Face chat template tokens (<|system|>, <|user|>, <|assistant|>)
+    specifically structured for MedAssist-AI-1B.
+    """
+    full_prompt = ""
+    if system_prompt:
+        full_prompt += f"<|system|>\n{system_prompt}\n"
+    if messages and isinstance(messages, list):
+        for msg in messages:
+            role = msg.get("role", "user")
+            content = msg.get("content", "")
+            if role == "system" and not system_prompt:
+                full_prompt += f"<|system|>\n{content}\n"
+            elif role in ("user", "assistant"):
+                full_prompt += f"<|{role}|>\n{content}\n"
+        if not full_prompt.endswith("<|assistant|>\n"):
+            full_prompt += "<|assistant|>\n"
+    else:
+        full_prompt += f"<|user|>\n{user_prompt}\n<|assistant|>\n"
+    return full_prompt
+
+
+def is_quota_exhausted_error(err_str: str) -> bool:
+    """
+    Detects if an error from Gemini/AI provider is a 429 RESOURCE_EXHAUSTED / quota exceeded error.
+    """
+    if not err_str:
+        return False
+    lower = str(err_str).lower()
+    return any(marker in lower for marker in (
+        "429", "resource_exhausted", "resourceexhausted", "quota", "rate limit", "rate_limit"
+    ))
+
+
 def has_clinical_history_context(session_history: List[dict]) -> bool:
     """
     Checks if recent messages in session history contain clinical context,

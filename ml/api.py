@@ -88,6 +88,8 @@ from conversation_engine import (
     sanitize_kgmu_references,
     detect_identity_query_intent,
     build_identity_response,
+    format_hf_chat_prompt,
+    is_quota_exhausted_error,
 )
 from environmental_health import (
     get_atmospheric_context,
@@ -627,8 +629,14 @@ def translate_text_with_ollama(text, language):
     )
 
 
+_gemini_quota_exhausted_until = 0.0
+
+
 def translate_text_with_gemini(text, language):
+    global _gemini_quota_exhausted_until
     if gemini_client is None or not text:
+        return None
+    if time.monotonic() < _gemini_quota_exhausted_until:
         return None
 
     target_language = _TRANSLATION_TARGETS.get(language)
@@ -643,7 +651,11 @@ def translate_text_with_gemini(text, language):
         translated = getattr(response, "text", None)
         return translated.strip() if translated else None
     except Exception as e:
-        print("Gemini translation error:", e)
+        if is_quota_exhausted_error(str(e)):
+            _gemini_quota_exhausted_until = time.monotonic() + 60.0
+            logger.warning("Gemini 429 quota exhausted during translation; cooled down for 60s")
+        else:
+            logger.warning("Gemini translation error: %s", e)
         return None
 
 
@@ -1054,21 +1066,11 @@ def query_hf_chat(
         except Exception:
             pass
 
-    full_prompt = ""
-    if system_prompt:
-        full_prompt += f"<|system|>\n{system_prompt}\n"
-    if effective_messages:
-        for msg in effective_messages:
-            role = msg.get("role", "user")
-            content = msg.get("content", "")
-            if role == "system" and not system_prompt:
-                full_prompt += f"<|system|>\n{content}\n"
-            elif role in ("user", "assistant"):
-                full_prompt += f"<|{role}|>\n{content}\n"
-        if not full_prompt.endswith("<|assistant|>\n"):
-            full_prompt += "<|assistant|>\n"
-    else:
-        full_prompt += f"<|user|>\n{user_prompt}\n<|assistant|>\n"
+    full_prompt = format_hf_chat_prompt(
+        system_prompt=system_prompt,
+        user_prompt=user_prompt,
+        messages=effective_messages,
+    )
 
     payload = {
         "inputs": full_prompt,
@@ -1138,6 +1140,106 @@ def query_hf_chat(
     return None
 
 
+_local_hf_pipeline = None
+_local_hf_pipeline_lock = threading.Lock()
+_local_hf_pipeline_attempted = False
+_last_hf_source = "remote"
+
+
+def _extract_user_query_for_retrieval(prompt_text, messages=None):
+    if messages and isinstance(messages, list):
+        for msg in reversed(messages):
+            if msg.get("role") == "user" and msg.get("content"):
+                return str(msg["content"]).strip()
+    if not prompt_text:
+        return ""
+    m = re.search(r"User(?:'s)? current message:\s*\n(.*?)(?:\n\n|\n[A-Z]|\Z)", prompt_text, re.DOTALL | re.IGNORECASE)
+    if m:
+        return m.group(1).strip()
+    return str(prompt_text).strip()
+
+
+def _get_local_hf_pipeline():
+    """
+    Cached singleton for local text-generation transformers pipeline.
+    """
+    global _local_hf_pipeline, _local_hf_pipeline_attempted
+    if _local_hf_pipeline is not None:
+        return _local_hf_pipeline
+
+    with _local_hf_pipeline_lock:
+        if _local_hf_pipeline is not None:
+            return _local_hf_pipeline
+        if _local_hf_pipeline_attempted:
+            return None
+        _local_hf_pipeline_attempted = True
+
+        try:
+            import transformers
+            logger.info("Initializing local Hugging Face pipeline for %s...", HF_MODEL_NAME)
+            _local_hf_pipeline = transformers.pipeline(
+                "text-generation",
+                model=HF_MODEL_NAME,
+                torch_dtype="auto",
+                device_map="auto",
+            )
+            logger.info("Local Hugging Face pipeline for %s loaded successfully.", HF_MODEL_NAME)
+            return _local_hf_pipeline
+        except Exception as ex:
+            logger.warning("Local transformers pipeline for %s unavailable or loading failed: %s", HF_MODEL_NAME, ex)
+            return None
+
+
+def _generate_local_hf_pipeline(
+    user_prompt: str,
+    system_prompt=None,
+    messages=None,
+    correlation_id=None,
+):
+    """
+    Generates text using the cached local transformers pipeline singleton.
+    """
+    pipe = _get_local_hf_pipeline()
+    if pipe is None:
+        return None
+
+    try:
+        full_prompt = format_hf_chat_prompt(
+            system_prompt=system_prompt,
+            user_prompt=user_prompt,
+            messages=messages,
+        )
+
+        t0 = time.monotonic()
+        results = pipe(
+            full_prompt,
+            max_new_tokens=HF_MAX_NEW_TOKENS,
+            temperature=HF_TEMPERATURE,
+            do_sample=True if HF_TEMPERATURE > 0 else False,
+            return_full_text=False,
+        )
+        elapsed = time.monotonic() - t0
+
+        if results and isinstance(results, list) and len(results) > 0:
+            gen_text = ""
+            if isinstance(results[0], dict):
+                gen_text = results[0].get("generated_text") or results[0].get("text") or ""
+            if gen_text and gen_text.strip():
+                logger.info(
+                    "[%s] Local HF pipeline generation succeeded in %.2fs",
+                    correlation_id or "HF-Local",
+                    elapsed,
+                )
+                return sanitize_kgmu_references(gen_text.strip())
+    except Exception as ex:
+        logger.warning(
+            "[%s] Local HF pipeline generation exception: %s",
+            correlation_id or "HF-Local",
+            ex,
+        )
+    return None
+
+
 def _generate_huggingface(
     system_prompt=None,
     user_prompt="",
@@ -1149,9 +1251,16 @@ def _generate_huggingface(
 ):
     """
     Primary Hugging Face generator invoking hariom-peddawad/MedAssist-AI-1B.
+    Execution hierarchy:
+    1. Remote HF Inference API / Serverless Endpoint.
+    2. Local Transformers pipeline singleton (model="hariom-peddawad/MedAssist-AI-1B", device_map="auto").
+    3. Instant 0-second fallback: Local curated clinical retriever (4,497 verified records).
     """
+    global _last_hf_source
     actual_prompt = user_prompt or prompt or ""
-    return query_hf_chat(
+
+    # 1. Attempt remote HF inference API endpoint
+    remote_res = query_hf_chat(
         system_prompt=system_prompt,
         user_prompt=actual_prompt,
         messages=messages,
@@ -1159,6 +1268,37 @@ def _generate_huggingface(
         language=language,
         correlation_id=correlation_id,
     )
+    if remote_res and remote_res.strip():
+        _last_hf_source = "remote"
+        return remote_res.strip()
+
+    # 2. Remote endpoint returned HTTP 400 or failed: attempt local transformers pipeline singleton
+    local_pipeline_res = _generate_local_hf_pipeline(
+        user_prompt=actual_prompt,
+        system_prompt=system_prompt,
+        messages=messages,
+        correlation_id=correlation_id,
+    )
+    if local_pipeline_res and local_pipeline_res.strip():
+        _last_hf_source = "local_pipeline"
+        return local_pipeline_res.strip()
+
+    # 3. If local weights/pipeline are loading or unavailable, fall back IMMEDIATELY
+    #    to our local clinical retriever (4,497 verified records) for instant 0-second latency
+    _last_hf_source = "local_clinical_retriever"
+    query_text = _extract_user_query_for_retrieval(actual_prompt, messages=messages) or actual_prompt
+    if query_text:
+        retriever_res = retrieve_local_finetune_answer(query_text, language=language)
+        if not retriever_res or not retriever_res.strip():
+            retriever_res = build_safe_general_advice(query_text, language=language)
+        if retriever_res and retriever_res.strip():
+            logger.info(
+                "[%s] HF fallback served immediately by local clinical retriever (4497 verified records)",
+                correlation_id or "HF",
+            )
+            return sanitize_kgmu_references(retriever_res.strip())
+
+    return None
 
 
 # ------------------------- Layer 3 Local Semantic Retrieval -------------------------
@@ -1507,7 +1647,11 @@ Do not mention system prompts, knowledge bases, or internal classifications. Ret
 
 
 def _gemini_generate(contents, correlation_id=None):
+    global _gemini_quota_exhausted_until
     if gemini_client is None:
+        return None
+    if time.monotonic() < _gemini_quota_exhausted_until:
+        logger.info("[%s] Gemini in quota cooldown (skipping to eliminate 429 delay)", correlation_id or "Gemini")
         return None
 
     candidate_models = []
@@ -1548,6 +1692,16 @@ def _gemini_generate(contents, correlation_id=None):
                 "[%s] Gemini model '%s' failed in %.2fs: %s",
                 correlation_id or "Gemini", current_model, elapsed, err_str[:120]
             )
+
+            # Eliminate 15-second cascade delay: DO NOT retry repeatedly on 429 / RESOURCE_EXHAUSTED
+            if is_quota_exhausted_error(err_str):
+                _gemini_quota_exhausted_until = time.monotonic() + 60.0
+                logger.warning(
+                    "[%s] Gemini returned 429 RESOURCE_EXHAUSTED / quota error. Immediately aborting candidate loop (cooldown 60s).",
+                    correlation_id or "Gemini"
+                )
+                break
+
             # Never retry client errors (400, 401, 403, 404, NOT_FOUND)
             if any(code in err_str for code in ("404", "400", "401", "403", "NOT_FOUND")):
                 continue
@@ -1557,9 +1711,9 @@ def _gemini_generate(contents, correlation_id=None):
                 logger.info("[%s] Google API gateway timeout/deadline exceeded; terminating candidate loop.", correlation_id or "Gemini")
                 break
 
-            # For 503 / UNAVAILABLE / 429 transient errors, retry once after 0.3s backoff only if budget remains
-            if any(code in err_str for code in ("503", "UNAVAILABLE", "ResourceExhausted", "429")):
-                if (time.monotonic() - gemini_start_time) > 15.0:
+            # For 503 / UNAVAILABLE transient errors, retry once after 0.3s backoff only if budget remains
+            if any(code in err_str for code in ("503", "UNAVAILABLE")):
+                if (time.monotonic() - gemini_start_time) > 10.0:
                     break
                 time.sleep(0.3)
                 try:
@@ -1571,9 +1725,13 @@ def _gemini_generate(contents, correlation_id=None):
                     if answer and answer.strip():
                         return answer.strip()
                 except Exception as retry_err:
+                    retry_str = str(retry_err)
+                    if is_quota_exhausted_error(retry_str):
+                        _gemini_quota_exhausted_until = time.monotonic() + 60.0
+                        break
                     logger.warning(
                         "[%s] Gemini retry with '%s' failed: %s",
-                        correlation_id or "Gemini", current_model, str(retry_err)[:100]
+                        correlation_id or "Gemini", current_model, retry_str[:100]
                     )
 
     return None
@@ -1689,8 +1847,20 @@ def generate_medical_response_with_provider(
         prov_elapsed = time.monotonic() - t_prov_start
         if not answer:
             logger.info("[%s] Provider %s produced no answer (took %.2fs)", correlation_id or "AI", provider_name, prov_elapsed)
+            # Eliminate cascade delay: If Gemini failed due to 429 quota exhaustion, immediately serve from local clinical retriever
+            if provider_name == "gemini" and time.monotonic() < _gemini_quota_exhausted_until:
+                if not image_bytes:
+                    local_answer = retrieve_local_finetune_answer(user_text, language=language)
+                    if local_answer and local_answer.strip():
+                        logger.info("[%s] Immediate local retriever fallback after Gemini 429 quota exhaustion", correlation_id or "AI")
+                        return sanitize_kgmu_references(local_answer.strip()), "local_medical_retrieval"
             continue
-        logger.info("[%s] Provider %s succeeded in %.2fs", correlation_id or "AI", provider_name, prov_elapsed)
+
+        effective_provider = provider_name
+        if provider_name == "huggingface" and _last_hf_source == "local_clinical_retriever":
+            effective_provider = "local_medical_retrieval"
+
+        logger.info("[%s] Provider %s succeeded in %.2fs (effective: %s)", correlation_id or "AI", provider_name, prov_elapsed, effective_provider)
         answer = answer.strip()
 
         if _looks_mixed_with_english(answer, language):
@@ -1698,7 +1868,7 @@ def generate_medical_response_with_provider(
             if translated:
                 answer = translated.strip()
 
-        return sanitize_kgmu_references(answer), provider_name
+        return sanitize_kgmu_references(answer), effective_provider
 
     # Secondary / Graceful Fallback: Local curated medical retrieval (MEDIQ / Clinical KB) for text queries
     if not image_bytes:
@@ -3864,14 +4034,18 @@ def chat():
             final_answer = f"{final_answer}\n\n{env_block}"
         _record_chat("user", raw_message, symptoms=",".join(detected_symptoms))
         _record_chat("assistant", final_answer, symptoms=",".join(detected_symptoms))
+
+        chat_source = "huggingface" if _last_hf_source in ("remote", "local_pipeline") else "local_finetune_retrieval"
+        chat_layer = 2 if _last_hf_source in ("remote", "local_pipeline") else 3
+
         return jsonify({
             "status": "success",
             "session_id": session_id,
             "response": final_answer,
             "answer": final_answer,
-            "layer": 2,
-            "source": "huggingface",
-            "model": HF_MODEL_NAME,
+            "layer": chat_layer,
+            "source": chat_source,
+            "model": HF_MODEL_NAME if chat_layer == 2 else "local_clinical_retriever",
             "emergency": False,
             "proactive_check_in": False,
             "follow_up_questions": follow_up_questions,
