@@ -1200,74 +1200,290 @@ def build_greeting_response(
     return "Hello! How can I help with your health questions today?"
 
 
+_ROMAN_CLINICAL_SYMPTOM_MAP = {
+    "fever": ("tap", "taap", "bukhar", "bukhaar", "fever", "garam", "temperature", "ताप", "बुखार"),
+    "cold": ("sardi", "jukam", "zukam", "zukaam", "cold", "runny nose", "naak", "सर्दी", "जुकाम"),
+    "cough": ("khokla", "khansi", "khasi", "cough", "sore throat", "ghasadukhi", "ghasa", "gala", "खोकला", "खांसी"),
+    "body_pain": ("angdukhi", "ang dukhat", "ang dukh", "body pain", "body ache", "bodyache", "badan dard", "myalgia", "haath paay", "अंगदुखी", "बदन दर्द"),
+    "headache": ("dokedukhi", "doka dukhat", "dok dukhat", "doke", "headache", "sir dard", "migraine", "डोकेदुखी", "सिरदर्द"),
+    "stomach_pain": ("potdukhi", "pot dukhat", "pot", "stomach", "pet dard", "abdominal", "पोटदुखी", "पेट दर्द"),
+    "acidity": ("acidity", "pitta", "ulcer", "heartburn", "gas", "jalan", "पित्त", "एसिडिटी"),
+    "vomiting": ("ulti", "ulati", "vomiting", "vomit", "malmal", "nausea", "उलटी", "उल्टी", "मळमळ"),
+    "diarrhea": ("julab", "julaab", "loose motion", "diarrhea", "dast", "जुलाब", "दस्त"),
+    "dizziness": ("chakkar", "garagar", "dizziness", "dizzy", "vertigo", "चक्कर"),
+    "weakness": ("ashaktapana", "ashaktpana", "kamjori", "kamzori", "weakness", "fatigue", "thakava", "thakan", "अशक्तपणा", "कमजोरी"),
+    "breathing_problem": ("shwas", "saans", "breathing", "breathless", "asthma", "दमा", "श्वास", "सांस"),
+}
+
+_ROMAN_TOPIC_MAP = {
+    "diabetes": ("sugar", "diabetes", "madhumeh", "diabetic", "blood sugar", "मधुमेह", "शुगर"),
+    "blood_pressure": ("bp", "blood pressure", "hypertension", "raktadaab", "रक्तदाब", "बीपी"),
+}
+
+_ACTION_REQUEST_PHRASES = (
+    "kami karnya", "kami karaych", "kami karu", "kami kar", "madat kar",
+    "upay", "ilaj", "ilaaj", "kam karne", "kam kar", "uttar", "aaram mil",
+    "reduce fever", "bring down", "lower fever", "what should i take",
+    "immediate relief", "right now", "tablet", "medicine for", "goli", "dawa", "aushadh",
+    "कमी करण्यासाठी", "उपाय", "मदत कर", "कम करने", "इलाज",
+)
+
+
+def extract_roman_clinical_symptoms(text: str) -> Dict[str, Any]:
+    """
+    Extracts canonical symptoms, clinical topics, 'only/fakta' narrowing cues,
+    and immediate action-request intent from Romanized Marathi, Hinglish, Marathi,
+    Hindi, or English messages.
+    """
+    if not text or not isinstance(text, str):
+        return {"symptoms": [], "topics": [], "is_only_narrowing": False, "is_action_request": False}
+
+    lower = re.sub(r"\s+", " ", text.lower()).strip()
+    found_symptoms = []
+    for canonical, aliases in _ROMAN_CLINICAL_SYMPTOM_MAP.items():
+        for alias in aliases:
+            if any("\u0900" <= ch <= "\u097F" for ch in alias):
+                idx = lower.find(alias)
+                matched = idx != -1
+                m_start, m_end = idx, idx + len(alias)
+            else:
+                m = re.search(r"(?<![a-z0-9])" + re.escape(alias) + r"(?![a-z0-9])", lower)
+                matched = m is not None
+                m_start, m_end = (m.start(), m.end()) if m else (-1, -1)
+            if matched:
+                # Skip if negated in a 35-char window before ("do not have fever", "no cough") or right after ("sardi nahi")
+                pre_window = lower[max(0, m_start - 35):m_start]
+                post_window = lower[m_end:min(len(lower), m_end + 15)]
+                if re.search(r"\b(?:no|not|without|never|don't|do not|doesn't|does not|didn't|did not|haven't|hasn't|nahi|naahi|nhi)\b", pre_window):
+                    break
+                if re.search(r"^\s*(?:nahi|naahi|nhi|nahiye)\b", post_window):
+                    break
+                if canonical not in found_symptoms:
+                    found_symptoms.append(canonical)
+                break
+
+    found_topics = []
+    for topic, aliases in _ROMAN_TOPIC_MAP.items():
+        for alias in aliases:
+            if any("\u0900" <= ch <= "\u097F" for ch in alias):
+                matched = alias in lower
+            else:
+                matched = bool(re.search(r"(?<![a-z0-9])" + re.escape(alias) + r"(?![a-z0-9])", lower))
+            if matched:
+                if topic not in found_topics:
+                    found_topics.append(topic)
+                break
+
+    is_only_narrowing = bool(re.search(r"\b(?:fakta|fakt|phakta|only|sirf|keval|just)\b", lower))
+    is_action_request = any(p in lower for p in _ACTION_REQUEST_PHRASES)
+
+    return {
+        "symptoms": found_symptoms,
+        "topics": found_topics,
+        "is_only_narrowing": is_only_narrowing,
+        "is_action_request": is_action_request,
+    }
+
+
+def analyze_conversation_progression(
+    raw_text: str,
+    current_symptoms: list,
+    recent_history: Optional[list] = None,
+) -> Dict[str, Any]:
+    """
+    Inspects prior conversation turns so the assistant progresses naturally:
+    - 'initial': first symptom report -> structured relief + 1-2 clarifying questions
+    - 'clarification': user narrowed down or added details (e.g. 'fakta taap ani body pain')
+      -> acknowledge ruled-out symptoms, adapt advice, ask a DIFFERENT deeper question
+    - 'action_request': user asks for immediate reduction/help (e.g. 'taap kami karnya sathi madat kar')
+      -> direct step-by-step action plan with NO redundant follow-up question
+    """
+    parsed = extract_roman_clinical_symptoms(raw_text or "")
+    history = recent_history or []
+
+    prior_user_msgs = []
+    prior_assistant_msgs = []
+    for item in history:
+        role = str(item.get("role", "")).lower()
+        msg = str(item.get("message") or item.get("content") or "")
+        if not msg:
+            continue
+        if role == "user":
+            prior_user_msgs.append(msg)
+        elif role == "assistant":
+            prior_assistant_msgs.append(msg)
+
+    # Ignore current message if it's already appended at the end of recent_history
+    if prior_user_msgs and raw_text and prior_user_msgs[-1].strip().lower() == raw_text.strip().lower():
+        prior_user_msgs = prior_user_msgs[:-1]
+
+    prior_syms = []
+    for u_msg in prior_user_msgs:
+        for s in extract_roman_clinical_symptoms(u_msg)["symptoms"]:
+            if s not in prior_syms:
+                prior_syms.append(s)
+
+    curr_set = {str(s).strip().lower().replace(" ", "_") for s in (current_symptoms or []) if str(s).strip()}
+    curr_set.update(parsed["symptoms"])
+
+    asked_topics = set()
+    for a_msg in prior_assistant_msgs:
+        a_low = a_msg.lower()
+        if any(k in a_low for k in ("kiti divas", "how many days", "kitne dino", "किती दिवसांपासून", "कितने दिनों")):
+            asked_topics.add("duration")
+        if any(k in a_low for k in ("thermometer", "temperature", "102", "kitne degree", "किती तापमान")):
+            asked_topics.add("temperature")
+        if any(k in a_low for k in ("ghasadukhi", "angdukhi", "body ache", "sore throat", "badan dard")):
+            asked_topics.add("associated")
+
+    ruled_out = []
+    if prior_syms and (parsed["is_only_narrowing"] or (curr_set and set(prior_syms) - curr_set)):
+        ruled_out = [s for s in prior_syms if s not in curr_set]
+
+    if parsed["is_action_request"] and len(prior_user_msgs) >= 1:
+        stage = "action_request"
+    elif len(prior_user_msgs) >= 1 and (parsed["is_only_narrowing"] or ruled_out or (curr_set & set(prior_syms) != set(curr_set) and prior_syms)):
+        stage = "clarification"
+    else:
+        stage = "initial"
+
+    return {
+        "stage": stage,
+        "ruled_out": ruled_out,
+        "asked_topics": asked_topics,
+        "prior_turn_count": len(prior_user_msgs),
+        "parsed": parsed,
+    }
+
+
 def build_structured_symptom_guidance(
     symptoms: list,
     raw_text: str = "",
     language: str = "en",
     dialect: Optional[str] = None,
     severity: str = "low",
+    recent_history: Optional[list] = None,
 ) -> str:
     """
-    Generates a clean, ChatGPT/Gemini-style structured clinical response with:
-    1. Direct 1-2 sentence answer
-    2. Concise bullets with bold lead-ins (Home Care, Medicines/Precautions, Red Flags)
-    3. Single highlighted follow-up question
-    4. Single italic disclaimer line
-    Fully supports English, Marathi, Hindi, Romanized Marathi (`roman_mr`), and Hinglish.
+    Generates a clean, ChatGPT/Gemini-style, context-aware clinical response that:
+    - Adapts dynamically across Turn 1 (initial), Turn 2 (clarification/narrowing), and Turn 3 (action request)
+    - Never repeats identical canned follow-up questions across consecutive turns
+    - Matches the exact language & script (Roman Marathi, Hinglish, Marathi, Hindi, English).
     """
     d = (dialect or "").strip().lower()
     lang = (language or "en").strip().lower()
-    sym_set = {str(s).strip().lower() for s in (symptoms or []) if str(s).strip()}
-    lower_raw = (raw_text or "").lower()
+    progression = analyze_conversation_progression(raw_text, symptoms, recent_history=recent_history)
+    stage = progression["stage"]
+    ruled_out = progression["ruled_out"]
+    asked_topics = progression["asked_topics"]
+    parsed = progression["parsed"]
 
-    has_fever = bool(sym_set & {"fever", "high fever", "mild fever"}) or any(
-        w in lower_raw for w in ("fever", "tap", "taap", "bukhar", "ताप", "बुखार")
-    )
-    has_cold = bool(sym_set & {"cold", "runny nose", "nasal congestion", "sneezing"}) or any(
-        w in lower_raw for w in ("cold", "sardi", "jukam", "zukam", "zukaam", "सर्दी", "जुकाम")
-    )
-    has_cough = bool(sym_set & {"cough", "dry cough", "sore throat"}) or any(
-        w in lower_raw for w in ("cough", "khokla", "khansi", "khasi", "gala", "ghasa", "खोकला", "खांसी")
-    )
-    has_headache = bool(sym_set & {"headache", "migraine"}) or any(
-        w in lower_raw for w in ("headache", "dokedukhi", "doke", "sir dard", "डोकेदुखी", "सिरदर्द")
-    )
-    has_stomach = bool(sym_set & {"stomach ache", "abdominal pain", "acidity", "nausea", "vomiting", "diarrhea"}) or any(
-        w in lower_raw for w in ("stomach", "potdukhi", "acidity", "gas", "pet", "ulati", "ulti", "पोटदुखी", "पेट")
-    )
+    sym_set = {str(s).strip().lower().replace(" ", "_") for s in (symptoms or []) if str(s).strip()}
+    if parsed["is_only_narrowing"] and parsed["symptoms"]:
+        sym_set = set(parsed["symptoms"])
+    else:
+        sym_set = (sym_set | set(parsed["symptoms"])) - set(ruled_out)
+    topics = set(parsed["topics"])
+
+    has_fever = "fever" in sym_set or "high_fever" in sym_set or "mild_fever" in sym_set
+    has_cold = "cold" in sym_set or "runny_nose" in sym_set or "nasal_congestion" in sym_set
+    has_cough = "cough" in sym_set or "dry_cough" in sym_set or "sore_throat" in sym_set
+    has_body_pain = "body_pain" in sym_set or "body_ache" in sym_set or "back_pain" in sym_set
+    has_headache = "headache" in sym_set or "migraine" in sym_set
+    has_stomach = bool(sym_set & {"stomach_pain", "abdominal_pain", "acidity", "vomiting", "nausea", "diarrhea"})
+    has_weakness = "weakness" in sym_set or "dizziness" in sym_set
 
     # 1) Romanized Marathi (`roman_mr`)
     if d == "roman_mr" or lang == "roman_mr":
-        if has_fever and (has_cold or has_cough):
-            body = (
-                "Tumhala **tap (fever)** ani **sardi** aslyamule he samanya **viral infection** kiva hawaaman badlamule honara seasonal flu asnyachi shakyaata aahe. "
-                "Yogya vishranti ani gharghuti kaljine sahasa 2-3 divsant aaram padto.\n\n"
-                "**Aata Kay Karal (Home Care):**\n"
-                "- **Garme ani Hydration:** Koshmat garam pani, aale-tulasicha chaha, kiva soup pyayla ghyave — ghasyala aaram milto ani dehydration talte.\n"
-                "- **Garmechi Vaf (Steam):** Divsatun 2 vela sadhya panyachi vaf ghetlyas naak mokale hote ani sardi kami hote.\n"
-                "- **Pureshi Vishranti:** Sharirala infection shi ladhnyasathi pureshi jhop ani aaram dya.\n"
-                "- **Koshmat Panyachi Patti:** Tap vadhlyas kapalaavar sadhya koshmat panyachi patti theva.\n\n"
-                "**Aushadh va Kalji (Medicines & Precautions):**\n"
-                "- **Tap va Angdukhisathi:** Pharmacist kiva doctoranchya sallyane samanya *Paracetamol* gheta yete; doctoranshivay antibiotics gheu naka.\n"
-                "- **Thand Padarth Tala:** Ice-cream, thand pani ani telkat padarth kahi divas talave.\n\n"
-                "**Doctoranna Kadhi Bhetave (When to See a Doctor):**\n"
-                "- Tap **102°F (38.9°C)** peksa jast rahilyas kiva **3 divsanpeksa jast** divas tiklyas.\n"
-                "- Shwas ghenyala tras, chhatit dukhane, khup ashaktapana kiva satat chidchid/bhram janavlyas.\n\n"
-                "**Chhota prashna:** Ha tap ani sardi kiti divsanpasun aahe ani sobat ghasadukhi kiva angdukhi pan aahe ka?\n\n"
+        # Turn 3 / Action Request: Immediate fever-reduction steps (crisp, zero redundant question)
+        if stage == "action_request" and has_fever:
+            return (
+                "Taap lavkar kami karnyasathi aata he **pratyaksha upay (immediate steps)** kara:\n\n"
+                "- **Koshmat Panyachi Patti (Lukewarm Sponging):** Kapal, man, haath ani paayavar koshmat (sadha/halka garam) panyacha kapda firva — barfa kiva atishay thand pani vapru naka.\n"
+                "- **Hydration & ORS:** Dar 30–45 minitanni thode-thode koshmat pani, ORS, naral pani kiva daliche pani pya.\n"
+                "- **Paracetamol Guidance:** Doctor kiva pharmacist chya sallyane samanya *Paracetamol 500mg* (adult sathi 6–8 tasanchya antarane, kahi khallyanantar) gheta yete. Rikamya poti strong painkillers (ibuprofen/diclofenac) gheu naka.\n"
+                "- **Halke Suti Kapde:** Jast jad panghrun gheun gham kadhnyacha prayatna karu naka; kholi haveshir theva.\n"
+                "- **Tatkal Doctor Kadhi Pahave:** Taap **103°F (39.4°C)** var gelyas, 48–72 tasant kami na jhalyas, kiva chakkar/shwas ghenyala tras jhalyas tatkal doctoranna bheta.\n\n"
                 + get_clean_italic_disclaimer("mr", "roman_mr")
             )
-            return body
+
+        # Turn 2 / Clarification: Fever + Body Pain (or Fever without Cold)
+        if has_fever and (has_body_pain or stage == "clarification") and not has_cold:
+            ack = (
+                "Samajle — tumhala sardi-khokla nahiye, fakta **taap (fever)** ani **angdukhi (body pain)** aahe. "
+                if ("cold" in ruled_out or "cough" in ruled_out or has_body_pain)
+                else "Tumhala **taap (fever)** ani **angdukhi (body pain)** aslyas "
+            )
+            followup = (
+                "**Chhota prashna:** Thermometer var taap kiti degree (e.g., 100°F–102°F) disat aahe, ani sobat thandi vajun yete ka?"
+                if "temperature" not in asked_topics
+                else "**Chhota prashna:** Sandhyana (joints) madhe khup vedana aahet ka, kiva angavar lal chatte (rash) disat aahet ka?"
+            )
+            return (
+                f"{ack}Ha sanjog sahasa **viral fever**, **dengue/chikungunya**, kiva **shariirik thakavyamule** disun yeto.\n\n"
+                "**Fever + Body Pain Sathi Kay Karal:**\n"
+                "- **Electrolytes & Fluids:** Sadha panyabarobar ORS, naral pani kiva limbu-pani pya — angdukhi ani ashaktapana kami hoto.\n"
+                "- **Purna Vishranti:** Sharirala angdukhi ani viral shi ladhnyasathi aata purna aaram dya.\n"
+                "- **Safe Relief:** Taap va angdukhisathi pharmacist/doctoranchya sallyane *Paracetamol* vaparta yete; *aspirin* kiva *ibuprofen* doctoranshivay gheu naka.\n"
+                "- **Red Flags:** Tap **102°F+** rahilyas, sandhyana suj aalyas, dolyamage dukhlyas kiva 2–3 divsant sudhar na jhalyas blood test (CBC/Dengue) sathi doctoranna bheta.\n\n"
+                f"{followup}\n\n"
+                + get_clean_italic_disclaimer("mr", "roman_mr")
+            )
+
+        if has_fever and (has_cold or has_cough):
+            followup = (
+                "**Chhota prashna:** Ha tap ani sardi kiti divsanpasun aahe, ani thermometer var taap kiti yetoy?"
+                if "duration" not in asked_topics
+                else "**Chhota prashna:** Sobat angdukhi, ghasadukhi kiva thandi vajun yete ka?"
+            )
+            return (
+                "Tumhala **tap (fever)** ani **sardi** aslyamule he samanya **viral infection** kiva hawaaman badlamule honara seasonal flu asnyachi shakyaata aahe. "
+                "Yogya vishranti ani gharghuti kaljine sahasa 2–3 divsant aaram padto.\n\n"
+                "**Aata Kay Karal (Home Care):**\n"
+                "- **Garme ani Hydration:** Koshmat garam pani, aale-tulasicha chaha, kiva soup pya — ghasyala aaram milto ani dehydration talte.\n"
+                "- **Garmechi Vaf (Steam):** Divsatun 2 vela sadhya panyachi vaf ghetlyas naak mokale hote.\n"
+                "- **Pureshi Vishranti:** Sharirala infection shi ladhnyasathi pureshi jhop dya.\n\n"
+                "**Aushadh va Kalji (Medicines & Precautions):**\n"
+                "- **Tap va Angdukhisathi:** Pharmacist kiva doctoranchya sallyane *Paracetamol* gheta yete; doctoranshivay antibiotics gheu naka.\n"
+                "- **Thand Padarth Tala:** Ice-cream, thand pani ani telkat padarth kahi divas talave.\n\n"
+                "**Doctoranna Kadhi Bhetave (When to See a Doctor):**\n"
+                "- Tap **102°F (38.9°C)** peksa jast rahilyas kiva **3 divsanpeksa jast** tiklyas.\n"
+                "- Shwas ghenyala tras, chhatit dukhane kiva khup ashaktapana janavlyas.\n\n"
+                f"{followup}\n\n"
+                + get_clean_italic_disclaimer("mr", "roman_mr")
+            )
+
+        if has_fever:
+            return (
+                "Tumhala **taap (fever)** aslyas body infection kiva viral shi ladhat aahe he samajun ghya.\n\n"
+                "**Aata Kay Karal:**\n"
+                "- **Koshmat Panyachi Patti & Hydration:** Kapalavar koshmat panyachi patti theva ani ORS/pani pyat raha.\n"
+                "- **Vishranti & Halka Aahar:** Purna aaram ghya ani khichdi/soup sarkha halka aahar ghya.\n"
+                "- **Doctoranna Kadhi Bhetave:** Taap **102°F+** gelyas kiva **3 divsanpeksa jast** tiklyas blood checkup sathi doctoranna bheta.\n\n"
+                "**Chhota prashna:** Taap kiti divsanpasun aahe ani thermometer var kiti reading aahe?\n\n"
+                + get_clean_italic_disclaimer("mr", "roman_mr")
+            )
+
+        if has_body_pain:
+            return (
+                "**Angdukhi (body pain)** sahasa **viral thakava, dehydration, kiva snayuncha tanav** yamule hote.\n\n"
+                "**Aata Kay Karal:**\n"
+                "- **Hydration & Electrolytes:** Pani, ORS kiva naral pani pya; kami panyamule angdukhi vadhte.\n"
+                "- **Garam Shek & Vishranti:** Dukhinarya bhagavar koshmat shek dya ani sharirala purna aaram dya.\n"
+                "- **Doctoranna Kadhi Bhetave:** Angdukhi sobat unch taap, suj, kiva khup ashaktapana 2–3 divas tiklyas doctoranna dakhva.\n\n"
+                "**Chhota prashna:** Hi angdukhi purna sharirat aahe ka kambar/paay ya bhagat, ani taap pan aahe ka?\n\n"
+                + get_clean_italic_disclaimer("mr", "roman_mr")
+            )
+
         if has_cough or has_cold:
             return (
-                "**Sardi ani khokla** he bahuda **viral respiratory infection** kiva dhul-hawaaman allergy mule hote. "
-                "Gharghuti upayanni ghasyachi khavkhav ani naak band hone lakar kami hote.\n\n"
+                "**Sardi ani khokla** he bahuda **viral respiratory infection** kiva dhul-hawaaman allergy mule hote.\n\n"
                 "**Aata Kay Karal (Home Care):**\n"
-                "- **Mithachya Panyachya Gulnya:** Koshmat panyat chimutbhar mith takun divsatun 2-3 vela gulnya kara.\n"
-                "- **Vaf (Steam Inhalation):** Sardi ani band naak ughadnyasathi 5-10 minite vaf ghya.\n"
+                "- **Mithachya Panyachya Gulnya:** Koshmat panyat chimutbhar mith takun divsatun 2–3 vela gulnya kara.\n"
+                "- **Vaf (Steam Inhalation):** Band naak ughadnyasathi 5–10 minite vaf ghya.\n"
                 "- **Koshmat Pani ani Madha:** Garme panyat ardhya chammach madha ghetlyas khoklyala aaram milto.\n\n"
-                "**Doctoranna Kadhi Bhetave (When to See a Doctor):**\n"
-                "- Khokla **1 aathavdyapeksa jast** tiklyas kiva sobat unch tap aalyas.\n"
-                "- Shwas lagne, chhatit shitti sarkha awaz kiva bedakyamadhye rakta dislyas.\n\n"
+                "**Doctoranna Kadhi Bhetave:**\n"
+                "- Khokla **1 aathavdyapeksa jast** tiklyas, unch tap aalyas, kiva shwas laglyas doctoranna bheta.\n\n"
                 "**Chhota prashna:** Tumhala khokla korda aahe ka kaf yet aahe, ani kiti divsanpasun aahe?\n\n"
                 + get_clean_italic_disclaimer("mr", "roman_mr")
             )
@@ -1277,10 +1493,9 @@ def build_structured_symptom_guidance(
                 "**Aata Kay Karal (Home Care):**\n"
                 "- **Pani Pya:** Ek glass sadhe kiva koshmat pani pya — dehydration he dokedukhiche mukhya karan aste.\n"
                 "- **Shant Kholi:** Kahi vel mobile-screen pasun dur rahun shant, kami prakashachya kholit vishranti ghya.\n"
-                "- **Kapalaavar Shek:** Tanavachya dokedukhisathi garam kiva thand kapadyachi patti thevlyas aaram milto.\n\n"
-                "**Doctoranna Kadhi Bhetave (When to See a Doctor):**\n"
-                "- Achanak asahya dokedukhi, drishti dhurkat hone, kiva satat ulti hot aslyas.\n"
-                "- Unch tap kiva maan akhadlyas tatkal doctoranna bheta.\n\n"
+                "- **Kapalaavar Shek:** Garam kiva thand kapadyachi patti thevlyas aaram milto.\n\n"
+                "**Doctoranna Kadhi Bhetave:**\n"
+                "- Achanak asahya dokedukhi, drishti dhurkat hone, satat ulti kiva maan akhadlyas tatkal doctoranna bheta.\n\n"
                 "**Chhota prashna:** Hi dokedukhi ekach bajula aahe ka purna dokyat, ani kiti velapasun aahe?\n\n"
                 + get_clean_italic_disclaimer("mr", "roman_mr")
             )
@@ -1289,23 +1504,53 @@ def build_structured_symptom_guidance(
                 "**Potdukhi kiva acidity** bahuda **apachan, jhatpat kiva tikhat jevan, kiva panyachi kamtarata** yamule hote.\n\n"
                 "**Aata Kay Karal (Home Care):**\n"
                 "- **Halke Jevan:** Kahi divas dal-bhat, khichdi, taak kiva kele ya sarkha sopya pachan honara aahar ghya.\n"
-                "- **Thode-Thode Pani:** Ekdam jast panyapeksha thodya-thodya velane pani kiva ORS ghya.\n"
-                "- **Tikhat-Telkat Tala:** Chaha-coffee, tikhat, ani baherache padarth kahi vel talave.\n\n"
-                "**Doctoranna Kadhi Bhetave (When to See a Doctor):**\n"
-                "- Potat asahya vedana, satat ultya, tap kiva sandasamadhe rakta dislyas.\n\n"
-                "**Chhota prashna:** Potdukhi sobat chhatit jaljal (acidity), ulati kiva julab hot aahet ka?\n\n"
+                "- **Thode-Thode Pani:** Thodya-thodya velane pani kiva ORS pya.\n"
+                "- **Tikhat-Telkat Tala:** Chaha-coffee, tikhat ani baherache padarth talave.\n\n"
+                "**Doctoranna Kadhi Bhetave:**\n"
+                "- Potat asahya vedana, satat ultya, tap kiva sandasamadhe rakta dislyas tatkal doctoranna bheta.\n\n"
+                "**Chhota prashna:** Potdukhi sobat acidity, ulati kiva julab hot aahet ka?\n\n"
                 + get_clean_italic_disclaimer("mr", "roman_mr")
             )
-        sym_label = ", ".join(symptoms) if symptoms else "lakshane"
+        if has_weakness:
+            return (
+                "**Chakkar kiva ashaktapana (weakness)** sahasa **dehydration, kami BP, rakta kamtarata (low hemoglobin), kiva pureshi jhop na milne** yamule hote.\n\n"
+                "**Aata Kay Karal:**\n"
+                "- **Tatkal Basa / Aaram Ghya:** Chakkar yet aslyas lagech basun kiva jhopun ghya ani paay thode unch theva.\n"
+                "- **ORS / Limbu-Sakhareche Pani:** Lagech pani, ORS kiva thode khajur/fale khave.\n"
+                "- **Doctoranna Kadhi Bhetave:** Varinvar chakkar, gham sutne kiva beshuddh padnyasarkhe vatlyas doctoranna bheta.\n\n"
+                "**Chhota prashna:** He chakkar/ashaktapana achanak suru zale aahe ka kahi divsanpasun aahe?\n\n"
+                + get_clean_italic_disclaimer("mr", "roman_mr")
+            )
+        if "diabetes" in topics:
+            return (
+                "**Blood Sugar / Diabetes** niyantranat thevnyasathi niyamit aahar, vyayam ani doctoranchya sallyane aushadhe ghene mahattvache aste.\n\n"
+                "**Dainandin Kalji:**\n"
+                "- **Balanced Aahar:** Sakhar, maida ani god padarth talun bhajya, kaddhanya va fiber-rich aahar ghya.\n"
+                "- **Niyamit Chalne:** Roz 30 minite vegane chalnyane insulin sensitivity sudharte.\n"
+                "- **Regular Checkup:** Fasting, PP sugar ani HbA1c niyamit tapasun ghya.\n\n"
+                "**Chhota prashna:** Tumchi sadhyachi fasting kiva PP blood sugar reading kiti aali aahe?\n\n"
+                + get_clean_italic_disclaimer("mr", "roman_mr")
+            )
+        if "blood_pressure" in topics:
+            return (
+                "**Blood Pressure (BP)** santulit thevnyasathi mithache praman, tanav ani jhop yavar laksha dene garjeche aste.\n\n"
+                "**Aata Kay Karal:**\n"
+                "- **Shant Basun BP Tapasa:** 5 minite shant baslyanantar BP check kara; mith ani processed padarth kami kara.\n"
+                "- **Red Flags:** BP **180/120+** gelyas, chhatit dukhlyas kiva drishti dhurkat jhalyas tatkal emergency madhe dakhva.\n\n"
+                "**Chhota prashna:** Tumchi sadhyachi BP reading kiti aahe ani sobat dokedukhi kiva chakkar aahe ka?\n\n"
+                + get_clean_italic_disclaimer("mr", "roman_mr")
+            )
+
+        sym_label = ", ".join(s.replace("_", " ") for s in sym_set) if sym_set else "lakshane"
         return (
             f"Tumchya **{sym_label}** ya lakshanansathi prathamik kalji ani nireekshan mahattvache aahe.\n\n"
             "**Aata Kay Karal (Home Care):**\n"
             "- **Vishranti ani Hydration:** Pureshi jhop ghya ani divasbhar koshmat pani/ORS pyat raha.\n"
-            "- **Lakshananchi Nond:** Tap, vedana kiva tras kadhi vadhato yachi nond theva.\n"
+            "- **Lakshananchi Nond:** Taap, vedana kiva tras kadhi vadhato yachi nond theva.\n"
             "- **Swatahun Aushadh Tala:** Doctoranchya sallyashivay antibiotics kiva strong painkillers gheu naka.\n\n"
             "**Doctoranna Kadhi Bhetave (When to See a Doctor):**\n"
-            "- Lakshane **2-3 divsant kami na jhalyas** kiva achanak vadhlyas.\n"
-            "- Unch tap, shwas ghenyala tras kiva khup ashaktapana janavlyas.\n\n"
+            "- Lakshane **2–3 divsant kami na jhalyas** kiva achanak vadhlyas.\n"
+            "- Unch taap, shwas ghenyala tras kiva khup ashaktapana janavlyas.\n\n"
             + build_followup_prompt_line("general", "mr", "roman_mr")
             + "\n\n"
             + get_clean_italic_disclaimer("mr", "roman_mr")
@@ -1313,33 +1558,47 @@ def build_structured_symptom_guidance(
 
     # 2) Hinglish (Roman Hindi)
     if d == "hinglish" or lang == "hinglish":
+        if stage == "action_request" and has_fever:
+            return (
+                "Bukhar jaldi kam karne ke liye abhi ye **immediate steps** follow karein:\n\n"
+                "- **Gungune Pani Ki Patti:** Maathe, haath-pair aur gardan par gungune pani se patti rakhein (barf ya bahut thanda pani na lagayein).\n"
+                "- **Hydration & ORS:** Har 30–45 minute mein gunguna pani, ORS, nariyal pani ya soup piyein.\n"
+                "- **Paracetamol Guidance:** Doctor ya pharmacist ki salah se *Paracetamol 500mg* (6–8 ghante ke gap par, kuch khane ke baad) li ja sakti hai; khali pet painkillers na lein.\n"
+                "- **Halke Kapde & Aaram:** Zyada mote kambal odhne se bachein aur kamre mein hawa aane dein.\n"
+                "- **Doctor Ko Kab Dikhayein:** Agar bukhar **103°F+** jaaye ya 48–72 ghante mein kam na ho.\n\n"
+                + get_clean_italic_disclaimer("hi", "hinglish")
+            )
+        if has_fever and (has_body_pain or stage == "clarification") and not has_cold:
+            return (
+                "Samajh gaya — aapko sardi-khansi nahi hai, sirf **bukhar** aur **badan dard** hai. Ye **viral fever** ya **thakan** ka sanket ho sakta hai.\n\n"
+                "**Abhi Kya Karein:**\n"
+                "- **ORS & Fluids:** Pani ke saath ORS ya nariyal pani piyein taaki kamzori aur badan dard kam ho.\n"
+                "- **Poora Aaram:** Shareer ko recovery ke liye poori neend dein.\n"
+                "- **Dawa:** Salah se *Paracetamol* le sakte hain; bina doctor ki salah ke ibuprofen/antibiotics na lein.\n\n"
+                "**Chhota sawaal:** Thermometer mein bukhar kitna aa raha hai aur kya thand lagkar bukhar aa raha hai?\n\n"
+                + get_clean_italic_disclaimer("hi", "hinglish")
+            )
         if has_fever and (has_cold or has_cough):
             return (
-                "Aapko **bukhar (fever)** aur **sardi/zukam** hai, jo aam taur par **viral infection** ya mausam badalne (seasonal flu) ki wajah se hota hai. "
-                "Aaram aur sahi dekhbhal se zyadaatar 2-3 dino mein sudhar hota hai.\n\n"
+                "Aapko **bukhar (fever)** aur **sardi/zukam** hai, jo aam taur par **viral infection** ya mausam badalne ki wajah se hota hai.\n\n"
                 "**Abhi Kya Karein (Home Care):**\n"
-                "- **Garam Liquid Aur Hydration:** Gunguna pani, adrak-tulsi chai ya soup piyein — isse gala saaf rehta hai aur kamzori nahi aati.\n"
+                "- **Garam Liquid Aur Hydration:** Gunguna pani, adrak-tulsi chai ya soup piyein.\n"
                 "- **Steam (Bhaap):** Din mein 2 baar saade pani ki bhaap lein taaki band naak khule.\n"
-                "- **Poori Neend Aur Aaram:** Shareer ko viral se ladne ke liye aaram ki zaroorat hoti hai.\n\n"
-                "**Dawa Aur Savdhani (Medicines & Precautions):**\n"
-                "- **Bukhar Ke Liye:** Doctor ya pharmacist ki salah se *Paracetamol* li ja sakti hai; bina doctor ki salah ke antibiotics na lein.\n"
-                "- **Thandi Cheezein Talein:** Thanda pani, ice-cream aur tali-bhuni cheezein kuch din band rakhein.\n\n"
-                "**Doctor Ko Kab Dikhayein (When to See a Doctor):**\n"
-                "- Agar bukhar **102°F** se zyada rahe ya **3 din se zyada** chalta rahe.\n"
-                "- Saans lene mein takleef, seene mein dard ya bahut zyada kamzori mehsoos ho.\n\n"
+                "- **Poori Neend Aur Aaram:** Shareer ko viral se ladne ke liye aaram dein.\n\n"
+                "**Doctor Ko Kab Dikhayein:**\n"
+                "- Agar bukhar **102°F** se zyada rahe, **3 din se zyada** chale, ya saans lene mein takleef ho.\n\n"
                 "**Chhota sawaal:** Ye bukhar aur sardi kitne dino se hai, aur kya gale mein dard ya badan dard bhi hai?\n\n"
                 + get_clean_italic_disclaimer("hi", "hinglish")
             )
-        sym_label = ", ".join(symptoms) if symptoms else "lakshan"
+        sym_label = ", ".join(s.replace("_", " ") for s in sym_set) if sym_set else "lakshan"
         return (
             f"Aapke **{sym_label}** ke liye aaram, hydration aur lakshanon par nazar rakhna sabse zaroori hai.\n\n"
             "**Abhi Kya Karein (Home Care):**\n"
             "- **Aaram Aur Hydration:** Poori neend lein aur thode-thode waqt par pani ya ORS piyein.\n"
             "- **Halka Bhojan:** Asaani se pachne wala ghar ka bana sada khana khayein.\n"
             "- **Bina Salah Dawa Na Lein:** Khud se antibiotics ya tez painkillers lene se bachein.\n\n"
-            "**Doctor Ko Kab Dikhayein (When to See a Doctor):**\n"
-            "- Agar takleef **2-3 din mein kam na ho** ya tezi se badhe.\n"
-            "- Tez bukhar, saans fulna ya tez dard hone par turant doctor se milein.\n\n"
+            "**Doctor Ko Kab Dikhayein:**\n"
+            "- Agar takleef **2–3 din mein kam na ho**, tez bukhar ya saans fulne lage toh turant doctor se milein.\n\n"
             + build_followup_prompt_line("general", "hi", "hinglish")
             + "\n\n"
             + get_clean_italic_disclaimer("hi", "hinglish")

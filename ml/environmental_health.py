@@ -55,6 +55,63 @@ CITY_COORDINATES: Dict[str, Tuple[float, float]] = {
     "indore": (22.7196, 75.8577),
 }
 
+_CITY_ALIASES: Dict[str, str] = {
+    "bombay": "mumbai",
+    "poona": "pune",
+    "sambhajinagar": "chhatrapati sambhajinagar",
+    "chhatrapati sambhaji nagar": "chhatrapati sambhajinagar",
+    "bangalore": "bengaluru",
+}
+
+
+def extract_city_from_text(text: Optional[str]) -> Optional[str]:
+    """Extracts a recognized Indian city name from user text, if mentioned."""
+    if not text or not isinstance(text, str):
+        return None
+    lower = re.sub(r"\s+", " ", text.lower()).strip()
+    for alias, canonical in _CITY_ALIASES.items():
+        if re.search(r"(?<![a-z])" + re.escape(alias) + r"(?![a-z])", lower):
+            return canonical
+    # Check multi-word cities before single-word cities
+    for city_name in sorted(CITY_COORDINATES.keys(), key=len, reverse=True):
+        if re.search(r"(?<![a-z])" + re.escape(city_name) + r"(?![a-z])", lower):
+            return city_name
+    return None
+
+
+def _resolve_location_label(
+    lat: Optional[float] = None,
+    lon: Optional[float] = None,
+    city: Optional[str] = None,
+    language: str = "en",
+) -> Tuple[str, bool]:
+    """Returns (human_readable_location_label, is_explicit_location)."""
+    lang = (language or "en").strip().lower()
+    if city and isinstance(city, str) and city.strip():
+        clean = city.strip().lower()
+        canonical = _CITY_ALIASES.get(clean, clean)
+        return canonical.title(), True
+    if lat is not None and lon is not None:
+        try:
+            float(lat)
+            float(lon)
+            if lang in ("mr", "roman_mr"):
+                return "तुमचे GPS ठिकाण" if lang == "mr" else "Tumche GPS Location", True
+            if lang in ("hi", "hinglish"):
+                return "आपका GPS स्थान" if lang == "hi" else "Aapka GPS Location", True
+            return "Your GPS Location", True
+        except (ValueError, TypeError):
+            pass
+    if lang == "roman_mr":
+        return "Andaje Thikan — achuk hawamanasathi tumche shahar sanga", False
+    if lang == "mr":
+        return "अंदाजे ठिकाण — अचूक हवामानासाठी तुमचे शहर सांगा", False
+    if lang == "hinglish":
+        return "Anumanit Sthan — sahi mausam ke liye apna shahar batayein", False
+    if lang == "hi":
+        return "अनुमानित स्थान — सटीक मौसम के लिए अपना शहर बताएं", False
+    return "Approximate Location — share your city for exact local weather", False
+
 # 30-minute in-memory cache: (lat, lon) -> (timestamp, data_dict)
 _ATMOSPHERIC_CACHE: Dict[Tuple[float, float], Tuple[float, Dict[str, Any]]] = {}
 CACHE_TTL_SECONDS = 1800  # 30 minutes
@@ -246,6 +303,7 @@ def get_atmospheric_context(
     resolved_pm10 = pm10 if pm10 is not None else seasonal["pm10"]
     resolved_aqi = int(us_aqi) if us_aqi is not None else seasonal["aqi"]
 
+    loc_label, loc_explicit = _resolve_location_label(lat=lat, lon=lon, city=city, language="en")
     result = {
         "temperature_c": float(resolved_temp),
         "humidity_pct": float(resolved_hum),
@@ -256,6 +314,8 @@ def get_atmospheric_context(
         "season": season_name,
         "latitude": c_lat,
         "longitude": c_lon,
+        "location_label": loc_label,
+        "location_explicit": loc_explicit,
         "source": "open-meteo" if (temp_c is not None or us_aqi is not None) else "seasonal_fallback",
         "is_fallback": (temp_c is None and us_aqi is None),
     }
@@ -366,6 +426,35 @@ def get_regional_health_alert(
     hum = weather.get("humidity_pct", 50.0)
 
     clean_category = str(condition_category or "").strip().lower()
+
+    if lang == "roman_mr":
+        if m in (11, 12, 1, 2):
+            return (
+                f"Hawaaman badal ani thandimule ({temp:.1f}°C, AQI {aqi}) viral tap, sardi va ghasadukhi vadhnyachi shakyaata aste. "
+                f"Koshmat pani pya ani dhul/thandit baher jatana mask vapra."
+            )
+        if m in (7, 8, 9, 10):
+            return (
+                f"Pavsalyatil damat hawaamanamule ({hum:.0f}% humidity) viral tap, dengue va pachyache vikar vadhu shaktat. "
+                f"Ukalalele pani pya ani machchharapasun kalji ghya."
+            )
+        return (
+            f"Unhalyatil ushnatecha ({temp:.1f}°C) tras talnyasathi bharpur pani/ORS pya ani dupari unhat firane tala."
+        )
+    if lang == "hinglish":
+        if m in (11, 12, 1, 2):
+            return (
+                f"Mausam badalne aur thand ({temp:.1f}°C, AQI {aqi}) ki wajah se viral bukhar aur sardi-khansi badh sakte hain. "
+                f"Gunguna pani piyein aur bahar mask lagayein."
+            )
+        if m in (7, 8, 9, 10):
+            return (
+                f"Barish aur nami ({hum:.0f}% humidity) ke mausam mein viral, dengue aur pet ke infection ka khatra rehta hai. "
+                f"Ubla hua pani piyein aur machharon se bachaav karein."
+            )
+        return (
+            f"Garmi ({temp:.1f}°C) mein dehydration se bachne ke liye pani/ORS piyein aur tez dhoop se bachein."
+        )
 
     # Determine seasonal bracket
     # 1. Winter (Nov-Feb: 11, 12, 1, 2) -> ARI, Smog, Seasonal Influenza (H1N1)
@@ -536,17 +625,22 @@ def format_atmospheric_advisory_block(
     # Fetch weather and generate alerts
     weather = get_atmospheric_context(lat=lat, lon=lon, city=city)
     epi_alert = get_regional_health_alert(category, weather_data=weather, language=lang)
+    loc_label, _loc_explicit = _resolve_location_label(lat=lat, lon=lon, city=city, language=lang)
 
     temp_val = weather.get("temperature_c", 25.0)
     aqi_val = weather.get("aqi", 100)
     aqi_cat = weather.get("aqi_category", "Moderate")
 
-    if lang in ("mr", "roman_mr"):
-        header = f"🌦️ **स्थानिक हवामान व आरोग्य सूचना (तापमान: {temp_val:.1f}°C | AQI: {aqi_val} - {aqi_cat}):**"
-    elif lang in ("hi", "hinglish"):
-        header = f"🌦️ **स्थानीय मौसम एवं स्वास्थ्य परामर्श (तापमान: {temp_val:.1f}°C | AQI: {aqi_val} - {aqi_cat}):**"
+    if lang == "roman_mr":
+        header = f"🌦️ **Hawaman & Health Advisory ({loc_label} | Temp: {temp_val:.1f}°C | AQI: {aqi_val} - {aqi_cat}):**"
+    elif lang == "mr":
+        header = f"🌦️ **स्थानिक हवामान व आरोग्य सूचना ({loc_label} | तापमान: {temp_val:.1f}°C | AQI: {aqi_val} - {aqi_cat}):**"
+    elif lang == "hinglish":
+        header = f"🌦️ **Mausam & Health Advisory ({loc_label} | Temp: {temp_val:.1f}°C | AQI: {aqi_val} - {aqi_cat}):**"
+    elif lang == "hi":
+        header = f"🌦️ **स्थानीय मौसम एवं स्वास्थ्य परामर्श ({loc_label} | तापमान: {temp_val:.1f}°C | AQI: {aqi_val} - {aqi_cat}):**"
     else:
-        header = f"🌦️ **Local Weather & Health Advisory (Temp: {temp_val:.1f}°C | AQI: {aqi_val} - {aqi_cat}):**"
+        header = f"🌦️ **Local Weather & Health Advisory ({loc_label} | Temp: {temp_val:.1f}°C | AQI: {aqi_val} - {aqi_cat}):**"
 
     if include_helplines:
         citizen_adv = get_citizen_advisory(category, language=lang)

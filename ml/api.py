@@ -99,6 +99,8 @@ from conversation_engine import (
     ensure_modern_clinical_formatting,
     get_clean_italic_disclaimer,
     strip_prompt_scaffolding,
+    extract_roman_clinical_symptoms,
+    analyze_conversation_progression,
 )
 from environmental_health import (
     get_atmospheric_context,
@@ -106,6 +108,7 @@ from environmental_health import (
     get_citizen_advisory,
     format_atmospheric_advisory_block,
     is_high_severity_or_red_flag,
+    extract_city_from_text,
 )
 from lab_report_analyzer import (
     analyze_lab_report,
@@ -1436,7 +1439,7 @@ _ROMAN_SEARCH_HINTS = {
 }
 
 
-def retrieve_local_finetune_answer(query: str, language: str = "en", threshold: float = 0.15) -> str:
+def retrieve_local_finetune_answer(query: str, language: str = "en", threshold: float = 0.25) -> str:
     if is_lab_report_context_prompt(query):
         return build_lab_report_interpretation_response(query, language=language)
 
@@ -1444,7 +1447,12 @@ def retrieve_local_finetune_answer(query: str, language: str = "en", threshold: 
     if _finetune_vectorizer is None or _finetune_matrix is None or not _finetune_records:
         return ""
     try:
-        tokens = re.findall(r"[a-zA-Z]+", query.lower())
+        min_threshold = max(float(threshold), 0.25)
+        roman_info = extract_roman_clinical_symptoms(query)
+        has_clinical_sym = bool(roman_info["symptoms"] or roman_info["topics"])
+        q_low = (query or "").lower()
+
+        tokens = re.findall(r"[a-zA-Z]+", q_low)
         hints = [_ROMAN_SEARCH_HINTS[t] for t in tokens if t in _ROMAN_SEARCH_HINTS]
         search_query = f"{query} {' '.join(hints)}" if hints else query
 
@@ -1461,12 +1469,16 @@ def retrieve_local_finetune_answer(query: str, language: str = "en", threshold: 
         sorted_indices = np.argsort(weighted_sims)[::-1]
         for idx in sorted_indices[:15]:
             score = float(sims[idx])
-            if score < threshold:
+            if score < min_threshold:
                 break
             candidate = _finetune_records[idx]
             c_out = (candidate.get("output") or "").strip()
             c_instr = (candidate.get("instruction") or "").strip()
             if is_faculty_or_staff_roster(c_out, c_instr):
+                continue
+            # Guard against returning unrelated chronic conditions (e.g., High Cholesterol) for acute symptom queries
+            combined_cand = f"{c_instr} {c_out}".lower()
+            if has_clinical_sym and any(w in combined_cand for w in ("cholesterol", "कोलेस्ट्रॉल")) and "cholesterol" not in q_low and "कोलेस्ट्रॉल" not in q_low:
                 continue
             return c_out
     except Exception as ex:
@@ -2551,6 +2563,14 @@ def extract_symptoms(text):
                 if symptom not in detected:
                     detected.append(symptom)
                 break
+
+    for r_sym in extract_roman_clinical_symptoms(text).get("symptoms", []):
+        r_clean = r_sym.replace("_", " ")
+        if r_clean not in detected and r_sym not in detected:
+            m = re.search(r"(?<!\w)" + re.escape(r_clean) + r"(?!\w)", normalized)
+            if m and _is_match_negated(normalized, m.start(), m.end()):
+                continue
+            detected.append(r_clean)
 
     return detected
 
@@ -3884,6 +3904,42 @@ MAX_SESSION_ID_LENGTH = 128
 # ZERO-FAILURE 3-LAYER CHAT ENDPOINT
 # ============================================================
 
+_WEATHER_SHOWN_SESSIONS = set()
+
+
+def _weather_advisory_already_shown(session_id: Optional[str], recent_history: Optional[list] = None) -> bool:
+    """Returns True if an atmospheric weather card was already sent in an earlier assistant turn of this session."""
+    if session_id and session_id in _WEATHER_SHOWN_SESSIONS:
+        return True
+    history = recent_history
+    if history is None and session_id:
+        try:
+            history = get_chat_history(session_id, limit=20)
+        except Exception:
+            history = []
+    for item in (history or []):
+        role = str(item.get("role", "")).lower()
+        msg = str(item.get("message") or item.get("content") or "")
+        if role == "assistant" and "🌦️" in msg:
+            return True
+    return False
+
+
+def _resolve_session_city(explicit_city: Optional[str], current_text: str, recent_history: Optional[list] = None) -> Optional[str]:
+    """Resolves city from payload, current message, or earlier user turns in the session."""
+    if explicit_city and str(explicit_city).strip():
+        return str(explicit_city).strip()
+    mentioned_now = extract_city_from_text(current_text)
+    if mentioned_now:
+        return mentioned_now
+    for item in reversed(recent_history or []):
+        if str(item.get("role", "")).lower() == "user":
+            hist_city = extract_city_from_text(str(item.get("message") or item.get("content") or ""))
+            if hist_city:
+                return hist_city
+    return None
+
+
 @app.route("/chat", methods=["POST", "GET"])
 def chat():
     """
@@ -4202,37 +4258,54 @@ def chat():
             hf_answer = None
 
     high_severity = is_high_severity_or_red_flag(sanitized_message, safety_flag=None)
-    env_block = format_atmospheric_advisory_block(
+    try:
+        chat_recent_hist = get_chat_history(session_id, limit=12, user_id=user_id) if session_id else []
+    except Exception:
+        chat_recent_hist = []
+    resolved_city = _resolve_session_city(city, sanitized_message, chat_recent_hist)
+    mentioned_city_now = extract_city_from_text(sanitized_message)
+    explicit_weather_ask = any(w in sanitized_message.lower() for w in ("weather", "aqi", "pollution", "hawaman", "mausam", "हवामान", "मौसम"))
+    skip_weather = _weather_advisory_already_shown(session_id, chat_recent_hist) and not mentioned_city_now and not explicit_weather_ask
+
+    adv_lang = detected_dialect if detected_dialect in ("roman_mr", "hinglish") else final_language
+    env_block = None if skip_weather else format_atmospheric_advisory_block(
         symptoms=detected_symptoms or sanitized_message,
         lat=lat,
         lon=lon,
-        city=city,
-        language=final_language,
+        city=resolved_city,
+        language=adv_lang,
         include_helplines=high_severity,
     )
-    env_context = get_atmospheric_context(lat=lat, lon=lon, city=city) if env_block else None
+    env_context = get_atmospheric_context(lat=lat, lon=lon, city=resolved_city) if env_block else None
+
+    roman_parsed = extract_roman_clinical_symptoms(sanitized_message)
+    has_clinical_intent = bool(detected_symptoms or roman_parsed["symptoms"] or roman_parsed["topics"])
+    progression = analyze_conversation_progression(sanitized_message, detected_symptoms, recent_history=chat_recent_hist)
+    include_followup = bool(has_clinical_intent and progression["stage"] != "action_request")
 
     if hf_answer and hf_answer.strip():
         raw_hf = hf_answer.strip()
-        if _last_hf_source not in ("remote", "local_pipeline") and (detected_symptoms or detected_dialect in ("roman_mr", "hinglish")):
-            # If HF fell back to local dataset retriever on a symptom/dialect query, prefer clean dialect-aware structured guidance
-            if detected_symptoms:
+        if _last_hf_source not in ("remote", "local_pipeline") and (has_clinical_intent or detected_dialect in ("roman_mr", "hinglish")):
+            if has_clinical_intent:
                 raw_hf = build_structured_symptom_guidance(
                     detected_symptoms,
                     raw_text=sanitized_message,
                     language=final_language,
                     dialect=detected_dialect,
+                    recent_history=chat_recent_hist,
                 )
         final_answer = ensure_modern_clinical_formatting(
             raw_hf,
             language=final_language,
             dialect=detected_dialect,
-            include_followup=bool(detected_symptoms),
+            include_followup=include_followup,
             allow_name=False,
         )
         final_answer = _ensure_medical_disclaimer(final_answer, final_language, dialect=detected_dialect)
         if env_block and env_block not in final_answer:
             final_answer = f"{final_answer}\n\n{env_block}"
+        if env_block and session_id:
+            _WEATHER_SHOWN_SESSIONS.add(session_id)
         _record_chat("user", raw_message, symptoms=",".join(detected_symptoms))
         _record_chat("assistant", final_answer, symptoms=",".join(detected_symptoms))
 
@@ -4259,12 +4332,13 @@ def chat():
     # ------------------------------------------------------------
     # LAYER 3: Instant Local Semantic Retrieval Fallback
     # ------------------------------------------------------------
-    if detected_symptoms:
+    if has_clinical_intent:
         fallback_text = build_structured_symptom_guidance(
             detected_symptoms,
             raw_text=sanitized_message,
             language=final_language,
             dialect=detected_dialect,
+            recent_history=chat_recent_hist,
         )
     else:
         fallback_text = retrieve_local_finetune_answer(sanitized_message, language=final_language)
@@ -4275,7 +4349,7 @@ def chat():
         fallback_text.strip(),
         language=final_language,
         dialect=detected_dialect,
-        include_followup=bool(detected_symptoms),
+        include_followup=include_followup,
         allow_name=False,
     )
     final_answer = _ensure_medical_disclaimer(final_answer, final_language, dialect=detected_dialect)
@@ -4347,20 +4421,37 @@ def predict():
                         pred_syms = list(pred_syms) + [text]
                     p_lat = lat if 'lat' in locals() else None
                     p_lon = lon if 'lon' in locals() else None
-                    p_city = city if 'city' in locals() else None
-                    include_hl = is_high_severity_or_red_flag(
-                        text if 'text' in locals() else "",
-                        safety_flag=payload.get("safety_flag"),
+                    curr_text_str = text if 'text' in locals() else ""
+                    hist_ref = recent_history if 'recent_history' in locals() else None
+                    p_city = _resolve_session_city(city if 'city' in locals() else None, curr_text_str, hist_ref)
+                    mentioned_city_now = extract_city_from_text(curr_text_str)
+                    explicit_weather_ask = any(w in curr_text_str.lower() for w in ("weather", "aqi", "pollution", "hawaman", "mausam", "हवामान", "मौसम"))
+                    already_shown = _weather_advisory_already_shown(
+                        session_id if 'session_id' in locals() else None,
+                        hist_ref,
                     )
-                    adv_block = format_atmospheric_advisory_block(
-                        symptoms=pred_syms,
-                        lat=p_lat,
-                        lon=p_lon,
-                        city=p_city,
-                        language=resp_lang,
-                        include_helplines=include_hl,
-                    )
+                    adv_block = None
+                    if not (already_shown and not mentioned_city_now and not explicit_weather_ask):
+                        include_hl = is_high_severity_or_red_flag(
+                            curr_text_str,
+                            safety_flag=payload.get("safety_flag"),
+                        )
+                        adv_lang = (
+                            detected_dialect
+                            if ('detected_dialect' in locals() and detected_dialect in ("roman_mr", "hinglish"))
+                            else resp_lang
+                        )
+                        adv_block = format_atmospheric_advisory_block(
+                            symptoms=pred_syms,
+                            lat=p_lat,
+                            lon=p_lon,
+                            city=p_city,
+                            language=adv_lang,
+                            include_helplines=include_hl,
+                        )
                     if adv_block:
+                        if 'session_id' in locals() and session_id:
+                            _WEATHER_SHOWN_SESSIONS.add(session_id)
                         payload["environmental_advisory"] = adv_block
                         payload["atmospheric_context"] = get_atmospheric_context(lat=p_lat, lon=p_lon, city=p_city)
                         curr_ans = payload.get("answer") or payload.get("response") or ""
@@ -5266,15 +5357,42 @@ def predict():
                 allow_name_addressing=False,
             )
 
-            if ai_answer:
+            is_live_followup_llm = bool(
+                ai_answer
+                and ai_provider in ("gemini", "ollama")
+            ) or (
+                ai_answer
+                and ai_provider == "huggingface"
+                and _last_hf_source in ("remote", "local_pipeline")
+            )
+            progression_fu = analyze_conversation_progression(
+                text,
+                symptoms or previous_symptoms,
+                recent_history=recent_history,
+            )
+            roman_fu = extract_roman_clinical_symptoms(text)
+
+            if is_live_followup_llm:
+                raw_fu = ai_answer
+                if detected_dialect not in ("roman_mr", "hinglish"):
+                    raw_fu = localize_answer(raw_fu, final_language)
                 followup_answer = ensure_modern_clinical_formatting(
-                    ai_answer,
+                    raw_fu,
                     language=final_language,
                     dialect=detected_dialect,
-                    include_followup=True,
+                    include_followup=(progression_fu["stage"] != "action_request"),
                     allow_name=False,
                 )
                 source = ai_provider
+            elif symptoms or previous_symptoms or roman_fu["symptoms"] or roman_fu["topics"]:
+                followup_answer = build_structured_symptom_guidance(
+                    symptoms or previous_symptoms,
+                    raw_text=text,
+                    language=final_language,
+                    dialect=detected_dialect,
+                    recent_history=recent_history,
+                )
+                source = ai_provider or "conversation_memory"
             else:
                 followup_raw = build_followup_response(session_id, text)
                 if followup_raw:
@@ -5479,6 +5597,7 @@ def predict():
                 and _last_hf_source in ("remote", "local_pipeline")
             )
 
+            progression_sym = analyze_conversation_progression(text, combined_symptoms, recent_history=recent_history)
             if is_live_llm:
                 raw_sym_ans = ai_medical_answer
                 if detected_dialect not in ("roman_mr", "hinglish"):
@@ -5487,7 +5606,7 @@ def predict():
                     raw_sym_ans,
                     language=final_language,
                     dialect=detected_dialect,
-                    include_followup=True,
+                    include_followup=(progression_sym["stage"] != "action_request"),
                     allow_name=False,
                 )
                 source = symptom_provider
@@ -5498,6 +5617,7 @@ def predict():
                     raw_text=text,
                     language=final_language,
                     dialect=detected_dialect,
+                    recent_history=recent_history,
                 )
                 source = symptom_provider or ("medical_knowledge" if medical_answer else "symptom_fallback")
 

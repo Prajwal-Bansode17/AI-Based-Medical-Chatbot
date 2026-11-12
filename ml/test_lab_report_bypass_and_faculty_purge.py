@@ -1,6 +1,7 @@
 import unittest
 import json
 import sys
+import uuid
 from pathlib import Path
 
 # Ensure ml directory is on sys.path
@@ -134,7 +135,7 @@ class TestLabReportBypassAndFacultyPurge(unittest.TestCase):
         self.assertFalse(is_lab_report_context_prompt(wrapped))
         self.assertFalse(is_lab_report_context_prompt("mala khup tap ani sardi ahe kay karu"))
 
-        sid = "test_lab_then_tap_sardi_session"
+        sid = f"test_lab_then_tap_sardi_{uuid.uuid4().hex[:8]}"
         # Turn 1: Lab report context
         r1 = self.client.post("/predict", json={
             "text": (
@@ -176,7 +177,7 @@ class TestLabReportBypassAndFacultyPurge(unittest.TestCase):
         self.assertIn("?", ans2)
 
     def test_greeting_name_usage_and_no_weather_or_helplines(self):
-        sid = "test_greeting_and_identity_gating"
+        sid = f"test_greeting_and_identity_{uuid.uuid4().hex[:8]}"
         # Turn 1 greeting -> uses first name naturally, no weather, no helplines
         g1 = self.client.post("/predict", json={
             "text": "hi",
@@ -218,6 +219,65 @@ class TestLabReportBypassAndFacultyPurge(unittest.TestCase):
         self.assertIn("Hariom", ag3)
         self.assertNotIn("Local Weather", ag3)
         self.assertNotIn("108", ag3)
+
+    def test_multiturn_roman_marathi_fever_progression_and_weather_once_per_session(self):
+        sid = f"test_multiturn_roman_mr_fever_{uuid.uuid4().hex[:8]}"
+        # Turn 1: Fever + cold (no city -> transparent approximate location label, weather shown once)
+        r1 = self.client.post("/predict", json={
+            "text": "mala khup tap ani sardi ahe kay karu",
+            "session_id": sid,
+        })
+        self.assertEqual(r1.status_code, 200)
+        a1 = r1.get_json().get("answer") or ""
+        self.assertIn("tap", a1.lower())
+        self.assertIn("sardi", a1.lower())
+        self.assertNotIn("cholesterol", a1.lower())
+        self.assertNotIn("कोलेस्ट्रॉल", a1)
+        self.assertIn("🌦️", a1)
+        self.assertIn("Andaje Thikan", a1)
+
+        # Turn 2: Narrowed down to ONLY fever + body pain -> acknowledges narrowing, adapts, asks a DIFFERENT deeper question, NO repeated weather card
+        r2 = self.client.post("/predict", json={
+            "text": "mala fakta taap ahe ani body pain ahe",
+            "session_id": sid,
+        })
+        self.assertEqual(r2.status_code, 200)
+        a2 = r2.get_json().get("answer") or ""
+        self.assertIn("samajle", a2.lower())
+        self.assertIn("angdukhi", a2.lower())
+        self.assertIn("sandhyana", a2.lower())
+        self.assertNotIn("thermometer", a2.lower())
+        self.assertNotIn("cholesterol", a2.lower())
+        self.assertNotIn("कोलेस्ट्रॉल", a2)
+        self.assertNotIn("🌦️", a2)
+        self.assertNotEqual(a1, a2)
+
+        # Turn 3: Direct action request to reduce fever -> step-by-step action plan, NO redundant follow-up question, NO weather repeat
+        r3 = self.client.post("/predict", json={
+            "text": "are mala taap kami karnya sathi madat kar na",
+            "session_id": sid,
+        })
+        self.assertEqual(r3.status_code, 200)
+        a3 = r3.get_json().get("answer") or ""
+        self.assertIn("paracetamol", a3.lower())
+        self.assertIn("sponging", a3.lower())
+        self.assertNotIn("cholesterol", a3.lower())
+        self.assertNotIn("कोलेस्ट्रॉल", a3)
+        self.assertNotIn("chhota prashna", a3.lower())
+        self.assertNotIn("🌦️", a3)
+        self.assertNotEqual(a2, a3)
+
+    def test_weather_advisory_displays_explicit_city_from_message(self):
+        sid = "test_weather_city_from_text_1"
+        r = self.client.post("/predict", json={
+            "text": "I live in Pune and have fever and cough",
+            "session_id": sid,
+            "language": "en",
+        })
+        self.assertEqual(r.status_code, 200)
+        ans = r.get_json().get("answer") or ""
+        self.assertIn("🌦️", ans)
+        self.assertIn("Pune", ans)
 
 
 if __name__ == "__main__":
