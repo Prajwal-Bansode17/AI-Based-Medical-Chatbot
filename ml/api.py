@@ -90,6 +90,9 @@ from conversation_engine import (
     build_identity_response,
     format_hf_chat_prompt,
     is_quota_exhausted_error,
+    is_lab_report_context_prompt,
+    is_faculty_or_staff_roster,
+    build_lab_report_interpretation_response,
 )
 from environmental_health import (
     get_atmospheric_context,
@@ -1284,17 +1287,22 @@ def _generate_huggingface(
         return local_pipeline_res.strip()
 
     # 3. If local weights/pipeline are loading or unavailable, fall back IMMEDIATELY
-    #    to our local clinical retriever (4,497 verified records) for instant 0-second latency
-    _last_hf_source = "local_clinical_retriever"
+    #    to clinical lab report interpreter (if lab context) or local clinical retriever for instant 0-second latency
     query_text = _extract_user_query_for_retrieval(actual_prompt, messages=messages) or actual_prompt
+    if query_text and (is_lab_report_context_prompt(query_text) or is_lab_report_context_prompt(actual_prompt)):
+        _last_hf_source = "lab_report_decoder"
+        return build_lab_report_interpretation_response(query_text, language=language)
+
+    _last_hf_source = "local_clinical_retriever"
     if query_text:
         retriever_res = retrieve_local_finetune_answer(query_text, language=language)
         if not retriever_res or not retriever_res.strip():
             retriever_res = build_safe_general_advice(query_text, language=language)
         if retriever_res and retriever_res.strip():
             logger.info(
-                "[%s] HF fallback served immediately by local clinical retriever (4497 verified records)",
+                "[%s] HF fallback served immediately by local clinical retriever (%d verified records)",
                 correlation_id or "HF",
+                len(_finetune_records or []),
             )
             return sanitize_kgmu_references(retriever_res.strip())
 
@@ -1332,10 +1340,17 @@ def _ensure_medical_disclaimer(text: str, language: str = "en") -> str:
     text = text.strip()
     lang = (language or "en").strip().lower()
 
+    disclaimer = get_medical_disclaimer(lang)
+    if lang in ("hi", "hinglish", "mr", "roman_mr"):
+        if "अस्वीकरण" in text:
+            return text
+        if "disclaimer:" in text.lower():
+            text = re.sub(r"(?is)\n*disclaimer:.*$", "", text).strip()
+        return f"{text}\n\n{disclaimer}"
+
     if "disclaimer" in text.lower() or "अस्वीकरण" in text:
         return text
 
-    disclaimer = get_medical_disclaimer(lang)
     return f"{text}\n\n{disclaimer}"
 
 
@@ -1370,6 +1385,11 @@ def init_local_finetune_retriever():
                     out = str(item.get("output") or "")
                     lang = str(item.get("language") or "en")
                     cat = str(item.get("category") or "general")
+
+                    # Purge hospital faculty rosters, doctor lists, or staff directories
+                    if is_faculty_or_staff_roster(out, instr):
+                        continue
+
                     full_text = f"{instr} {inp}".strip()
                     texts.append(full_text)
                     records.append({
@@ -1389,12 +1409,40 @@ def init_local_finetune_retriever():
             logger.error("Failed to initialize local finetune retriever: %s", ex)
 
 
+_ROMAN_SEARCH_HINTS = {
+    "bukhar": "बुखार fever",
+    "tap": "ताप बुखार fever",
+    "sardi": "सर्दी cold",
+    "zukam": "जुकाम सर्दी cold",
+    "khansi": "खांसी खोकला cough",
+    "khokla": "खोकला cough",
+    "dard": "दर्द दुखणे pain",
+    "dokhedukh": "डोकेदुखी headache",
+    "potdukh": "पोटदुखी stomach",
+    "ultiyan": "उल्टी vomiting",
+    "ulti": "उल्टी vomiting",
+    "chakkar": "चक्कर dizziness",
+    "kamzori": "कमजोरी अशक्तपणा weakness",
+    "dawa": "दवा औषध medicine",
+    "goli": "गोली गोळी tablet",
+    "sugar": "शुगर साखर diabetes",
+    "madhumeh": "मधुमेह diabetes",
+}
+
+
 def retrieve_local_finetune_answer(query: str, language: str = "en", threshold: float = 0.15) -> str:
+    if is_lab_report_context_prompt(query):
+        return build_lab_report_interpretation_response(query, language=language)
+
     init_local_finetune_retriever()
     if _finetune_vectorizer is None or _finetune_matrix is None or not _finetune_records:
         return ""
     try:
-        q_vec = _finetune_vectorizer.transform([query])
+        tokens = re.findall(r"[a-zA-Z]+", query.lower())
+        hints = [_ROMAN_SEARCH_HINTS[t] for t in tokens if t in _ROMAN_SEARCH_HINTS]
+        search_query = f"{query} {' '.join(hints)}" if hints else query
+
+        q_vec = _finetune_vectorizer.transform([search_query])
         sims = cosine_similarity(q_vec, _finetune_matrix)[0]
 
         target_lang = (language or "en").strip().lower()
@@ -1403,13 +1451,18 @@ def retrieve_local_finetune_answer(query: str, language: str = "en", threshold: 
             for r in _finetune_records
         ])
         weighted_sims = sims * lang_weights
-        best_idx = int(np.argmax(weighted_sims))
-        best_score = float(sims[best_idx])
 
-        if best_score >= threshold or len(_finetune_records) > 0:
-            match = _finetune_records[best_idx]
-            out = match.get("output") or ""
-            return out.strip()
+        sorted_indices = np.argsort(weighted_sims)[::-1]
+        for idx in sorted_indices[:15]:
+            score = float(sims[idx])
+            if score < threshold:
+                break
+            candidate = _finetune_records[idx]
+            c_out = (candidate.get("output") or "").strip()
+            c_instr = (candidate.get("instruction") or "").strip()
+            if is_faculty_or_staff_roster(c_out, c_instr):
+                continue
+            return c_out
     except Exception as ex:
         logger.warning("Local finetune retrieval error: %s", ex)
     return ""
@@ -1850,15 +1903,25 @@ def generate_medical_response_with_provider(
             # Eliminate cascade delay: If Gemini failed due to 429 quota exhaustion, immediately serve from local clinical retriever
             if provider_name == "gemini" and time.monotonic() < _gemini_quota_exhausted_until:
                 if not image_bytes:
+                    if is_lab_report_context_prompt(user_text):
+                        return build_lab_report_interpretation_response(user_text, language=language), "lab_report_decoder"
                     local_answer = retrieve_local_finetune_answer(user_text, language=language)
                     if local_answer and local_answer.strip():
                         logger.info("[%s] Immediate local retriever fallback after Gemini 429 quota exhaustion", correlation_id or "AI")
                         return sanitize_kgmu_references(local_answer.strip()), "local_medical_retrieval"
             continue
 
+        # Purge faculty rosters or doctor lists from AI provider outputs
+        if is_faculty_or_staff_roster(answer):
+            logger.warning("[%s] Discarding response from %s containing faculty roster or doctor list", correlation_id or "AI", provider_name)
+            answer = None
+            continue
+
         effective_provider = provider_name
         if provider_name == "huggingface" and _last_hf_source == "local_clinical_retriever":
             effective_provider = "local_medical_retrieval"
+        elif provider_name == "huggingface" and _last_hf_source == "lab_report_decoder":
+            effective_provider = "lab_report_decoder"
 
         logger.info("[%s] Provider %s succeeded in %.2fs (effective: %s)", correlation_id or "AI", provider_name, prov_elapsed, effective_provider)
         answer = answer.strip()
@@ -1872,6 +1935,8 @@ def generate_medical_response_with_provider(
 
     # Secondary / Graceful Fallback: Local curated medical retrieval (MEDIQ / Clinical KB) for text queries
     if not image_bytes:
+        if is_lab_report_context_prompt(user_text):
+            return build_lab_report_interpretation_response(user_text, language=language), "lab_report_decoder"
         local_answer = retrieve_local_finetune_answer(user_text, language=language)
         if local_answer and local_answer.strip():
             logger.info("[%s] Graceful fallback to local curated medical retrieval", correlation_id or "AI")
@@ -3238,6 +3303,8 @@ def retrieve_mediq_answer(user_text, final_intent):
         return None
 
     answer = str(dataset.iloc[best_index][ANSWER_COLUMN])
+    if is_faculty_or_staff_roster(answer):
+        return None
 
     return {
         "answer": answer,
@@ -3999,6 +4066,65 @@ def chat():
     quick_replies = get_quick_reply_chips(final_language)
 
     # ------------------------------------------------------------
+    # STRICT LAB REPORT INTERPRETATION BYPASS
+    # ------------------------------------------------------------
+    if is_lab_report_context_prompt(sanitized_message) or is_lab_report_context_prompt(raw_message):
+        lab_breakdown = build_lab_report_interpretation_response(raw_message or sanitized_message, language=final_language)
+        ai_lab_answer = None
+        ai_source = "lab_report_decoder"
+        if HF_ENABLED:
+            try:
+                hf_lab_prompt = (
+                    f"You are MedAssist AI. Interpret the patient's lab report clearly without mentioning hospital faculty, staff, or department doctor directories.\n\n"
+                    f"Patient Lab Report:\n{raw_message}\n\n"
+                    f"Clinical Reference Analysis:\n{lab_breakdown}"
+                )
+                hf_resp = _generate_huggingface(
+                    system_prompt=_build_medical_system_instruction(final_language, user_identity_context=user_identity_context),
+                    user_prompt=hf_lab_prompt,
+                    session_id=session_id,
+                    language=final_language,
+                    correlation_id=correlation_id,
+                )
+                if hf_resp and not is_faculty_or_staff_roster(hf_resp):
+                    ai_lab_answer = hf_resp
+                    ai_source = "huggingface"
+            except Exception as _hf_err:
+                logger.warning("[%s] HF chat lab report error: %s", correlation_id, _hf_err)
+
+        final_lab_answer = ai_lab_answer or lab_breakdown
+        final_lab_answer = _ensure_medical_disclaimer(sanitize_kgmu_references(final_lab_answer), final_language)
+
+        _record_chat("user", raw_message, symptoms=",".join(detected_symptoms))
+        _record_chat("assistant", final_lab_answer, symptoms=",".join(detected_symptoms))
+
+        lab_followups = [
+            "What diet helps improve these test values?",
+            "When should I repeat this blood test?"
+        ] if final_language == "en" else [
+            "हे रिपोर्ट सुधारण्यासाठी कोणता आहार घ्यावा?",
+            "पुढील तपासणी कधी करावी?"
+        ] if final_language in ("mr", "roman_mr") else [
+            "इन टेस्ट वैल्यूज को सुधारने के लिए क्या खाना चाहिए?",
+            "यह ब्लड टेस्ट दोबारा कब कराना चाहिए?"
+        ]
+
+        return jsonify({
+            "status": "success",
+            "session_id": session_id,
+            "response": final_lab_answer,
+            "answer": final_lab_answer,
+            "layer": 2 if ai_lab_answer else 3,
+            "source": ai_source,
+            "model": HF_MODEL_NAME if ai_lab_answer else "lab_report_decoder",
+            "emergency": False,
+            "proactive_check_in": False,
+            "follow_up_questions": lab_followups,
+            "quick_replies": get_quick_reply_chips(final_language),
+            "language": final_language,
+        }), 200
+
+    # ------------------------------------------------------------
     # LAYER 2: Primary Hugging Face Model Inference
     # ------------------------------------------------------------
     hf_answer = None
@@ -4642,6 +4768,58 @@ def predict():
                 "language": final_language,
                 "emergency": True,
                 "safety_flag": safety_flag,
+            })
+
+        # ----------------------------------------------------
+        # STRICT LAB REPORT INTERPRETATION BYPASS
+        # ----------------------------------------------------
+        if (is_lab_report_context_prompt(text) or is_lab_report_context_prompt(raw_text)) and not safety_flag:
+            lab_breakdown = build_lab_report_interpretation_response(raw_text or text, language=final_language)
+            ai_lab_answer = None
+            ai_source = "lab_report_decoder"
+            if HF_ENABLED:
+                try:
+                    hf_lab_prompt = (
+                        f"You are MedAssist AI. Interpret the patient's lab report clearly without mentioning hospital faculty, staff, or department doctor directories.\n\n"
+                        f"Patient Lab Report:\n{text}\n\n"
+                        f"Clinical Reference Analysis:\n{lab_breakdown}"
+                    )
+                    hf_resp = _generate_huggingface(
+                        system_prompt=_build_medical_system_instruction(final_language, user_identity_context=user_identity_context),
+                        user_prompt=hf_lab_prompt,
+                        session_id=session_id,
+                        language=final_language,
+                        correlation_id=correlation_id,
+                    )
+                    if hf_resp and not is_faculty_or_staff_roster(hf_resp):
+                        ai_lab_answer = hf_resp
+                        ai_source = "huggingface"
+                except Exception as _hf_err:
+                    logger.warning("[%s] HF lab report predict error: %s", correlation_id, _hf_err)
+
+            final_lab_answer = ai_lab_answer or lab_breakdown
+            final_lab_answer = sanitize_kgmu_references(final_lab_answer)
+
+            _record_message("user", text, symptoms)
+            _record_message("assistant", final_lab_answer, symptoms)
+            _maybe_save_user_prefs()
+
+            return _json_response({
+                "status": "success",
+                "session_id": session_id,
+                "question": text,
+                "intent": "lab_report_analysis",
+                "confidence": 1.0,
+                "symptoms": symptoms,
+                "previous_symptoms": previous_symptoms,
+                "duration": duration,
+                "measurements": measurements,
+                "medical_query": True,
+                "answer": final_lab_answer,
+                "response": final_lab_answer,
+                "answer_similarity": 1.0,
+                "source": ai_source,
+                "language": final_language,
             })
 
         # ----------------------------------------------------
@@ -5291,7 +5469,7 @@ if __name__ == "__main__":
     hf_token_detected = bool(os.getenv("HF_TOKEN"))
     print(f"AI Primary   : Hugging Face ({hf_model_id})")
     print(f"HF Status    : {'Connected (Token detected)' if hf_token_detected else 'No HF_TOKEN set'}")
-    print("Fallback     : Gemini (Configured) + Local Retriever (4497 records)")
+    print(f"Fallback     : Gemini (Configured) + Local Retriever ({len(_finetune_records or [])} records)")
     print("API Port     : 5000")
     print("LAN URL      : http://<YOUR-LAPTOP-IP>:5000")
     print("Android BASE_URL must point to the laptop running Flask.")

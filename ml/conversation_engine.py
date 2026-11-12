@@ -16,6 +16,15 @@ from environmental_health import (
     format_atmospheric_advisory_block,
 )
 
+try:
+    from lab_report_analyzer import analyze_lab_report, BIOMARKER_DATABASE
+except ImportError:
+    try:
+        from ml.lab_report_analyzer import analyze_lab_report, BIOMARKER_DATABASE
+    except ImportError:
+        analyze_lab_report = None
+        BIOMARKER_DATABASE = {}
+
 logger = logging.getLogger("medassist.conversation_engine")
 
 # Common medicine patterns to recognize in history for anaphoric resolution
@@ -776,3 +785,272 @@ def build_identity_response(
             return "वर्तमान बातचीत में आपका नाम अभी दर्ज नहीं है। क्या आप कृपया मुझे अपना नाम बता सकते हैं?"
         else:
             return "I don't have your name saved in our current conversation yet. Could you please share your name with me?"
+
+
+def is_lab_report_context_prompt(text: str) -> bool:
+    """
+    Detects if the prompt contains clinical lab report context or biomarker evaluation.
+    """
+    if not text or not isinstance(text, str):
+        return False
+    lower = text.lower()
+    return (
+        "[clinical lab report context]" in lower
+        or "flagged parameters:" in lower
+        or "flagged parameters" in lower
+        or "biomarker decoder" in lower
+        or "[lab report context]" in lower
+    )
+
+
+def is_faculty_or_staff_roster(text: str, instruction: str = "") -> bool:
+    """
+    Checks if a text or instruction contains faculty rosters, staff directories,
+    doctor lists, or department professor names that should never be returned to patients.
+    """
+    combined = f"{instruction} {text}".lower().strip()
+    if not combined:
+        return False
+    patterns = [
+        r"\b(?:faculty|staff|professors?|doctors?)\s+(?:directory|list|roster|schedule)\b",
+        r"\b(?:list\s+of\s+(?:doctors|professors|faculty|specialists|surgeons|physicians))\b",
+        r"\bdepartment\s+of\s+[a-z\s,&]+\s+(?:doctors?\s+list|faculty|professors?)\b",
+        r"\bdepartment\s+of\s+obstetrics\s+&\s+gynecology\s+doctors\b",
+        r"\bhead\s+of\s+department\b",
+        r"\bopd\s+doctor\s+schedule\b",
+        r"\bfaculty\s+members?\b",
+        r"\bfaculty\s+directory\b",
+        r"\bdr\s+[a-z\s]+in\s+the\s+faculty\s+directory\b",
+        r"\bdean|vice-chancellor|chancellor\b",
+        r"\bwho\s+are\s+the\s+doctors\s+in\b",
+        r"\bconsultant\s+list\b",
+        r"\bdoctor\s+names?\s+in\b",
+        r"\bdoctors?\s+in\s+[a-z\s]+\s+department\b",
+        r"\bdr\s+[a-z\s]+\s+appointment\b",
+        r"\bclinical\s+hematology\s+opd\s+doctor\s+schedule\b",
+    ]
+    for pat in patterns:
+        if re.search(pat, combined):
+            return True
+    return False
+
+
+def build_lab_report_interpretation_response(raw_text: str, language: str = "en") -> str:
+    """
+    Generates a structured, patient-friendly clinical interpretation of lab report biomarkers
+    adhering strictly to 4 required sections:
+    1) Quick Summary
+    2) Clinical Significance & Normal Ranges
+    3) Dietary & Lifestyle Advice
+    4) Questions for Your Doctor
+    Bypasses all external hospital directories, faculty lists, and raw TF-IDF matching.
+    """
+    lang = (language or "en").strip().lower()
+    if lang in ("mr", "roman_mr"):
+        target_lang = "mr"
+    elif lang in ("hi", "hinglish"):
+        target_lang = "hi"
+    else:
+        target_lang = "en"
+
+    report = None
+    if analyze_lab_report is not None:
+        try:
+            report = analyze_lab_report(raw_text, user_language=target_lang)
+        except Exception as ex:
+            logger.warning("analyze_lab_report error in conversation engine: %s", ex)
+            report = None
+
+    biomarkers = report.get("biomarkers", []) if report else []
+    flagged = [b for b in biomarkers if b.get("status") != "normal"]
+    doctor_questions = report.get("doctor_questions", []) if report else []
+
+    # If analyze_lab_report missed lines from explicit "Flagged Parameters:", parse regex
+    if not biomarkers or len(flagged) == 0:
+        param_matches = re.findall(
+            r"-\s*([^:\n]+):\s*([\d.]+)\s*([^\s(\n]*)\s*(?:\([^)]*Status:\s*([a-zA-Z_]+)\))?",
+            raw_text,
+            re.IGNORECASE
+        )
+        for p_name, p_val, p_unit, p_stat in param_matches:
+            clean_name = p_name.strip()
+            if not any(b.get("name", "").lower() == clean_name.lower() for b in biomarkers):
+                try:
+                    num_val = float(p_val.strip())
+                except ValueError:
+                    num_val = 0.0
+                status_str = (p_stat or "abnormal").strip().lower()
+                biomarkers.append({
+                    "name": clean_name,
+                    "display_name": clean_name,
+                    "value": num_val,
+                    "unit": p_unit.strip(),
+                    "reference_range": "See standard reference values",
+                    "status": status_str,
+                    "layman_explanation": f"{clean_name} is outside typical standard limits ({status_str.upper()}).",
+                    "dietary_advice": "Focus on a balanced diet with proper hydration and consult your physician.",
+                    "what_it_is": f"Standard clinical biomarker {clean_name}.",
+                })
+        flagged = [b for b in biomarkers if b.get("status") != "normal"]
+
+    lines = []
+
+    # --- SECTION 1: Quick Summary ---
+    if target_lang == "mr":
+        lines.append("### १. संक्षिप्त सारांश (Quick Summary)")
+        if flagged:
+            for b in flagged:
+                name = b.get("display_name") or b.get("name")
+                val = b.get("value")
+                unit = b.get("unit") or ""
+                stat = b.get("status") or "असामान्य"
+                stat_str = "कमी (Low)" if "low" in stat.lower() else ("जास्त (High)" if "high" in stat.lower() else stat)
+                expl = b.get("layman_explanation") or ""
+                lines.append(f"- **{name} ({val} {unit})**: स्थिती **{stat_str}** आहे. {expl}")
+        else:
+            lines.append("तपासण्यात आलेले सर्व लॅब घटक सामान्य मर्यादेत आहेत. कोणतीही चिंताजनक बाब आढळलेली नाही.")
+    elif target_lang == "hi":
+        lines.append("### १. त्वरित सारांश (Quick Summary)")
+        if flagged:
+            for b in flagged:
+                name = b.get("display_name") or b.get("name")
+                val = b.get("value")
+                unit = b.get("unit") or ""
+                stat = b.get("status") or "असामान्य"
+                stat_str = "कम (Low)" if "low" in stat.lower() else ("अधिक (High)" if "high" in stat.lower() else stat)
+                expl = b.get("layman_explanation") or ""
+                lines.append(f"- **{name} ({val} {unit})**: स्थिति **{stat_str}** है। {expl}")
+        else:
+            lines.append("जांचे गए सभी लैब पैरामीटर सामान्य सीमा में हैं। कोई भी असामान्य घटक नहीं पाया गया।")
+    else:
+        lines.append("### 1. Quick Summary")
+        if flagged:
+            for b in flagged:
+                name = b.get("display_name") or b.get("name")
+                val = b.get("value")
+                unit = b.get("unit") or ""
+                stat = b.get("status") or "abnormal"
+                stat_str = "LOW" if "low" in stat.lower() else ("HIGH" if "high" in stat.lower() else stat.upper())
+                expl = b.get("layman_explanation") or ""
+                lines.append(f"- **{name} ({val} {unit})**: Status is **{stat_str}**. {expl}")
+        else:
+            lines.append("All evaluated biomarkers are currently within standard reference ranges. No abnormal parameters detected.")
+    lines.append("")
+
+    # --- SECTION 2: Clinical Significance & Normal Ranges ---
+    if target_lang == "mr":
+        lines.append("### २. वैद्यकीय महत्त्व आणि प्रमाणित मर्यादा (Clinical Significance)")
+        display_items = flagged if flagged else biomarkers
+        for b in display_items:
+            name = b.get("display_name") or b.get("name")
+            val = b.get("value")
+            unit = b.get("unit") or ""
+            ref = b.get("reference_range") or "प्रमाणित मर्यादा"
+            stat = b.get("status") or "सामान्य"
+            stat_lbl = "मर्यादेपेक्षा कमी" if "low" in stat.lower() else ("मर्यादेपेक्षा जास्त" if "high" in stat.lower() else "सामान्य")
+            what = b.get("what_it_is") or ""
+            lines.append(f"- **{name}**: तुमचा रिपोर्ट = **{val} {unit}** (प्रमाणित मर्यादा: {ref}) — **{stat_lbl}**.")
+            if what:
+                lines.append(f"  *{what}*")
+    elif target_lang == "hi":
+        lines.append("### २. नैदानिक महत्व और सामान्य सीमाएं (Clinical Significance)")
+        display_items = flagged if flagged else biomarkers
+        for b in display_items:
+            name = b.get("display_name") or b.get("name")
+            val = b.get("value")
+            unit = b.get("unit") or ""
+            ref = b.get("reference_range") or "सामान्य सीमा"
+            stat = b.get("status") or "सामान्य"
+            stat_lbl = "सीमा से कम" if "low" in stat.lower() else ("सीमा से अधिक" if "high" in stat.lower() else "सामान्य")
+            what = b.get("what_it_is") or ""
+            lines.append(f"- **{name}**: आपका मान = **{val} {unit}** (सामान्य सीमा: {ref}) — **{stat_lbl}**.")
+            if what:
+                lines.append(f"  *{what}*")
+    else:
+        lines.append("### 2. Clinical Significance & Normal Ranges")
+        display_items = flagged if flagged else biomarkers
+        for b in display_items:
+            name = b.get("display_name") or b.get("name")
+            val = b.get("value")
+            unit = b.get("unit") or ""
+            ref = b.get("reference_range") or "Standard Range"
+            stat = b.get("status") or "normal"
+            stat_lbl = "Below Normal" if "low" in stat.lower() else ("Above Normal" if "high" in stat.lower() else "Normal")
+            what = b.get("what_it_is") or ""
+            lines.append(f"- **{name}**: Your Result = **{val} {unit}** (Standard Range: {ref}) — **{stat_lbl}**.")
+            if what:
+                lines.append(f"  *{what}*")
+    lines.append("")
+
+    # --- SECTION 3: Dietary & Lifestyle Advice ---
+    if target_lang == "mr":
+        lines.append("### ३. आहार आणि जीवनशैली सल्ला (Dietary & Lifestyle Advice)")
+        seen_diet = set()
+        for b in (flagged if flagged else biomarkers):
+            diet = b.get("dietary_advice")
+            name = b.get("display_name") or b.get("name")
+            if diet and diet not in seen_diet:
+                seen_diet.add(diet)
+                lines.append(f"- **{name} साठी सल्ला**: {diet}")
+        if not seen_diet:
+            lines.append("- समतोल, पौष्टिक आहार घ्या, भरपूर पाणी प्या आणि दररोज ७-८ तास पुरेशी झोप घ्या.")
+    elif target_lang == "hi":
+        lines.append("### ३. आहार और जीवनशैली संबंधी सलाह (Dietary & Lifestyle Advice)")
+        seen_diet = set()
+        for b in (flagged if flagged else biomarkers):
+            diet = b.get("dietary_advice")
+            name = b.get("display_name") or b.get("name")
+            if diet and diet not in seen_diet:
+                seen_diet.add(diet)
+                lines.append(f"- **{name} के लिए सलाह**: {diet}")
+        if not seen_diet:
+            lines.append("- संतुलित, पोषक तत्वों से भरपूर आहार लें, पर्याप्त पानी पिएं और रोजाना ७-८ घंटे की अच्छी नींद लें।")
+    else:
+        lines.append("### 3. Dietary & Lifestyle Advice")
+        seen_diet = set()
+        for b in (flagged if flagged else biomarkers):
+            diet = b.get("dietary_advice")
+            name = b.get("display_name") or b.get("name")
+            if diet and diet not in seen_diet:
+                seen_diet.add(diet)
+                lines.append(f"- **For {name}**: {diet}")
+        if not seen_diet:
+            lines.append("- Maintain a balanced, nutrient-dense diet rich in seasonal vegetables, whole grains, and lean proteins, and stay well hydrated.")
+    lines.append("")
+
+    # --- SECTION 4: Questions for Your Doctor ---
+    if target_lang == "mr":
+        lines.append("### ४. डॉक्टरांना विचारण्यासाठी महत्त्वाचे प्रश्न (Questions for Your Doctor)")
+        qs = doctor_questions[:3] if doctor_questions else [
+            "माझे हे रिपोर्ट पाहता मला काही औषधे किंवा सप्लिमेंट्स सुरू करण्याची गरज आहे का?",
+            "हे पॅरामीटर्स पूर्ववत सामान्य करण्यासाठी आहाराव्यतिरिक्त आणखी काय काळजी घ्यावी?",
+            "मला पुढील फॉलो-अप तपासणी कधी करावी लागेल?"
+        ]
+        for q in qs:
+            lines.append(f"- \"{q}\"")
+        lines.append("")
+        lines.append("अस्वीकरण: मी एक एआय वैद्यकीय सहाय्यक आहे, डॉक्टर नाही. अचूक निदान आणि योग्य उपचारांसाठी कृपया आपल्या तज्ज्ञ डॉक्टरांचा प्रत्यक्ष सल्ला घ्या.")
+    elif target_lang == "hi":
+        lines.append("### ४. डॉक्टर से पूछने योग्य महत्वपूर्ण प्रश्न (Questions for Your Doctor)")
+        qs = doctor_questions[:3] if doctor_questions else [
+            "मेरी इस रिपोर्ट के अनुसार क्या मुझे किसी दवा या सप्लीमेंट की आवश्यकता है?",
+            "इन घटकों को सामान्य करने के लिए मुझे आहार के अलावा और क्या सावधानियां रखनी चाहिए?",
+            "मुझे अगली फॉलो-अप जांच कब करानी चाहिए?"
+        ]
+        for q in qs:
+            lines.append(f"- \"{q}\"")
+        lines.append("")
+        lines.append("अस्वीकरण: मैं एक एआई मेडिकल असिस्टेंट हूँ, डॉक्टर नहीं। सटीक निदान और उचित उपचार के लिए कृपया अपने चिकित्सक से व्यक्तिगत परामर्श लें।")
+    else:
+        lines.append("### 4. Recommended Questions for Your Doctor")
+        qs = doctor_questions[:3] if doctor_questions else [
+            "Based on these results, do I require any specific therapeutic supplements or medication adjustments?",
+            "Are there any secondary diagnostic investigations needed to evaluate these findings further?",
+            "When should I repeat this lab panel to monitor these parameters?"
+        ]
+        for q in qs:
+            lines.append(f"- \"{q}\"")
+        lines.append("")
+        lines.append("Disclaimer: I am an AI medical assistant, not a doctor. Please discuss these laboratory test results with your healthcare provider for formal clinical correlation and personalized management.")
+
+    return "\n".join(lines)

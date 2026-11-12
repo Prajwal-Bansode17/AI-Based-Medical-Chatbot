@@ -181,7 +181,17 @@ class TestFineTuningDatasetIntegrity(unittest.TestCase):
                 val_samples.append(obj)
 
         total_samples = len(train_samples) + len(val_samples)
-        self.assertGreaterEqual(total_samples, 4000, "Dataset should have at least 4,000 total samples")
+        # Purged non-clinical hospital portal / faculty logs; verify clean clinical dataset has >= 1,000 pure clinical entries
+        self.assertGreaterEqual(total_samples, 1000, "Cleaned dataset should have at least 1,000 pure clinical samples")
+
+        # Verify zero hospital faculty, KGMU, or university campus admin leakage
+        for s in train_samples + val_samples:
+            combined_txt = f"{s.get('instruction', '')} {s.get('output', '')}".lower()
+            self.assertNotIn("kgmu", combined_txt)
+            self.assertNotIn("king george", combined_txt)
+            self.assertNotIn("vice dean", combined_txt)
+            self.assertNotIn("additional professor", combined_txt)
+            self.assertNotIn("faculty directory", combined_txt)
 
         # Verify 90/10 split
         train_ratio = len(train_samples) / total_samples
