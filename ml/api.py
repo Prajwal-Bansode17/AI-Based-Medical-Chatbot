@@ -1042,6 +1042,7 @@ HF_API_URL = os.getenv(
 )
 HF_TIMEOUT = _env_float("HF_TIMEOUT", 12.0)
 HF_ENABLED = _env_bool("HF_ENABLED", True)
+HF_ENABLE_REMOTE_INFERENCE = _env_bool("HF_ENABLE_REMOTE_INFERENCE", False)
 HF_TEMPERATURE = _env_float("HF_TEMPERATURE", 0.3)
 HF_MAX_NEW_TOKENS = _env_int("HF_MAX_NEW_TOKENS", 512)
 
@@ -1057,7 +1058,7 @@ def query_hf_chat(
     language="en",
     correlation_id=None,
 ):
-    if not HF_ENABLED:
+    if not HF_ENABLED or not HF_ENABLE_REMOTE_INFERENCE:
         return None
 
     token = HF_TOKEN
@@ -1632,12 +1633,12 @@ def _build_medical_system_instruction(
     instruction = (
         f"You are MedAssist AI, a crisp, empathetic clinical assistant. Never reference external hospitals or websites like KGMU.\n"
         f"TARGET RESPONSE LANGUAGE: {target_language}.\n\n"
-        f"MODERN RESPONSE STRUCTURE (ChatGPT / Gemini Style):\n"
-        f"1. Start with 1–2 direct, plain sentences summarizing what is likely happening.\n"
-        f"2. Use clean bullet points with **bold lead-ins** (max 1–2 lines per bullet) for Home Care, Medicines/Precautions, and When to See a Doctor (2 brief red flags).\n"
-        f"3. End with AT MOST ONE highlighted follow-up question (`**Quick check:** ...` or localized equivalent) and ONE short italic disclaimer line.\n"
-        f"4. NEVER repeat greeting formulas ('Hello <Name>') on ongoing medical messages. Only use the user's first name when directly asked about identity or on a first greeting.\n"
-        f"5. Do NOT add weather forecasts or emergency helpline footers unless symptoms indicate an acute red-flag emergency or respiratory/viral seasonal illness.\n"
+        f"CORE ACCURACY & CONVERSATION RULES:\n"
+        f"1. Answer the user's EXACT question directly and accurately using conversation history (e.g., if they ask 'koshmat garam pani mhanje kay?', explain lukewarm water clearly; if they ask 'vaf(steam) kasa gheu?', give step-by-step steam inhalation instructions).\n"
+        f"2. Format like ChatGPT/Gemini: start with a 1–2 line direct summary, then concise bullet points with **bold lead-ins** (max 1–2 lines per bullet).\n"
+        f"3. End with AT MOST ONE relevant follow-up question (`**Quick check:** ...` or localized equivalent) when clinically helpful (skip follow-up questions on direct how-to/definition questions) and ONE short italic disclaimer line.\n"
+        f"4. NEVER repeat greeting formulas ('Hello <Name>') on ongoing medical messages. Only use the user's first name when directly asked about identity or on Turn 1 greeting.\n"
+        f"5. Do NOT add weather forecasts or emergency helpline footers (108/104) inside your text—weather/helplines are handled separately only when appropriate.\n"
         f"6. OUTPUT SCRIPT REQUIREMENT: {script_rule}\n"
         f"7. Continue multi-turn context seamlessly without repeating questions the user already answered. Do not diagnose definitively or prescribe exact drug dosages.\n"
     )
@@ -1922,6 +1923,9 @@ def generate_medical_response_with_provider(
         _add_gemini()
         _add_ollama()
 
+    has_generative_fallback = any(p in ("gemini", "ollama") for p, _ in providers)
+    deferred_local_fallback = None
+
     for provider_name, call in providers:
         t_prov_start = time.monotonic()
         try:
@@ -1955,6 +1959,16 @@ def generate_medical_response_with_provider(
         elif provider_name == "huggingface" and _last_hf_source == "lab_report_decoder":
             effective_provider = "lab_report_decoder"
 
+        # NEVER let static local_medical_retrieval block a real generative LLM (Gemini/Ollama)!
+        if effective_provider == "local_medical_retrieval" and has_generative_fallback:
+            logger.info(
+                "[%s] Deferring static local_medical_retrieval (took %.2fs) so generative LLM (Gemini/Ollama) can run",
+                correlation_id or "AI",
+                prov_elapsed,
+            )
+            deferred_local_fallback = (answer.strip(), effective_provider)
+            continue
+
         logger.info("[%s] Provider %s succeeded in %.2fs (effective: %s)", correlation_id or "AI", provider_name, prov_elapsed, effective_provider)
         answer = answer.strip()
 
@@ -1964,6 +1978,25 @@ def generate_medical_response_with_provider(
                 answer = translated.strip()
 
         return sanitize_kgmu_references(answer), effective_provider
+
+    # Layer 2.5: Live Web Medical Search (DuckDuckGo/Wikipedia) when generative LLMs failed
+    if not image_bytes and not is_lab_report_context_prompt(user_text):
+        try:
+            from web_medical_search import search_medical_web
+            web_ans = search_medical_web(user_text, language=language, timeout=2.0)
+            if web_ans and web_ans.strip() and not is_faculty_or_staff_roster(web_ans):
+                logger.info("[%s] Served by live web_medical_search fallback", correlation_id or "AI")
+                return sanitize_kgmu_references(web_ans.strip()), "web_medical_search"
+        except Exception as _web_err:
+            logger.debug("[%s] web_medical_search skipped: %s", correlation_id or "AI", _web_err)
+
+    if deferred_local_fallback:
+        ans_text, prov_label = deferred_local_fallback
+        if _looks_mixed_with_english(ans_text, language):
+            translated = translate_text_with_ai(ans_text, language)
+            if translated:
+                ans_text = translated.strip()
+        return sanitize_kgmu_references(ans_text), prov_label
 
     # Secondary / Graceful Fallback: Local curated medical retrieval (MEDIQ / Clinical KB) for text queries
     if not image_bytes:
@@ -4233,29 +4266,34 @@ def chat():
         }), 200
 
     # ------------------------------------------------------------
-    # LAYER 2: Primary Hugging Face Model Inference
+    # LAYER 2: Generative AI Inference (HF -> Gemini -> Ollama -> Web/Local Fallback)
     # ------------------------------------------------------------
-    hf_answer = None
-    if HF_ENABLED:
-        try:
-            memory_summary = build_session_memory_summary(session_id) if session_id else ""
-            system_instruction = _build_medical_system_instruction(
-                final_language,
-                memory_summary=memory_summary,
-                user_identity_context=user_identity_context,
-                dialect=detected_dialect,
-                allow_name_addressing=False,
-            )
-            hf_answer = _generate_huggingface(
-                system_prompt=system_instruction,
-                user_prompt=sanitized_message,
-                session_id=session_id,
-                language=final_language,
-                correlation_id=correlation_id,
-            )
-        except Exception as ex:
-            logger.warning("[%s] HF Layer 2 exception: %s", correlation_id, ex)
-            hf_answer = None
+    ai_answer = None
+    ai_provider = None
+    try:
+        memory_summary = build_session_memory_summary(session_id) if session_id else ""
+        system_instruction = _build_medical_system_instruction(
+            final_language,
+            memory_summary=memory_summary,
+            user_identity_context=user_identity_context,
+            dialect=detected_dialect,
+            allow_name_addressing=False,
+        )
+        ai_answer, ai_provider = generate_medical_response_with_provider(
+            user_text=sanitized_message,
+            language=final_language,
+            medical_context="",
+            conversation_context="",
+            session_id=session_id,
+            correlation_id=correlation_id,
+            system_instruction=system_instruction,
+            user_identity_context=user_identity_context,
+            dialect=detected_dialect,
+            allow_name_addressing=False,
+        )
+    except Exception as ex:
+        logger.warning("[%s] Layer 2 generative exception: %s", correlation_id, ex)
+        ai_answer, ai_provider = None, None
 
     high_severity = is_high_severity_or_red_flag(sanitized_message, safety_flag=None)
     try:
@@ -4283,34 +4321,46 @@ def chat():
     progression = analyze_conversation_progression(sanitized_message, detected_symptoms, recent_history=chat_recent_hist)
     include_followup = bool(has_clinical_intent and progression["stage"] != "action_request")
 
-    if hf_answer and hf_answer.strip():
-        raw_hf = hf_answer.strip()
-        if _last_hf_source not in ("remote", "local_pipeline") and (has_clinical_intent or detected_dialect in ("roman_mr", "hinglish")):
+    if ai_answer and ai_answer.strip():
+        is_live_chat_llm = (
+            ai_provider in ("gemini", "ollama")
+            or (ai_provider == "huggingface" and _last_hf_source in ("remote", "local_pipeline"))
+        )
+        if is_live_chat_llm:
+            # ALWAYS preserve real generative LLM output verbatim (never overwrite with static templates)
+            final_answer = sanitize_kgmu_references(ai_answer.strip())
+            final_answer = _ensure_medical_disclaimer(final_answer, final_language, dialect=detected_dialect)
+            chat_source = ai_provider
+            chat_layer = 2
+            chat_model = GEMINI_MODEL if ai_provider == "gemini" else HF_MODEL_NAME
+        else:
+            raw_fallback = ai_answer.strip()
             if has_clinical_intent:
-                raw_hf = build_structured_symptom_guidance(
+                raw_fallback = build_structured_symptom_guidance(
                     detected_symptoms,
                     raw_text=sanitized_message,
                     language=final_language,
                     dialect=detected_dialect,
                     recent_history=chat_recent_hist,
                 )
-        final_answer = ensure_modern_clinical_formatting(
-            raw_hf,
-            language=final_language,
-            dialect=detected_dialect,
-            include_followup=include_followup,
-            allow_name=False,
-        )
-        final_answer = _ensure_medical_disclaimer(final_answer, final_language, dialect=detected_dialect)
+            final_answer = ensure_modern_clinical_formatting(
+                raw_fallback,
+                language=final_language,
+                dialect=detected_dialect,
+                include_followup=include_followup,
+                allow_name=False,
+            )
+            final_answer = _ensure_medical_disclaimer(final_answer, final_language, dialect=detected_dialect)
+            chat_source = "local_finetune_retrieval"
+            chat_layer = 3
+            chat_model = "local_clinical_retriever"
+
         if env_block and env_block not in final_answer:
             final_answer = f"{final_answer}\n\n{env_block}"
         if env_block and session_id:
             _WEATHER_SHOWN_SESSIONS.add(session_id)
         _record_chat("user", raw_message, symptoms=",".join(detected_symptoms))
         _record_chat("assistant", final_answer, symptoms=",".join(detected_symptoms))
-
-        chat_source = "huggingface" if _last_hf_source in ("remote", "local_pipeline") else "local_finetune_retrieval"
-        chat_layer = 2 if _last_hf_source in ("remote", "local_pipeline") else 3
 
         return jsonify({
             "status": "success",
@@ -4319,7 +4369,7 @@ def chat():
             "answer": final_answer,
             "layer": chat_layer,
             "source": chat_source,
-            "model": HF_MODEL_NAME if chat_layer == 2 else "local_clinical_retriever",
+            "model": chat_model,
             "emergency": False,
             "proactive_check_in": False,
             "follow_up_questions": follow_up_questions,
@@ -5373,15 +5423,14 @@ def predict():
             roman_fu = extract_roman_clinical_symptoms(text)
 
             if is_live_followup_llm:
-                raw_fu = ai_answer
+                raw_fu = ai_answer.strip()
                 if detected_dialect not in ("roman_mr", "hinglish"):
                     raw_fu = localize_answer(raw_fu, final_language)
-                followup_answer = ensure_modern_clinical_formatting(
-                    raw_fu,
-                    language=final_language,
+                # Preserve generative LLM (Gemini/Ollama/HF) output verbatim without overwriting with static templates
+                followup_answer = _ensure_medical_disclaimer(
+                    sanitize_kgmu_references(raw_fu),
+                    final_language,
                     dialect=detected_dialect,
-                    include_followup=(progression_fu["stage"] != "action_request"),
-                    allow_name=False,
                 )
                 source = ai_provider
             elif symptoms or previous_symptoms or roman_fu["symptoms"] or roman_fu["topics"]:
@@ -5599,15 +5648,13 @@ def predict():
 
             progression_sym = analyze_conversation_progression(text, combined_symptoms, recent_history=recent_history)
             if is_live_llm:
-                raw_sym_ans = ai_medical_answer
+                raw_sym_ans = ai_medical_answer.strip()
                 if detected_dialect not in ("roman_mr", "hinglish"):
                     raw_sym_ans = localize_answer(raw_sym_ans, final_language)
-                final_answer = ensure_modern_clinical_formatting(
-                    raw_sym_ans,
-                    language=final_language,
+                final_answer = _ensure_medical_disclaimer(
+                    sanitize_kgmu_references(raw_sym_ans),
+                    final_language,
                     dialect=detected_dialect,
-                    include_followup=(progression_sym["stage"] != "action_request"),
-                    allow_name=False,
                 )
                 source = symptom_provider
             else:

@@ -3,6 +3,7 @@ import json
 import sys
 import uuid
 from pathlib import Path
+from unittest.mock import patch, MagicMock
 
 # Ensure ml directory is on sys.path
 BASE_ML_DIR = Path(__file__).resolve().parent
@@ -278,6 +279,32 @@ class TestLabReportBypassAndFacultyPurge(unittest.TestCase):
         ans = r.get_json().get("answer") or ""
         self.assertIn("🌦️", ans)
         self.assertIn("Pune", ans)
+
+    def test_gemini_200_ok_never_overwritten_by_static_templates_on_followup(self):
+        import api
+        sid = f"test_gemini_verbatim_{uuid.uuid4().hex[:8]}"
+        gemini_reply = (
+            "**Koshmat garam pani** mhanje lukewarm water — je khup ukalalele nahi ani thandahi nahi (around 40°C). "
+            "Tap ani ghasadukhivar he pani pyaylyane ghasyala aaram milto."
+        )
+        mock_gemini_resp = MagicMock()
+        mock_gemini_resp.text = gemini_reply
+        mock_client = MagicMock()
+        mock_client.models.generate_content.return_value = mock_gemini_resp
+
+        with patch.object(api, "gemini_client", mock_client), patch.object(api, "_gemini_quota_exhausted_until", 0.0):
+            # Turn 1: initial fever + cold
+            r1 = self.client.post("/predict", json={"text": "mala tap ani sardi ahe", "session_id": sid})
+            self.assertEqual(r1.status_code, 200)
+            self.assertEqual(r1.get_json().get("source"), "gemini")
+
+            # Turn 2: follow-up definition question ("koshmat garam pani mhanje kay?")
+            r2 = self.client.post("/predict", json={"text": "koshmat garam pani mhanje kay?", "session_id": sid})
+            self.assertEqual(r2.status_code, 200)
+            d2 = r2.get_json()
+            self.assertEqual(d2.get("source"), "gemini")
+            self.assertIn("lukewarm water", d2.get("answer", ""))
+            self.assertNotIn("Aata Kay Karal", d2.get("answer", ""))
 
 
 if __name__ == "__main__":
