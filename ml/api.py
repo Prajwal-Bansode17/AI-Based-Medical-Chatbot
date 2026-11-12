@@ -110,6 +110,7 @@ from environmental_health import (
     is_high_severity_or_red_flag,
     extract_city_from_text,
 )
+from custom_medical_llm import get_custom_medical_llm
 from lab_report_analyzer import (
     analyze_lab_report,
     extract_biomarkers_from_text,
@@ -778,12 +779,13 @@ def _env_bool(name, default):
 
 # ---------------------------- Gemini (fallback) ----------------------------
 
+ENABLE_CLOUD_GEMINI = _env_bool("ENABLE_CLOUD_GEMINI", False)
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 # Default to gemini-3.5-flash for verified low-latency (~2.95s) responses
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
 gemini_client = None
 
-if GEMINI_API_KEY:
+if ENABLE_CLOUD_GEMINI and GEMINI_API_KEY:
     try:
         from google.genai import types as genai_types
         gemini_client = genai.Client(
@@ -793,6 +795,8 @@ if GEMINI_API_KEY:
         print("Gemini AI : Connected (optional fallback, 25s timeout)")
     except Exception as e:
         print("Gemini AI : Connection failed:", e)
+elif not ENABLE_CLOUD_GEMINI:
+    print("Gemini AI : Cloud Gemini disabled by default (ENABLE_CLOUD_GEMINI=False, keyless self-hosted mode)")
 else:
     print("Gemini AI : API key not configured (optional fallback disabled)")
 
@@ -1316,10 +1320,13 @@ def _generate_huggingface(
         retriever_res = retrieve_local_finetune_answer(query_text, language=language)
         if not retriever_res or not retriever_res.strip():
             retriever_res = build_safe_general_advice(query_text, language=language)
+            if retriever_res and retriever_res.strip():
+                _last_hf_source = "safe_general_advice"
         if retriever_res and retriever_res.strip():
             logger.info(
-                "[%s] HF fallback served immediately by local clinical retriever (%d verified records)",
+                "[%s] HF fallback served immediately by %s (%d verified records)",
                 correlation_id or "HF",
+                _last_hf_source,
                 len(_finetune_records or []),
             )
             return sanitize_kgmu_references(retriever_res.strip())
@@ -1899,6 +1906,21 @@ def generate_medical_response_with_provider(
             else:
                 providers.append(("ollama", lambda: ollama_chat(system_instruction, prompt, correlation_id=correlation_id)))
 
+    def _add_custom_llm():
+        if not image_bytes:
+            def _call_custom():
+                llm = get_custom_medical_llm()
+                if not llm.can_load():
+                    return None
+                return llm.generate(
+                    system_prompt=system_instruction,
+                    user_prompt=user_text or prompt,
+                    messages=structured_messages,
+                    language=language,
+                    correlation_id=correlation_id,
+                )
+            providers.append(("custom_llm", _call_custom))
+
     def _add_hf():
         if hf_available and not image_bytes:
             providers.append(("huggingface", lambda: _generate_huggingface(
@@ -1912,13 +1934,16 @@ def generate_medical_response_with_provider(
 
     if primary_pref == "gemini":
         _add_gemini()
+        _add_custom_llm()
         _add_hf()
         _add_ollama()
     elif primary_pref == "ollama":
         _add_ollama()
+        _add_custom_llm()
         _add_hf()
         _add_gemini()
-    else:  # "auto" or "huggingface" -> Custom Model (Hugging Face) is primary, then Gemini, then Ollama debug
+    else:  # "auto" or "huggingface" -> CustomTrainedMedicalLLM, then HF/RAG, then Gemini/Ollama if enabled
+        _add_custom_llm()
         _add_hf()
         _add_gemini()
         _add_ollama()
@@ -1956,14 +1981,20 @@ def generate_medical_response_with_provider(
         effective_provider = provider_name
         if provider_name == "huggingface" and _last_hf_source == "local_clinical_retriever":
             effective_provider = "local_medical_retrieval"
+        elif provider_name == "huggingface" and _last_hf_source == "safe_general_advice":
+            effective_provider = "safe_general_advice"
         elif provider_name == "huggingface" and _last_hf_source == "lab_report_decoder":
             effective_provider = "lab_report_decoder"
 
-        # NEVER let static local_medical_retrieval block a real generative LLM (Gemini/Ollama)!
-        if effective_provider == "local_medical_retrieval" and has_generative_fallback:
+        # NEVER let static local_medical_retrieval block a real generative LLM (Gemini/Ollama),
+        # and always let live web_medical_search run before generic safe_general_advice.
+        if effective_provider == "safe_general_advice" or (
+            effective_provider == "local_medical_retrieval" and has_generative_fallback
+        ):
             logger.info(
-                "[%s] Deferring static local_medical_retrieval (took %.2fs) so generative LLM (Gemini/Ollama) can run",
+                "[%s] Deferring static %s (took %.2fs) so generative LLM or live search can run",
                 correlation_id or "AI",
+                effective_provider,
                 prov_elapsed,
             )
             deferred_local_fallback = (answer.strip(), effective_provider)
