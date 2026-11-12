@@ -122,6 +122,103 @@ class TestLabReportBypassAndFacultyPurge(unittest.TestCase):
         ans = retrieve_local_finetune_answer("Obstetrics & Gynecology doctors list", language="en")
         self.assertFalse(is_faculty_or_staff_roster(ans))
 
+    def test_lab_report_does_not_bleed_into_roman_marathi_symptom_followup(self):
+        # Prompt scaffolding with Turn 1 lab report must NEVER mark Turn 2 symptom message as lab report
+        wrapped = (
+            "Recent conversation:\n"
+            "Patient: [CLINICAL LAB REPORT CONTEXT]\nFlagged Parameters:\n- Fasting Blood Sugar: 1.0 mg/dL (Status: low)\n"
+            "Assistant: Quick Summary...\n\n"
+            "User's current message:\n"
+            "mala khup tap ani sardi ahe kay karu"
+        )
+        self.assertFalse(is_lab_report_context_prompt(wrapped))
+        self.assertFalse(is_lab_report_context_prompt("mala khup tap ani sardi ahe kay karu"))
+
+        sid = "test_lab_then_tap_sardi_session"
+        # Turn 1: Lab report context
+        r1 = self.client.post("/predict", json={
+            "text": (
+                "[CLINICAL LAB REPORT CONTEXT]\n"
+                "Flagged Parameters:\n"
+                "- Hemoglobin: 9.8 g/dL (Standard Range: 12.0 - 17.5 g/dL, Status: low)\n"
+                "- Fasting Blood Sugar: 165 mg/dL (Standard Range: 70 - 100 mg/dL, Status: high)\n"
+                "User Question: Please explain this report"
+            ),
+            "session_id": sid,
+            "user_name": "Hariom Peddawad",
+            "language": "en",
+        })
+        self.assertEqual(r1.status_code, 200)
+        d1 = r1.get_json()
+        self.assertEqual(d1.get("intent"), "lab_report_analysis")
+        self.assertNotIn("108", d1.get("answer", ""))
+        self.assertNotIn("Local Weather & Health Advisory", d1.get("answer", ""))
+
+        # Turn 2: Roman Marathi fever + cold query in SAME session
+        r2 = self.client.post("/predict", json={
+            "text": "mala khup tap ani sardi ahe kay karu",
+            "session_id": sid,
+            "user_name": "Hariom Peddawad",
+        })
+        self.assertEqual(r2.status_code, 200)
+        d2 = r2.get_json()
+        ans2 = d2.get("answer") or d2.get("response") or ""
+        self.assertNotEqual(d2.get("intent"), "lab_report_analysis")
+        self.assertNotEqual(d2.get("intent"), "follow_up")
+        self.assertNotIn("Quick Summary", ans2)
+        self.assertNotIn("Hemoglobin", ans2)
+        self.assertNotIn("Blood Sugar", ans2)
+        self.assertNotIn("Diabetes", ans2)
+        self.assertIn("tap", ans2.lower())
+        self.assertIn("sardi", ans2.lower())
+        self.assertNotIn("Hariom", ans2)
+        self.assertNotIn("108", ans2)
+        self.assertIn("?", ans2)
+
+    def test_greeting_name_usage_and_no_weather_or_helplines(self):
+        sid = "test_greeting_and_identity_gating"
+        # Turn 1 greeting -> uses first name naturally, no weather, no helplines
+        g1 = self.client.post("/predict", json={
+            "text": "hi",
+            "session_id": sid,
+            "user_id": "user_hariom_g1",
+            "user_name": "Hariom Peddawad",
+        })
+        self.assertEqual(g1.status_code, 200)
+        dg1 = g1.get_json()
+        ag1 = dg1.get("answer") or ""
+        self.assertEqual(dg1.get("intent"), "greeting")
+        self.assertIn("Hariom", ag1)
+        self.assertNotIn("Peddawad", ag1)
+        self.assertNotIn("Local Weather", ag1)
+        self.assertNotIn("108", ag1)
+
+        # Turn 2 greeting -> does NOT keep repeating user's name
+        g2 = self.client.post("/predict", json={
+            "text": "hello",
+            "session_id": sid,
+            "user_id": "user_hariom_g1",
+            "user_name": "Hariom Peddawad",
+        })
+        self.assertEqual(g2.status_code, 200)
+        ag2 = g2.get_json().get("answer") or ""
+        self.assertNotIn("Hariom", ag2)
+        self.assertNotIn("Local Weather", ag2)
+        self.assertNotIn("108", ag2)
+
+        # Turn 3 explicit identity question -> remembers full name, no weather/helpline clutter
+        g3 = self.client.post("/predict", json={
+            "text": "do you know my name?",
+            "session_id": sid,
+            "user_id": "user_hariom_g1",
+            "user_name": "Hariom Peddawad",
+        })
+        self.assertEqual(g3.status_code, 200)
+        ag3 = g3.get_json().get("answer") or ""
+        self.assertIn("Hariom", ag3)
+        self.assertNotIn("Local Weather", ag3)
+        self.assertNotIn("108", ag3)
+
 
 if __name__ == "__main__":
     unittest.main()

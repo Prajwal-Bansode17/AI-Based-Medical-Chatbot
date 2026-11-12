@@ -13,6 +13,7 @@ Features:
 
 import json
 import logging
+import re
 import time
 import urllib.request
 import urllib.error
@@ -269,25 +270,81 @@ def clear_atmospheric_cache() -> None:
 
 
 RESPIRATORY_KEYWORDS = (
-    "respirat", "cough", "cold", "asthma", "throat", "breath",
-    "खोकला", "दमा", "सर्दी", "घसा", "श्वास", "खांसी", "जुकाम", "सांस", "गले"
+    "respirat", "cough", "cold", "asthma", "throat", "breath", "breathing", "flu", "viral", "allergy", "allergies",
+    "sardi", "khokla", "khansi", "jukam", "zukaam", "ghasa", "shwas", "saans",
+    "खोकला", "दमा", "सर्दी", "घसा", "श्वास", "खांसी", "जुकाम", "सांस", "गले", "एलर्जी"
 )
 GASTRO_KEYWORDS = (
     "gastro", "stomach", "vomit", "diarrhea", "loose", "acidity",
     "पोट", "मळमळ", "उलटी", "जुलाब", "पित्त", "पेट", "उल्टी", "दस्त", "एसिडिटी"
 )
 FEVER_KEYWORDS = (
-    "fever", "dengue", "malaria", "flu",
+    "fever", "dengue", "malaria", "typhoid", "flu", "viral",
+    "tap", "taap", "bukhar",
     "ताप", "हिवताप", "डेंग्यू", "मलेरिया", "बुखार"
 )
 HEAT_KEYWORDS = (
-    "heat", "dehydration", "dizziness", "weakness",
-    "चक्कर", "उष्माघात", "अशक्त", "थकवा", "लू", "कमजोरी"
+    "heat", "heatstroke", "heat_stroke", "dehydration", "sunstroke",
+    "उष्माघात", "लू"
 )
-ENVIRONMENTAL_KEYWORDS = (
-    RESPIRATORY_KEYWORDS + GASTRO_KEYWORDS + FEVER_KEYWORDS + HEAT_KEYWORDS
-    + ("rash", "headache", "डोकेदुखी", "सिरदर्द")
+AIR_QUALITY_KEYWORDS = (
+    "weather", "pollution", "aqi", "smog", "air quality", "air_quality", "dust",
+    "हवामान", "प्रदूषण", "मौसम"
 )
+WEATHER_ADVISORY_KEYWORDS = (
+    RESPIRATORY_KEYWORDS + FEVER_KEYWORDS + HEAT_KEYWORDS + AIR_QUALITY_KEYWORDS
+    + ("breathing_problem", "sore_throat")
+)
+ENVIRONMENTAL_KEYWORDS = WEATHER_ADVISORY_KEYWORDS
+
+_HIGH_SEVERITY_RED_FLAG_PATTERNS = [
+    re.compile(r"\b(?:chest\s*pain|chestpain|crushing\s+chest|chhati\s*dukh|seene\s*mein\s*dard|छातीत\s*दुख|सीने\s*में\s*दर्द)\b", re.IGNORECASE),
+    re.compile(r"\b(?:severe\s+breathing|difficulty\s+breathing|shortness\s+of\s+breath|can'?t\s+breathe|unable\s+to\s+breathe|shwas\s*ghyayla\s*tras|saans\s*lene\s*mein\s*takleef)\b", re.IGNORECASE),
+    re.compile(r"(?:श्वास\s*(?:घेण्यास|घेता)|सांस\s*लेने\s*में\s*तकलीफ)", re.IGNORECASE),
+    re.compile(r"\b(?:unconscious|unresponsive|passed\s+out|fainting|collapsed|seizure|convulsion|beshuddh|behosh|बेशुद्ध|बेहोश)\b", re.IGNORECASE),
+    re.compile(r"\b(?:heavy|severe|uncontrolled|profuse)\s+bleeding\b|\bbleeding\s+(?:heavily|a\s+lot|won'?t\s+stop)\b|\b(?:vomit|cough)(?:ing)?\s+blood\b", re.IGNORECASE),
+    re.compile(r"(?:रक्ताची\s*उलटी|खून\s*की\s*उल्टी|खूप\s*रक्त|बहुत\s*खून)", re.IGNORECASE),
+    re.compile(r"\b(?:suicide|suicidal|self[-\s]?harm|kill\s+myself|want\s+to\s+die|mental\s+(?:distress|breakdown|crisis)|severe\s+(?:depression|panic|anxiety))\b", re.IGNORECASE),
+    re.compile(r"(?:आत्महत्या|खुदकुशी|मरावेसे\s*वाटत)", re.IGNORECASE),
+    # High persistent fever > 103 F or >= 39.5 C
+    re.compile(r"\b(?:10[3-9]|110)\s*(?:°?\s*f|fahrenheit)?\b.*\b(?:fever|temp|temperature|tap|bukhar)\b|\b(?:fever|temp|temperature|tap|bukhar)\b.*\b(?:10[3-9]|110)\s*(?:°?\s*f|fahrenheit)?\b", re.IGNORECASE),
+    re.compile(r"\b(?:39\.[5-9]|4[0-2](?:\.\d+)?)\s*(?:°?\s*c|celsius)\b.*\b(?:fever|temp|temperature|tap|bukhar)\b", re.IGNORECASE),
+    re.compile(r"\b(?:persistent\s+high\s+fever|very\s+high\s+fever|fever\s*(?:>|above|over)\s*103)\b", re.IGNORECASE),
+]
+
+
+def _matches_advisory_keywords(text: str, keywords: Tuple[str, ...]) -> bool:
+    """Matches environmental/viral keywords using word boundaries for Latin words and substring for Devanagari."""
+    if not text:
+        return False
+    lower = str(text).lower().replace("_", " ")
+    for kw in keywords:
+        if any("\u0900" <= ch <= "\u097F" for ch in kw):
+            if kw in lower:
+                return True
+        else:
+            kw_clean = kw.replace("_", " ")
+            if kw_clean == "respirat":
+                if re.search(r"\brespirat", lower):
+                    return True
+            elif re.search(r"(?<![a-z0-9])" + re.escape(kw_clean) + r"(?![a-z0-9])", lower):
+                return True
+    return False
+
+
+def is_high_severity_or_red_flag(text: str, safety_flag: Optional[str] = None) -> bool:
+    """
+    Returns True ONLY when high-severity / emergency / red-flag symptoms or
+    mental health distress are detected (for statutory helpline routing).
+    """
+    if safety_flag in ("emergency", "crisis"):
+        return True
+    if not text or not isinstance(text, str):
+        return False
+    for pat in _HIGH_SEVERITY_RED_FLAG_PATTERNS:
+        if pat.search(text):
+            return True
+    return False
 
 
 def get_regional_health_alert(
@@ -441,37 +498,37 @@ def format_atmospheric_advisory_block(
     lat: Optional[float] = None,
     lon: Optional[float] = None,
     city: Optional[str] = None,
-    language: str = "en"
+    language: str = "en",
+    include_helplines: bool = False
 ) -> Optional[str]:
     """
-    Synthesizes atmospheric intelligence and citizen advisories when symptoms
-    correlate with environmental or seasonal triggers.
+    Synthesizes atmospheric intelligence ONLY when the query involves viral/seasonal
+    illnesses, fever, cold, cough, flu, allergies, asthma, heatstroke, or air quality.
+    Citizen helplines (108, 104, 14416) are attached ONLY when include_helplines=True.
     """
     lang = (language or "en").strip().lower()
 
-    # Convert symptoms to set/string
+    # Convert symptoms to normalized string
     sym_list = []
     if isinstance(symptoms, list):
-        sym_list = [str(s).lower().replace("-", "_").replace(" ", "_") for s in symptoms]
+        sym_list = [str(s).lower().replace("_", " ").replace("-", " ") for s in symptoms]
     elif isinstance(symptoms, str):
-        sym_list = [s.strip().lower() for s in symptoms.split(",")]
+        sym_list = [s.strip().lower().replace("_", " ") for s in symptoms.split(",")]
 
     sym_text = " ".join(sym_list)
 
-    # Environmental triggers check across English, Marathi, and Hindi
-    relevant = any(k in sym_text for k in ENVIRONMENTAL_KEYWORDS)
+    # Environmental triggers check across English, Marathi, Hindi, and Romanized scripts
+    relevant = _matches_advisory_keywords(sym_text, WEATHER_ADVISORY_KEYWORDS)
 
     if not relevant:
         return None
 
     # Determine condition category
-    if any(k in sym_text for k in RESPIRATORY_KEYWORDS):
+    if _matches_advisory_keywords(sym_text, RESPIRATORY_KEYWORDS):
         category = "respiratory"
-    elif any(k in sym_text for k in FEVER_KEYWORDS):
+    elif _matches_advisory_keywords(sym_text, FEVER_KEYWORDS):
         category = "fever"
-    elif any(k in sym_text for k in GASTRO_KEYWORDS):
-        category = "gastro"
-    elif any(k in sym_text for k in HEAT_KEYWORDS):
+    elif _matches_advisory_keywords(sym_text, HEAT_KEYWORDS):
         category = "heat"
     else:
         category = "general"
@@ -479,7 +536,6 @@ def format_atmospheric_advisory_block(
     # Fetch weather and generate alerts
     weather = get_atmospheric_context(lat=lat, lon=lon, city=city)
     epi_alert = get_regional_health_alert(category, weather_data=weather, language=lang)
-    citizen_adv = get_citizen_advisory(category, language=lang)
 
     temp_val = weather.get("temperature_c", 25.0)
     aqi_val = weather.get("aqi", 100)
@@ -492,4 +548,8 @@ def format_atmospheric_advisory_block(
     else:
         header = f"🌦️ **Local Weather & Health Advisory (Temp: {temp_val:.1f}°C | AQI: {aqi_val} - {aqi_cat}):**"
 
-    return f"{header}\n{epi_alert}\n\n{citizen_adv}"
+    if include_helplines:
+        citizen_adv = get_citizen_advisory(category, language=lang)
+        return f"{header}\n{epi_alert}\n\n{citizen_adv}"
+
+    return f"{header}\n{epi_alert}"

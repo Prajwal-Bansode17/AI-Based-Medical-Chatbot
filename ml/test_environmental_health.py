@@ -163,7 +163,7 @@ class TestAtmosphericIntelligence(unittest.TestCase):
         )
         self.assertIsNone(block_irrelevant)
 
-        # Respiratory symptom -> returns formatted block with header and helplines
+        # Respiratory symptom (mild) -> returns weather advisory WITHOUT alarmist 108 emergency helpline
         block_respiratory = format_atmospheric_advisory_block(
             symptoms=["cough", "cold"],
             city="pune",
@@ -171,9 +171,19 @@ class TestAtmosphericIntelligence(unittest.TestCase):
         )
         self.assertIsNotNone(block_respiratory)
         self.assertIn("🌦️ **Local Weather & Health Advisory", block_respiratory)
-        self.assertIn("108", block_respiratory)
+        self.assertNotIn("108", block_respiratory)
 
-        # Marathi block
+        # Red-flag respiratory symptom -> includes citizen helplines
+        block_red_flag = format_atmospheric_advisory_block(
+            symptoms=["cough", "severe difficulty breathing"],
+            city="pune",
+            language="en",
+            include_helplines=True,
+        )
+        self.assertIsNotNone(block_red_flag)
+        self.assertIn("108", block_red_flag)
+
+        # Marathi block (mild)
         block_mr = format_atmospheric_advisory_block(
             symptoms=["खोकला", "ताप"],
             city="aurangabad",
@@ -181,7 +191,7 @@ class TestAtmosphericIntelligence(unittest.TestCase):
         )
         self.assertIsNotNone(block_mr)
         self.assertIn("स्थानिक हवामान व आरोग्य सूचना", block_mr)
-        self.assertIn("१०८", block_mr)
+        self.assertNotIn("१०८", block_mr)
 
     def test_attach_atmospheric_advisory_helper(self):
         base = "Take rest and drink plenty of water."
@@ -203,7 +213,7 @@ class TestAtmosphericIntelligence(unittest.TestCase):
         })
         self.assertEqual(res.status_code, 200)
         data = res.get_json()
-        self.assertIn("108", data["response"])
+        self.assertNotIn("108", data["response"])
         self.assertIsNotNone(data.get("atmospheric_context"))
         self.assertIn("temperature_c", data["atmospheric_context"])
         self.assertIsNotNone(data.get("atmospheric_advisory"))
@@ -217,7 +227,7 @@ class TestAtmosphericIntelligence(unittest.TestCase):
         self.assertEqual(res.status_code, 200)
         data = res.get_json()
         ans = data.get("answer") or data.get("response") or ""
-        self.assertIn("१०८", ans)
+        self.assertNotIn("१०८", ans)
         self.assertIsNotNone(data.get("atmospheric_context"))
         self.assertIn("तापमान", ans)
 

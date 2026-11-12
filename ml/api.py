@@ -93,12 +93,19 @@ from conversation_engine import (
     is_lab_report_context_prompt,
     is_faculty_or_staff_roster,
     build_lab_report_interpretation_response,
+    extract_first_name,
+    build_greeting_response,
+    build_structured_symptom_guidance,
+    ensure_modern_clinical_formatting,
+    get_clean_italic_disclaimer,
+    strip_prompt_scaffolding,
 )
 from environmental_health import (
     get_atmospheric_context,
     get_regional_health_alert,
     get_citizen_advisory,
     format_atmospheric_advisory_block,
+    is_high_severity_or_red_flag,
 )
 from lab_report_analyzer import (
     analyze_lab_report,
@@ -532,7 +539,11 @@ ROMAN_INDIC_MARKERS = {
     "pasun", "paryant", "mde", "madhe", "dakhvl", "dakhav", "bagh",
     "pahile", "punha", "toch", "kraycha", "kraychi", "krtoy", "yetoy",
     "yeto", "disat", "dist", "distoy", "nahi", "viskranti", "bharpur",
-    "pya",
+    "pya", "tap", "taap", "sardi", "khokla", "khansi", "khasi", "bukhar",
+    "jukam", "zukam", "zukaam", "khup", "ani", "aani", "garam", "korda",
+    "kaf", "thandi", "salla", "lakshan", "lakshane", "divas", "pan", "pn",
+    "arogya", "aaram", "pani", "angdukhi", "ghasadukhi", "dokedukhi",
+    "potdukhi", "bheta", "ghya", "tala", "kay", "ahe", "aahe",
 }
 
 
@@ -1153,9 +1164,12 @@ def _extract_user_query_for_retrieval(prompt_text, messages=None):
     if messages and isinstance(messages, list):
         for msg in reversed(messages):
             if msg.get("role") == "user" and msg.get("content"):
-                return str(msg["content"]).strip()
+                return strip_prompt_scaffolding(str(msg["content"]).strip())
     if not prompt_text:
         return ""
+    stripped = strip_prompt_scaffolding(str(prompt_text))
+    if stripped and stripped != str(prompt_text).strip():
+        return stripped
     m = re.search(r"User(?:'s)? current message:\s*\n(.*?)(?:\n\n|\n[A-Z]|\Z)", prompt_text, re.DOTALL | re.IGNORECASE)
     if m:
         return m.group(1).strip()
@@ -1287,9 +1301,9 @@ def _generate_huggingface(
         return local_pipeline_res.strip()
 
     # 3. If local weights/pipeline are loading or unavailable, fall back IMMEDIATELY
-    #    to clinical lab report interpreter (if lab context) or local clinical retriever for instant 0-second latency
-    query_text = _extract_user_query_for_retrieval(actual_prompt, messages=messages) or actual_prompt
-    if query_text and (is_lab_report_context_prompt(query_text) or is_lab_report_context_prompt(actual_prompt)):
+    #    to clinical lab report interpreter (ONLY if current query is a lab report) or local clinical retriever
+    query_text = _extract_user_query_for_retrieval(actual_prompt, messages=messages) or strip_prompt_scaffolding(actual_prompt)
+    if query_text and is_lab_report_context_prompt(query_text):
         _last_hf_source = "lab_report_decoder"
         return build_lab_report_interpretation_response(query_text, language=language)
 
@@ -1311,41 +1325,33 @@ def _generate_huggingface(
 
 # ------------------------- Layer 3 Local Semantic Retrieval -------------------------
 
-MEDICAL_DISCLAIMER_EN = (
-    "Disclaimer: I am an AI medical assistant, not a doctor. "
-    "Please consult a qualified healthcare professional for formal diagnosis and personalized treatment."
-)
-MEDICAL_DISCLAIMER_MR = (
-    "अस्वीकरण: मी एक एआय वैद्यकीय सहाय्यक आहे, डॉक्टर नाही. "
-    "योग्य तपासणी आणि उपचारांसाठी कृपया तज्ज्ञ डॉक्टरांचा सल्ला घ्या."
-)
-MEDICAL_DISCLAIMER_HI = (
-    "अस्वीकरण: मैं एक एआई मेडिकल असिस्टेंट हूँ, डॉक्टर नहीं। "
-    "सटीक निदान और उपचार के लिए कृपया योग्य चिकित्सक से परामर्श लें।"
-)
+MEDICAL_DISCLAIMER_EN = "*Disclaimer: I am an AI assistant, not a doctor. Consult a physician if symptoms persist.*"
+MEDICAL_DISCLAIMER_MR = "*अस्वीकरण: मी एक एआय सहाय्यक आहे, डॉक्टर नाही. लक्षणे कायम राहिल्यास डॉक्टरांचा सल्ला घ्या.*"
+MEDICAL_DISCLAIMER_HI = "*अस्वीकरण: मैं एक एआई सहायक हूँ, डॉक्टर नहीं। लक्षण बने रहने पर डॉक्टर से परामर्श लें।*"
 
 
-def get_medical_disclaimer(language: str = "en") -> str:
-    lang = (language or "en").strip().lower()
-    if lang == "mr":
-        return MEDICAL_DISCLAIMER_MR
-    elif lang == "hi":
-        return MEDICAL_DISCLAIMER_HI
-    return MEDICAL_DISCLAIMER_EN
+def get_medical_disclaimer(language: str = "en", dialect: str = None) -> str:
+    return get_clean_italic_disclaimer(language=language, dialect=dialect)
 
 
-def _ensure_medical_disclaimer(text: str, language: str = "en") -> str:
+def _ensure_medical_disclaimer(text: str, language: str = "en", dialect: str = None) -> str:
     if not text:
         return ""
     text = text.strip()
     lang = (language or "en").strip().lower()
+    d = (dialect or "").strip().lower()
 
-    disclaimer = get_medical_disclaimer(lang)
+    disclaimer = get_medical_disclaimer(lang, dialect=d)
+    if d in ("roman_mr", "hinglish"):
+        if any(tok in text.lower() for tok in ("note: mi ek ai", "note: main ek ai", "अस्वीकरण", "disclaimer")):
+            return text
+        return f"{text}\n\n{disclaimer}"
+
     if lang in ("hi", "hinglish", "mr", "roman_mr"):
         if "अस्वीकरण" in text:
             return text
         if "disclaimer:" in text.lower():
-            text = re.sub(r"(?is)\n*disclaimer:.*$", "", text).strip()
+            text = re.sub(r"(?is)\n*\*?disclaimer:.*$", "", text).strip()
         return f"{text}\n\n{disclaimer}"
 
     if "disclaimer" in text.lower() or "अस्वीकरण" in text:
@@ -1597,33 +1603,43 @@ def build_session_memory_summary(session_id):
     return "\n".join(summary_parts)
 
 
-def _build_medical_system_instruction(language, memory_summary="", user_identity_context=""):
+def _build_medical_system_instruction(
+    language, memory_summary="", user_identity_context="", dialect=None, allow_name_addressing=False
+):
     language_names = {"en": "English", "mr": "Marathi", "hi": "Hindi"}
     target_language = language_names.get(language, "English")
+    if dialect == "roman_mr":
+        script_rule = "Write the ENTIRE response in natural Romanized Marathi (using the Latin/English alphabet just like the user, e.g. 'Tumhala tap aslyas...'). Do NOT switch to English or heavy Devanagari."
+    elif dialect == "hinglish":
+        script_rule = "Write the ENTIRE response in natural Hinglish (Romanized Hindi matching the user's script)."
+    elif language in ("mr", "hi"):
+        script_rule = f"Write the ENTIRE response in natural {target_language} (Devanagari script). Standard medicine names and units may remain in English."
+    else:
+        script_rule = "Write the ENTIRE response in clear, natural English."
 
     instruction = (
-        f"You are MedAssist AI, a specialized intelligent clinical assistant. Never reference external hospital websites like KGMU.\n"
+        f"You are MedAssist AI, a crisp, empathetic clinical assistant. Never reference external hospitals or websites like KGMU.\n"
         f"TARGET RESPONSE LANGUAGE: {target_language}.\n\n"
-        f"INPUT UNDERSTANDING:\n"
-        f"- The user may communicate in English, Hindi, Marathi, Romanized Marathi, Romanized Hindi, "
-        f"or mixed Hinglish / Maraglish. Voice inputs may feature phonetics or misspellings. Extract clinical intent accurately.\n\n"
-        f"CONVERSATIONAL CONTEXT RULES:\n"
-        f"1. Conversational, empathetic, and direct tone. Never begin with canned intros like 'Here is some general information'.\n"
-        f"2. Seamlessly continue multi-turn conversation context. If the user answers a question (e.g. giving duration, severity, location), "
-        f"acknowledge that detail and move forward.\n"
-        f"3. DO NOT repeatedly ask for details the patient has already provided.\n"
-        f"4. If essential clinical information is still missing, ask AT MOST ONE focused, relevant follow-up question.\n"
-        f"5. Resolve pronouns and references (e.g. 'that pain', 'it is getting worse', 'what should I do now?', 'explain above results') using recent conversation turns.\n"
-        f"6. Explain common causes clearly, offer practical general self-care advice, and highlight red-flag warning signs requiring urgent medical attention.\n"
-        f"7. Do not provide a definitive diagnosis or claim certainty. Do not prescribe specific drug dosages.\n"
-        f"8. OUTPUT LANGUAGE REQUIREMENT: Write the ENTIRE response in {target_language}. "
-        f"If the target is Marathi or Hindi, use native Devanagari script. Standard medicine names, units, and proper names may remain intact.\n"
-        f"9. NEVER repeat self-introductions (such as 'Hello! I am MEDASSIST AI...' or 'Welcome to MEDASSIST AI'). "
-        f"Do not start every message with greeting formulas. Address the user's question directly and concisely.\n"
-        f"10. SYSTEM IDENTITY: You are MedAssist AI. Never reference external hospital portals, OPD booking counters, or institutions like KGMU (King George's Medical University). All clinical guidance is provided directly by MedAssist AI.\n"
+        f"MODERN RESPONSE STRUCTURE (ChatGPT / Gemini Style):\n"
+        f"1. Start with 1–2 direct, plain sentences summarizing what is likely happening.\n"
+        f"2. Use clean bullet points with **bold lead-ins** (max 1–2 lines per bullet) for Home Care, Medicines/Precautions, and When to See a Doctor (2 brief red flags).\n"
+        f"3. End with AT MOST ONE highlighted follow-up question (`**Quick check:** ...` or localized equivalent) and ONE short italic disclaimer line.\n"
+        f"4. NEVER repeat greeting formulas ('Hello <Name>') on ongoing medical messages. Only use the user's first name when directly asked about identity or on a first greeting.\n"
+        f"5. Do NOT add weather forecasts or emergency helpline footers unless symptoms indicate an acute red-flag emergency or respiratory/viral seasonal illness.\n"
+        f"6. OUTPUT SCRIPT REQUIREMENT: {script_rule}\n"
+        f"7. Continue multi-turn context seamlessly without repeating questions the user already answered. Do not diagnose definitively or prescribe exact drug dosages.\n"
     )
     if user_identity_context:
-        instruction += f"\nCONFIRMED USER IDENTITY & PROFILE:\n{user_identity_context}\n(You know the user personally. Always recognize and address them warmly by name if asked, acknowledging their registered identity directly.)\n"
+        if allow_name_addressing:
+            instruction += f"\nCONFIRMED USER IDENTITY & PROFILE:\n{user_identity_context}\n(Use first name warmly once if appropriate.)\n"
+        else:
+            # Keep age/gender clinical context while suppressing repetitive name greetings
+            clinical_demographics = ", ".join(
+                part.strip() for part in user_identity_context.split(",")
+                if not part.strip().lower().startswith("name:")
+            )
+            if clinical_demographics:
+                instruction += f"\nPATIENT CLINICAL PROFILE (use silently, do NOT repeat patient's name in your greeting):\n{clinical_demographics}\n"
     if memory_summary:
         instruction += f"\nCONFIRMED PATIENT FACTS IN THIS CONVERSATION:\n{memory_summary}\n"
     return instruction
@@ -1793,7 +1809,7 @@ def _gemini_generate(contents, correlation_id=None):
 # ------------------------------ public generators ----------------------------
 
 def generate_medical_response_with_provider(
-    user_text, language="en", medical_context="", conversation_context="", session_id=None, image_bytes=None, user_memory_context="", correlation_id=None, system_instruction=None, user_identity_context=""
+    user_text, language="en", medical_context="", conversation_context="", session_id=None, image_bytes=None, user_memory_context="", correlation_id=None, system_instruction=None, user_identity_context="", dialect=None, allow_name_addressing=False
 ):
     ollama_available = OLLAMA_ENABLED
     gemini_available = gemini_client is not None
@@ -1806,7 +1822,7 @@ def generate_medical_response_with_provider(
         prof = get_user_profile(user_id=None, session_id=session_id)
         if prof:
             id_parts = []
-            if prof.get("user_name"):
+            if prof.get("user_name") and allow_name_addressing:
                 id_parts.append(f"Name: {prof['user_name']}")
             if prof.get("age"):
                 id_parts.append(f"Age: {prof['age']} years")
@@ -1816,7 +1832,11 @@ def generate_medical_response_with_provider(
 
     if not system_instruction:
         system_instruction = _build_medical_system_instruction(
-            language, memory_summary=memory_summary, user_identity_context=user_identity_context
+            language,
+            memory_summary=memory_summary,
+            user_identity_context=user_identity_context,
+            dialect=dialect,
+            allow_name_addressing=allow_name_addressing,
         )
     prompt = _build_medical_user_prompt(
         user_text, language, medical_context, conversation_context, user_memory_context=user_memory_context
@@ -3902,6 +3922,7 @@ def chat():
     # Pre-processing: sanitize and detect dialect/language
     sanitized_message, was_sanitized = sanitize_prompt_input(raw_message)
     dialect_info = detect_dialect_and_script(sanitized_message)
+    detected_dialect = dialect_info.get("dialect") or ""
     detected_lang = dialect_info.get("language") or dialect_info.get("primary_language") or "en"
     final_language = req_lang if req_lang and req_lang not in {"auto", ""} else detected_lang
 
@@ -3923,6 +3944,13 @@ def chat():
         user_name = profile.get("user_name") or user_name
         user_age = profile.get("age") or user_age
         user_gender = profile.get("gender") or user_gender
+
+    first_name = extract_first_name(user_name)
+    try:
+        prior_hist = get_chat_history(session_id, limit=20) if session_id else []
+        session_turn = sum(1 for m in prior_hist if str(m.get("role", "")).lower() == "user") + 1
+    except Exception:
+        session_turn = 1
 
     user_identity_context = ""
     if user_name or user_age or user_gender:
@@ -4023,6 +4051,30 @@ def chat():
                 "quick_replies": get_quick_reply_chips(final_language),
                 "language": final_language,
             }), 200
+
+        # Standalone conversational greeting (no weather advisory, no helplines)
+        # Uses patient's first name only on the very first turn of the session.
+        greeting_msg = build_greeting_response(
+            language=final_language,
+            dialect=detected_dialect,
+            first_name=first_name,
+            use_name=(session_turn == 1),
+        )
+        _record_chat("user", raw_message)
+        _record_chat("assistant", greeting_msg)
+        return jsonify({
+            "status": "success",
+            "session_id": session_id,
+            "response": greeting_msg,
+            "answer": greeting_msg,
+            "layer": 1,
+            "source": "greeting_handler",
+            "emergency": False,
+            "proactive_check_in": False,
+            "follow_up_questions": [],
+            "quick_replies": get_quick_reply_chips(final_language),
+            "language": final_language,
+        }), 200
 
     # ------------------------------------------------------------
     # LAYER 1: Emergency & Crisis Pre-Filter
@@ -4132,7 +4184,11 @@ def chat():
         try:
             memory_summary = build_session_memory_summary(session_id) if session_id else ""
             system_instruction = _build_medical_system_instruction(
-                final_language, memory_summary=memory_summary, user_identity_context=user_identity_context
+                final_language,
+                memory_summary=memory_summary,
+                user_identity_context=user_identity_context,
+                dialect=detected_dialect,
+                allow_name_addressing=False,
             )
             hf_answer = _generate_huggingface(
                 system_prompt=system_instruction,
@@ -4145,17 +4201,36 @@ def chat():
             logger.warning("[%s] HF Layer 2 exception: %s", correlation_id, ex)
             hf_answer = None
 
+    high_severity = is_high_severity_or_red_flag(sanitized_message, safety_flag=None)
     env_block = format_atmospheric_advisory_block(
         symptoms=detected_symptoms or sanitized_message,
         lat=lat,
         lon=lon,
         city=city,
         language=final_language,
+        include_helplines=high_severity,
     )
     env_context = get_atmospheric_context(lat=lat, lon=lon, city=city) if env_block else None
 
     if hf_answer and hf_answer.strip():
-        final_answer = _ensure_medical_disclaimer(hf_answer.strip(), final_language)
+        raw_hf = hf_answer.strip()
+        if _last_hf_source not in ("remote", "local_pipeline") and (detected_symptoms or detected_dialect in ("roman_mr", "hinglish")):
+            # If HF fell back to local dataset retriever on a symptom/dialect query, prefer clean dialect-aware structured guidance
+            if detected_symptoms:
+                raw_hf = build_structured_symptom_guidance(
+                    detected_symptoms,
+                    raw_text=sanitized_message,
+                    language=final_language,
+                    dialect=detected_dialect,
+                )
+        final_answer = ensure_modern_clinical_formatting(
+            raw_hf,
+            language=final_language,
+            dialect=detected_dialect,
+            include_followup=bool(detected_symptoms),
+            allow_name=False,
+        )
+        final_answer = _ensure_medical_disclaimer(final_answer, final_language, dialect=detected_dialect)
         if env_block and env_block not in final_answer:
             final_answer = f"{final_answer}\n\n{env_block}"
         _record_chat("user", raw_message, symptoms=",".join(detected_symptoms))
@@ -4184,11 +4259,26 @@ def chat():
     # ------------------------------------------------------------
     # LAYER 3: Instant Local Semantic Retrieval Fallback
     # ------------------------------------------------------------
-    fallback_text = retrieve_local_finetune_answer(sanitized_message, language=final_language)
-    if not fallback_text or not fallback_text.strip():
-        fallback_text = build_safe_general_advice(sanitized_message, final_language)
+    if detected_symptoms:
+        fallback_text = build_structured_symptom_guidance(
+            detected_symptoms,
+            raw_text=sanitized_message,
+            language=final_language,
+            dialect=detected_dialect,
+        )
+    else:
+        fallback_text = retrieve_local_finetune_answer(sanitized_message, language=final_language)
+        if not fallback_text or not fallback_text.strip():
+            fallback_text = build_safe_general_advice(sanitized_message, final_language)
 
-    final_answer = _ensure_medical_disclaimer(fallback_text.strip(), final_language)
+    final_answer = ensure_modern_clinical_formatting(
+        fallback_text.strip(),
+        language=final_language,
+        dialect=detected_dialect,
+        include_followup=bool(detected_symptoms),
+        allow_name=False,
+    )
+    final_answer = _ensure_medical_disclaimer(final_answer, final_language, dialect=detected_dialect)
     if env_block and env_block not in final_answer:
         final_answer = f"{final_answer}\n\n{env_block}"
     _record_chat("user", raw_message, symptoms=",".join(detected_symptoms))
@@ -4241,19 +4331,34 @@ def predict():
                         payload.get("symptoms") or (symptoms if 'symptoms' in locals() else []),
                         resp_lang,
                     )
-                # Atmospheric & Regional Epidemiological Advisory Engine
+                # Atmospheric & Regional Epidemiological Advisory Engine (ONLY for relevant viral/respiratory/seasonal/weather topics)
                 p_intent = payload.get("intent")
-                if p_intent not in ("emergency", "greeting", "clarification_needed", "loose_pill_refusal"):
-                    pred_syms = payload.get("symptoms") or (symptoms if 'symptoms' in locals() else []) or (text if 'text' in locals() else "")
+                _NON_ADVISORY_INTENTS = {
+                    "emergency", "greeting", "clarification_needed", "loose_pill_refusal",
+                    "user_identity", "symptom_resolution", "lab_report_analysis",
+                    "proactive_symptom_checkin", "memory_recall", "document_followup",
+                    "medicine_info", "medicine_packaging_analysis",
+                }
+                if p_intent not in _NON_ADVISORY_INTENTS:
+                    current_syms = payload.get("symptoms") if p_intent != "general" else []
+                    pred_syms = current_syms or (symptoms if 'symptoms' in locals() else []) or (text if 'text' in locals() else "")
+                    # Ensure current query text is checked too when symptoms is non-empty list
+                    if isinstance(pred_syms, list) and 'text' in locals() and text:
+                        pred_syms = list(pred_syms) + [text]
                     p_lat = lat if 'lat' in locals() else None
                     p_lon = lon if 'lon' in locals() else None
                     p_city = city if 'city' in locals() else None
+                    include_hl = is_high_severity_or_red_flag(
+                        text if 'text' in locals() else "",
+                        safety_flag=payload.get("safety_flag"),
+                    )
                     adv_block = format_atmospheric_advisory_block(
                         symptoms=pred_syms,
                         lat=p_lat,
                         lon=p_lon,
                         city=p_city,
                         language=resp_lang,
+                        include_helplines=include_hl,
                     )
                     if adv_block:
                         payload["environmental_advisory"] = adv_block
@@ -4352,6 +4457,7 @@ def predict():
 
     requested_output_language = detect_requested_output_language(text)
     dialect_info = detect_dialect_and_script(text)
+    detected_dialect = dialect_info.get("dialect") or ""
     detected_language = detect_language(
         text,
         fallback_lang=requested_output_language or previous_response_language,
@@ -4404,6 +4510,13 @@ def predict():
             user_gender = current_profile.get("gender") or user_gender
     except Exception as _get_prof_err:
         logger.debug("[%s] Profile get skipped: %s", correlation_id, _get_prof_err)
+
+    first_name = extract_first_name(user_name)
+    try:
+        _session_hist_for_turn = get_chat_history(session_id, limit=20) if session_id else []
+        session_turn = sum(1 for m in _session_hist_for_turn if str(m.get("role", "")).lower() == "user") + 1
+    except Exception:
+        session_turn = 1
 
     user_identity_context = ""
     if user_name or user_age or user_gender:
@@ -4798,7 +4911,13 @@ def predict():
                     logger.warning("[%s] HF lab report predict error: %s", correlation_id, _hf_err)
 
             final_lab_answer = ai_lab_answer or lab_breakdown
-            final_lab_answer = sanitize_kgmu_references(final_lab_answer)
+            final_lab_answer = ensure_modern_clinical_formatting(
+                sanitize_kgmu_references(final_lab_answer),
+                language=final_language,
+                dialect=detected_dialect,
+                include_followup=True,
+                allow_name=False,
+            )
 
             _record_message("user", text, symptoms)
             _record_message("assistant", final_lab_answer, symptoms)
@@ -4923,6 +5042,35 @@ def predict():
                     "quick_replies": get_quick_reply_chips(final_language),
                     "language": final_language,
                 })
+
+            # Standalone conversational greeting (no weather advisory, no helplines)
+            # First name used naturally ONLY on session_turn == 1.
+            greeting_msg = build_greeting_response(
+                language=final_language,
+                dialect=detected_dialect,
+                first_name=first_name,
+                use_name=(session_turn == 1),
+            )
+            _record_message("user", text, [])
+            _record_message("assistant", greeting_msg, [])
+            _maybe_save_user_prefs()
+            return _json_response({
+                "status": "success",
+                "session_id": session_id,
+                "question": text,
+                "intent": "greeting",
+                "confidence": 1.0,
+                "symptoms": [],
+                "previous_symptoms": previous_symptoms,
+                "medical_query": False,
+                "answer": greeting_msg,
+                "response": greeting_msg,
+                "source": "greeting_handler",
+                "proactive_check_in": False,
+                "follow_up_questions": [],
+                "quick_replies": get_quick_reply_chips(final_language),
+                "language": final_language,
+            })
 
         # ----------------------------------------------------
         # ACTIVE SYMPTOM TRACKING (LONGITUDINAL MEMORY)
@@ -5096,8 +5244,9 @@ def predict():
         is_followup = is_contextual_followup(text, session_id=session_id, previous_symptoms=previous_symptoms)
         has_clinical_context = has_clinical_history_context(recent_history) if recent_history else bool(previous_symptoms)
         is_conv_followup = is_conversational_followup_query(text, recent_history) if recent_history else False
+        has_new_symptoms = bool(symptoms) and not set(symptoms).issubset(set(previous_symptoms or []))
 
-        if (is_followup or is_conv_followup) and (previous_symptoms or has_clinical_context) and (not symptoms or set(symptoms).issubset(set(previous_symptoms)) or bool(_resolved_note) or has_clinical_context):
+        if (is_followup or is_conv_followup) and (previous_symptoms or has_clinical_context) and (not has_new_symptoms or bool(_resolved_note)):
             followup_context = ""
             if previous_symptoms and any(phrase in normalized_query for phrase in CARE_PHRASES):
                 followup_context = build_multi_symptom_response(
@@ -5113,20 +5262,40 @@ def predict():
                 image_bytes=image_bytes,
                 user_memory_context=user_memory_context,
                 correlation_id=correlation_id,
+                dialect=detected_dialect,
+                allow_name_addressing=False,
             )
 
             if ai_answer:
-                followup_answer = ai_answer
+                followup_answer = ensure_modern_clinical_formatting(
+                    ai_answer,
+                    language=final_language,
+                    dialect=detected_dialect,
+                    include_followup=True,
+                    allow_name=False,
+                )
                 source = ai_provider
             else:
                 followup_raw = build_followup_response(session_id, text)
                 if followup_raw:
-                    followup_answer = localize_answer(followup_raw, final_language)
+                    followup_answer = ensure_modern_clinical_formatting(
+                        localize_answer(followup_raw, final_language),
+                        language=final_language,
+                        dialect=detected_dialect,
+                        include_followup=True,
+                        allow_name=False,
+                    )
                     source = "conversation_memory"
                 elif has_clinical_context:
-                    followup_answer = localize_answer(
-                        "Based on our discussion and your recent reports, please discuss these specific values and symptoms directly with your healthcare professional for clinical correlation and diagnosis.",
-                        final_language
+                    followup_answer = ensure_modern_clinical_formatting(
+                        localize_answer(
+                            "Based on our discussion and your recent reports, please discuss these specific values and symptoms directly with your healthcare professional for clinical correlation and diagnosis.",
+                            final_language
+                        ),
+                        language=final_language,
+                        dialect=detected_dialect,
+                        include_followup=True,
+                        allow_name=False,
                     )
                     source = "clinical_continuity"
                 else:
@@ -5176,11 +5345,20 @@ def predict():
                 image_bytes=image_bytes,
                 user_memory_context=user_memory_context,
                 correlation_id=correlation_id,
+                dialect=detected_dialect,
+                allow_name_addressing=False,
             )
 
             if ai_answer:
+                formatted_general = ensure_modern_clinical_formatting(
+                    ai_answer,
+                    language=final_language,
+                    dialect=detected_dialect,
+                    include_followup=False,
+                    allow_name=False,
+                )
                 _record_message("user", text, symptoms)
-                _record_message("assistant", ai_answer, symptoms)
+                _record_message("assistant", formatted_general, symptoms)
                 _maybe_save_user_prefs()
 
                 return _json_response({
@@ -5191,7 +5369,7 @@ def predict():
                     "confidence": round(confidence, 4),
                     "symptoms": symptoms,
                     "medical_query": False,
-                    "answer": ai_answer,
+                    "answer": formatted_general,
                     "answer_similarity": 1.0,
                     "source": ai_provider,
                     "language": final_language,
@@ -5231,9 +5409,15 @@ def predict():
                 image_bytes=image_bytes,
                 user_memory_context=user_memory_context,
                 correlation_id=correlation_id,
+                dialect=detected_dialect,
+                allow_name_addressing=False,
             )
-            final_answer = ai_measurement_answer or localize_answer(
-                measurement_context, final_language
+            final_answer = ensure_modern_clinical_formatting(
+                ai_measurement_answer or localize_answer(measurement_context, final_language),
+                language=final_language,
+                dialect=detected_dialect,
+                include_followup=True,
+                allow_name=False,
             )
 
             save_structured_memories(
@@ -5282,19 +5466,40 @@ def predict():
                 image_bytes=image_bytes,
                 user_memory_context=user_memory_context,
                 correlation_id=correlation_id,
+                dialect=detected_dialect,
+                allow_name_addressing=False,
             )
 
-            if ai_medical_answer:
-                final_answer = localize_answer(ai_medical_answer, final_language)
-                source = symptom_provider
-            elif medical_answer:
-                final_answer = localize_answer(medical_answer, final_language)
-                source = "medical_knowledge"
-            else:
-                final_answer = localize_answer(
-                    build_symptom_fallback_response(combined_symptoms), final_language
+            is_live_llm = bool(
+                ai_medical_answer
+                and symptom_provider in ("gemini", "ollama")
+            ) or (
+                ai_medical_answer
+                and symptom_provider == "huggingface"
+                and _last_hf_source in ("remote", "local_pipeline")
+            )
+
+            if is_live_llm:
+                raw_sym_ans = ai_medical_answer
+                if detected_dialect not in ("roman_mr", "hinglish"):
+                    raw_sym_ans = localize_answer(raw_sym_ans, final_language)
+                final_answer = ensure_modern_clinical_formatting(
+                    raw_sym_ans,
+                    language=final_language,
+                    dialect=detected_dialect,
+                    include_followup=True,
+                    allow_name=False,
                 )
-                source = "symptom_fallback"
+                source = symptom_provider
+            else:
+                # Use crisp ChatGPT/Gemini-style structured clinical guidance matching the user's dialect/language
+                final_answer = build_structured_symptom_guidance(
+                    combined_symptoms,
+                    raw_text=text,
+                    language=final_language,
+                    dialect=detected_dialect,
+                )
+                source = symptom_provider or ("medical_knowledge" if medical_answer else "symptom_fallback")
 
             _record_message("user", text, combined_symptoms)
             save_structured_memories(
@@ -5342,12 +5547,20 @@ def predict():
                 image_bytes=image_bytes,
                 user_memory_context=user_memory_context,
                 correlation_id=correlation_id,
+                dialect=detected_dialect,
+                allow_name_addressing=False,
             )
 
-            if ai_mediq_answer:
-                answer = localize_answer(ai_mediq_answer, final_language)
-            else:
-                answer = localize_answer(answer, final_language)
+            raw_mediq = ai_mediq_answer or answer
+            if detected_dialect not in ("roman_mr", "hinglish"):
+                raw_mediq = localize_answer(raw_mediq, final_language)
+            answer = ensure_modern_clinical_formatting(
+                raw_mediq,
+                language=final_language,
+                dialect=detected_dialect,
+                include_followup=True,
+                allow_name=False,
+            )
 
             save_structured_memories(
                 session_id=session_id,

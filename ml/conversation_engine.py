@@ -314,14 +314,17 @@ def detect_dialect_and_script(text: str) -> DialectResult:
 
     lower = clean.lower()
     roman_mr_markers = {
-        "mala", "majha", "maza", "majhi", "aahe", "ahe", "nahi", "nahin", "kay",
+        "mala", "majha", "maza", "majhi", "majhe", "aahe", "ahe", "nahi", "nahin", "kay",
         "kasa", "kashi", "kase", "kiti", "khokla", "doka", "dok", "doke", "pot", "dukhat",
-        "dukh", "ang", "ashaktpana", "garagar", "bar", "bara", "vatat", "pan", "pn"
+        "dukh", "ang", "ashaktpana", "garagar", "bar", "bara", "vatat", "pan", "pn",
+        "tap", "taap", "sardi", "ani", "aani", "khup", "angdukhi", "ghasadukhi",
+        "dokedukhi", "potdukhi", "karu", "karaycha"
     }
     roman_hi_markers = {
         "mujhe", "mera", "meri", "mere", "hai", "hain", "kya", "kaise", "kaisi",
-        "kitna", "kitni", "khansi", "sir", "pet", "dard", "bukhar", "kamzori",
-        "thakan", "chahiye", "kuch", "hota", "hoti", "raha", "rahi"
+        "kitna", "kitni", "khansi", "khasi", "sir", "pet", "dard", "bukhar", "jukam",
+        "zukam", "zukaam", "gala", "kamzori", "thakan", "chahiye", "kuch", "hota",
+        "hoti", "raha", "rahi"
     }
 
     words = set(re.findall(r"[a-z]+", lower))
@@ -702,10 +705,18 @@ def attach_atmospheric_advisory(
     lat: Optional[float] = None,
     lon: Optional[float] = None,
     city: Optional[str] = None,
-    language: str = "en"
+    language: str = "en",
+    include_helplines: bool = False
 ) -> str:
-    """Appends localized atmospheric intelligence and citizen advisories if relevant."""
-    block = format_atmospheric_advisory_block(symptoms, lat=lat, lon=lon, city=city, language=language)
+    """Appends localized atmospheric intelligence (and helplines only when include_helplines=True)."""
+    block = format_atmospheric_advisory_block(
+        symptoms,
+        lat=lat,
+        lon=lon,
+        city=city,
+        language=language,
+        include_helplines=include_helplines,
+    )
     if block and block not in base_response:
         return f"{base_response}\n\n{block}"
     return base_response
@@ -787,20 +798,65 @@ def build_identity_response(
             return "I don't have your name saved in our current conversation yet. Could you please share your name with me?"
 
 
+def strip_prompt_scaffolding(text: str) -> str:
+    """
+    Extracts only the user's current message from wrapped LLM prompts that may
+    include `Recent conversation:` history or system instructions.
+    """
+    if not text or not isinstance(text, str):
+        return ""
+    extracted = text
+    for marker in (
+        "User's current message:",
+        "Current user message:",
+        "User Query:",
+    ):
+        if marker in extracted:
+            extracted = extracted.rsplit(marker, 1)[-1].strip()
+            break
+    if "Recent conversation:" in extracted and "User's current message:" not in text:
+        extracted = extracted.split("Recent conversation:", 1)[0].strip() or extracted
+    return extracted.strip()
+
+
+_LAB_BIOMARKER_NAME_RE = re.compile(
+    r"\b(?:hemoglobin|haemoglobin|hb|hgb|wbc|rbc|platelets?|platelet\s+count|"
+    r"glucose|fasting\s+sugar|pp\s+sugar|blood\s+sugar|hba1c|cholesterol|ldl|hdl|"
+    r"triglycerides?|creatinine|urea|bun|bilirubin|sgot|sgpt|alt|ast|tsh|t3|t4|"
+    r"ferritin|vitamin\s*d|vitamin\s*b12|sodium|potassium|uric\s*acid|esr|crp|"
+    r"mcv|mch|mchc|hematocrit|pcv|alkaline\s+phosphatase)\b",
+    re.IGNORECASE,
+)
+
+_LAB_UNIT_RE = re.compile(
+    r"\b(?:\d+(?:\.\d+)?)\s*(?:mg/dl|g/dl|u/l|iu/l|ng/ml|pg/ml|mmol/l|meq/l|"
+    r"cells/mcl|/mcl|/ul|k/ul|lakhs/cumm|million/cumm|%)\b",
+    re.IGNORECASE,
+)
+
+
 def is_lab_report_context_prompt(text: str) -> bool:
     """
-    Detects if the prompt contains clinical lab report context or biomarker evaluation.
+    Detects if the CURRENT user message contains clinical lab report context or biomarkers.
+    Strips conversation history scaffolding so prior lab reports never bleed into
+    unrelated follow-up symptom queries.
     """
     if not text or not isinstance(text, str):
         return False
-    lower = text.lower()
-    return (
+    current = strip_prompt_scaffolding(text)
+    lower = current.lower()
+    if (
         "[clinical lab report context]" in lower
         or "flagged parameters:" in lower
-        or "flagged parameters" in lower
         or "biomarker decoder" in lower
         or "[lab report context]" in lower
-    )
+    ):
+        return True
+
+    # Require at least 2 distinct lab biomarker names AND lab units in the current message
+    biomarker_matches = {m.group(0).lower() for m in _LAB_BIOMARKER_NAME_RE.finditer(current)}
+    unit_matches = _LAB_UNIT_RE.findall(current)
+    return len(biomarker_matches) >= 2 and len(unit_matches) >= 2
 
 
 def is_faculty_or_staff_roster(text: str, instruction: str = "") -> bool:
@@ -853,10 +909,11 @@ def build_lab_report_interpretation_response(raw_text: str, language: str = "en"
     else:
         target_lang = "en"
 
+    clean_raw_text = strip_prompt_scaffolding(raw_text)
     report = None
     if analyze_lab_report is not None:
         try:
-            report = analyze_lab_report(raw_text, user_language=target_lang)
+            report = analyze_lab_report(clean_raw_text, user_language=target_lang)
         except Exception as ex:
             logger.warning("analyze_lab_report error in conversation engine: %s", ex)
             report = None
@@ -869,7 +926,7 @@ def build_lab_report_interpretation_response(raw_text: str, language: str = "en"
     if not biomarkers or len(flagged) == 0:
         param_matches = re.findall(
             r"-\s*([^:\n]+):\s*([\d.]+)\s*([^\s(\n]*)\s*(?:\([^)]*Status:\s*([a-zA-Z_]+)\))?",
-            raw_text,
+            clean_raw_text,
             re.IGNORECASE
         )
         for p_name, p_val, p_unit, p_stat in param_matches:
@@ -1020,37 +1077,492 @@ def build_lab_report_interpretation_response(raw_text: str, language: str = "en"
 
     # --- SECTION 4: Questions for Your Doctor ---
     if target_lang == "mr":
-        lines.append("### ४. डॉक्टरांना विचारण्यासाठी महत्त्वाचे प्रश्न (Questions for Your Doctor)")
+        lines.append("### ४. डॉक्टरांना विचारण्यासाठी प्रश्न")
         qs = doctor_questions[:3] if doctor_questions else [
             "माझे हे रिपोर्ट पाहता मला काही औषधे किंवा सप्लिमेंट्स सुरू करण्याची गरज आहे का?",
-            "हे पॅरामीटर्स पूर्ववत सामान्य करण्यासाठी आहाराव्यतिरिक्त आणखी काय काळजी घ्यावी?",
-            "मला पुढील फॉलो-अप तपासणी कधी करावी लागेल?"
+            "हे घटक सामान्य करण्यासाठी आहाराव्यतिरिक्त आणखी काय काळजी घ्यावी?",
+            "पुढील फॉलो-अप तपासणी कधी करावी लागेल?"
         ]
         for q in qs:
             lines.append(f"- \"{q}\"")
         lines.append("")
-        lines.append("अस्वीकरण: मी एक एआय वैद्यकीय सहाय्यक आहे, डॉक्टर नाही. अचूक निदान आणि योग्य उपचारांसाठी कृपया आपल्या तज्ज्ञ डॉक्टरांचा प्रत्यक्ष सल्ला घ्या.")
+        lines.append("**पुढची तपासणी:** या रिपोर्टसोबत तुम्हाला थकवा, चक्कर किंवा इतर कोणती लक्षणे जाणवत आहेत का?")
+        lines.append("")
+        lines.append("*अस्वीकरण: मी एक एआय सहाय्यक आहे, डॉक्टर नाही. अचूक निदानासाठी डॉक्टरांचा सल्ला घ्या.*")
     elif target_lang == "hi":
-        lines.append("### ४. डॉक्टर से पूछने योग्य महत्वपूर्ण प्रश्न (Questions for Your Doctor)")
+        lines.append("### ४. डॉक्टर से पूछने के लिए प्रश्न")
         qs = doctor_questions[:3] if doctor_questions else [
             "मेरी इस रिपोर्ट के अनुसार क्या मुझे किसी दवा या सप्लीमेंट की आवश्यकता है?",
-            "इन घटकों को सामान्य करने के लिए मुझे आहार के अलावा और क्या सावधानियां रखनी चाहिए?",
-            "मुझे अगली फॉलो-अप जांच कब करानी चाहिए?"
+            "इन घटकों को सामान्य करने के लिए आहार के अलावा और क्या सावधानियां रखनी चाहिए?",
+            "अगली फॉलो-अप जांच कब करानी चाहिए?"
         ]
         for q in qs:
             lines.append(f"- \"{q}\"")
         lines.append("")
-        lines.append("अस्वीकरण: मैं एक एआई मेडिकल असिस्टेंट हूँ, डॉक्टर नहीं। सटीक निदान और उचित उपचार के लिए कृपया अपने चिकित्सक से व्यक्तिगत परामर्श लें।")
+        lines.append("**आगे की जानकारी:** क्या इस रिपोर्ट के साथ आपको थकान, चक्कर या कोई अन्य लक्षण महसूस हो रहे हैं?")
+        lines.append("")
+        lines.append("*अस्वीकरण: मैं एक एआई सहायक हूँ, डॉक्टर नहीं। सटीक निदान के लिए अपने डॉक्टर से परामर्श लें।*")
     else:
         lines.append("### 4. Recommended Questions for Your Doctor")
         qs = doctor_questions[:3] if doctor_questions else [
-            "Based on these results, do I require any specific therapeutic supplements or medication adjustments?",
-            "Are there any secondary diagnostic investigations needed to evaluate these findings further?",
-            "When should I repeat this lab panel to monitor these parameters?"
+            "Based on these results, do I need any specific supplements or treatment adjustments?",
+            "Are there follow-up tests needed to investigate these findings further?",
+            "When should I repeat this lab panel?"
         ]
         for q in qs:
             lines.append(f"- \"{q}\"")
         lines.append("")
-        lines.append("Disclaimer: I am an AI medical assistant, not a doctor. Please discuss these laboratory test results with your healthcare provider for formal clinical correlation and personalized management.")
+        lines.append("**Quick check:** Are you currently experiencing fatigue, dizziness, or any new symptoms alongside these results?")
+        lines.append("")
+        lines.append("*Disclaimer: I am an AI assistant, not a doctor. Discuss these results with your physician for formal evaluation.*")
 
     return "\n".join(lines)
+
+
+def extract_first_name(full_name: Optional[str]) -> Optional[str]:
+    """Extracts a clean patient first name, preserving respectful 'Dr. Name' if titled."""
+    if not full_name or not isinstance(full_name, str):
+        return None
+    cleaned = re.sub(r"\s+", " ", full_name.strip())
+    if not cleaned:
+        return None
+    parts = cleaned.split(" ")
+    if parts[0].lower().rstrip(".") in ("dr", "mr", "mrs", "ms") and len(parts) >= 2:
+        return f"{parts[0]} {parts[1]}" if parts[0].lower().startswith("dr") else parts[1]
+    return parts[0]
+
+
+def get_clean_italic_disclaimer(language: str = "en", dialect: Optional[str] = None) -> str:
+    """Returns a single concise italic medical disclaimer matching the user's language/script."""
+    d = (dialect or "").strip().lower()
+    lang = (language or "en").strip().lower()
+    if d == "roman_mr":
+        return "*Note: Mi ek AI sahayyak aahe, doctor nahi. Lakshane tiklyas doctoranna bheta.*"
+    if d == "hinglish":
+        return "*Note: Main ek AI assistant hoon, doctor nahi. Lakshan bane rahein toh doctor se milein.*"
+    if lang == "mr":
+        return "*अस्वीकरण: मी एक एआय सहाय्यक आहे, डॉक्टर नाही. लक्षणे कायम राहिल्यास डॉक्टरांचा सल्ला घ्या.*"
+    if lang == "hi":
+        return "*अस्वीकरण: मैं एक एआई सहायक हूँ, डॉक्टर नहीं। लक्षण बने रहने पर डॉक्टर से परामर्श लें।*"
+    return "*Disclaimer: I am an AI assistant, not a doctor. Consult a physician if symptoms persist.*"
+
+
+def build_followup_prompt_line(
+    topic: str = "general",
+    language: str = "en",
+    dialect: Optional[str] = None,
+) -> str:
+    """Returns ONE crisp contextual follow-up question in the user's language/script."""
+    d = (dialect or "").strip().lower()
+    lang = (language or "en").strip().lower()
+    if d == "roman_mr" or lang == "roman_mr":
+        return "**Chhota prashna:** Hi lakshane kiti divsanpasun aahet, ani sobat tap, sardi kiva angdukhi aahe ka?"
+    if d == "hinglish" or lang == "hinglish":
+        return "**Chhota sawaal:** Ye lakshan kitne dino se hain, aur kya saath mein bukhar, thakan ya dard bhi hai?"
+    if lang == "mr":
+        return "**पुढचा प्रश्न:** ही लक्षणे किती दिवसांपासून आहेत आणि सोबत इतर काही त्रास जाणवतोय का?"
+    if lang == "hi":
+        return "**अगला सवाल:** ये लक्षण कितने दिनों से हैं और क्या साथ में कोई अन्य परेशानी भी है?"
+    if topic == "medicine":
+        return "**Quick check:** Would you like to know typical precautions, side effects, or when to avoid this medicine?"
+    return "**Quick check:** How many days have you noticed this, and are you having any other symptoms like fever or body ache?"
+
+
+def build_greeting_response(
+    language: str = "en",
+    dialect: Optional[str] = None,
+    first_name: Optional[str] = None,
+    use_name: bool = False,
+) -> str:
+    """Builds a warm, concise greeting without injecting weather advisories or helplines."""
+    d = (dialect or "").strip().lower()
+    lang = (language or "en").strip().lower()
+    name_token = first_name.strip() if (use_name and first_name and first_name.strip()) else None
+
+    if d == "roman_mr" or lang == "roman_mr":
+        if name_token:
+            return f"Namaskar {name_token}! Aaj mi tumchya aarogyasathi kashi madat karu shakto?"
+        return "Namaskar! Aaj mi tumchya aarogyasathi kashi madat karu shakto?"
+    if d == "hinglish" or lang == "hinglish":
+        if name_token:
+            return f"Namaste {name_token}! Aaj main aapki sehat se judi kis baat mein madad kar sakta hoon?"
+        return "Namaste! Aaj main aapki sehat se judi kis baat mein madad kar sakta hoon?"
+    if lang == "mr":
+        if name_token:
+            return f"नमस्कार {name_token}! आज मी तुमच्या आरोग्यासाठी कशी मदत करू शकतो?"
+        return "नमस्कार! आज मी तुमच्या आरोग्यासाठी कशी मदत करू शकतो?"
+    if lang == "hi":
+        if name_token:
+            return f"नमस्ते {name_token}! आज मैं आपकी सेहत से जुड़ी किस बात में मदद कर सकता हूँ?"
+        return "नमस्ते! आज मैं आपकी सेहत से जुड़ी किस बात में मदद कर सकता हूँ?"
+    if name_token:
+        return f"Hello {name_token}! How can I help with your health questions today?"
+    return "Hello! How can I help with your health questions today?"
+
+
+def build_structured_symptom_guidance(
+    symptoms: list,
+    raw_text: str = "",
+    language: str = "en",
+    dialect: Optional[str] = None,
+    severity: str = "low",
+) -> str:
+    """
+    Generates a clean, ChatGPT/Gemini-style structured clinical response with:
+    1. Direct 1-2 sentence answer
+    2. Concise bullets with bold lead-ins (Home Care, Medicines/Precautions, Red Flags)
+    3. Single highlighted follow-up question
+    4. Single italic disclaimer line
+    Fully supports English, Marathi, Hindi, Romanized Marathi (`roman_mr`), and Hinglish.
+    """
+    d = (dialect or "").strip().lower()
+    lang = (language or "en").strip().lower()
+    sym_set = {str(s).strip().lower() for s in (symptoms or []) if str(s).strip()}
+    lower_raw = (raw_text or "").lower()
+
+    has_fever = bool(sym_set & {"fever", "high fever", "mild fever"}) or any(
+        w in lower_raw for w in ("fever", "tap", "taap", "bukhar", "ताप", "बुखार")
+    )
+    has_cold = bool(sym_set & {"cold", "runny nose", "nasal congestion", "sneezing"}) or any(
+        w in lower_raw for w in ("cold", "sardi", "jukam", "zukam", "zukaam", "सर्दी", "जुकाम")
+    )
+    has_cough = bool(sym_set & {"cough", "dry cough", "sore throat"}) or any(
+        w in lower_raw for w in ("cough", "khokla", "khansi", "khasi", "gala", "ghasa", "खोकला", "खांसी")
+    )
+    has_headache = bool(sym_set & {"headache", "migraine"}) or any(
+        w in lower_raw for w in ("headache", "dokedukhi", "doke", "sir dard", "डोकेदुखी", "सिरदर्द")
+    )
+    has_stomach = bool(sym_set & {"stomach ache", "abdominal pain", "acidity", "nausea", "vomiting", "diarrhea"}) or any(
+        w in lower_raw for w in ("stomach", "potdukhi", "acidity", "gas", "pet", "ulati", "ulti", "पोटदुखी", "पेट")
+    )
+
+    # 1) Romanized Marathi (`roman_mr`)
+    if d == "roman_mr" or lang == "roman_mr":
+        if has_fever and (has_cold or has_cough):
+            body = (
+                "Tumhala **tap (fever)** ani **sardi** aslyamule he samanya **viral infection** kiva hawaaman badlamule honara seasonal flu asnyachi shakyaata aahe. "
+                "Yogya vishranti ani gharghuti kaljine sahasa 2-3 divsant aaram padto.\n\n"
+                "**Aata Kay Karal (Home Care):**\n"
+                "- **Garme ani Hydration:** Koshmat garam pani, aale-tulasicha chaha, kiva soup pyayla ghyave — ghasyala aaram milto ani dehydration talte.\n"
+                "- **Garmechi Vaf (Steam):** Divsatun 2 vela sadhya panyachi vaf ghetlyas naak mokale hote ani sardi kami hote.\n"
+                "- **Pureshi Vishranti:** Sharirala infection shi ladhnyasathi pureshi jhop ani aaram dya.\n"
+                "- **Koshmat Panyachi Patti:** Tap vadhlyas kapalaavar sadhya koshmat panyachi patti theva.\n\n"
+                "**Aushadh va Kalji (Medicines & Precautions):**\n"
+                "- **Tap va Angdukhisathi:** Pharmacist kiva doctoranchya sallyane samanya *Paracetamol* gheta yete; doctoranshivay antibiotics gheu naka.\n"
+                "- **Thand Padarth Tala:** Ice-cream, thand pani ani telkat padarth kahi divas talave.\n\n"
+                "**Doctoranna Kadhi Bhetave (When to See a Doctor):**\n"
+                "- Tap **102°F (38.9°C)** peksa jast rahilyas kiva **3 divsanpeksa jast** divas tiklyas.\n"
+                "- Shwas ghenyala tras, chhatit dukhane, khup ashaktapana kiva satat chidchid/bhram janavlyas.\n\n"
+                "**Chhota prashna:** Ha tap ani sardi kiti divsanpasun aahe ani sobat ghasadukhi kiva angdukhi pan aahe ka?\n\n"
+                + get_clean_italic_disclaimer("mr", "roman_mr")
+            )
+            return body
+        if has_cough or has_cold:
+            return (
+                "**Sardi ani khokla** he bahuda **viral respiratory infection** kiva dhul-hawaaman allergy mule hote. "
+                "Gharghuti upayanni ghasyachi khavkhav ani naak band hone lakar kami hote.\n\n"
+                "**Aata Kay Karal (Home Care):**\n"
+                "- **Mithachya Panyachya Gulnya:** Koshmat panyat chimutbhar mith takun divsatun 2-3 vela gulnya kara.\n"
+                "- **Vaf (Steam Inhalation):** Sardi ani band naak ughadnyasathi 5-10 minite vaf ghya.\n"
+                "- **Koshmat Pani ani Madha:** Garme panyat ardhya chammach madha ghetlyas khoklyala aaram milto.\n\n"
+                "**Doctoranna Kadhi Bhetave (When to See a Doctor):**\n"
+                "- Khokla **1 aathavdyapeksa jast** tiklyas kiva sobat unch tap aalyas.\n"
+                "- Shwas lagne, chhatit shitti sarkha awaz kiva bedakyamadhye rakta dislyas.\n\n"
+                "**Chhota prashna:** Tumhala khokla korda aahe ka kaf yet aahe, ani kiti divsanpasun aahe?\n\n"
+                + get_clean_italic_disclaimer("mr", "roman_mr")
+            )
+        if has_headache:
+            return (
+                "**Dokedukhi (headache)** sahasa **pani kami pine, tanav, pureshi jhop na milne**, kiva sardi-sinus mule hote.\n\n"
+                "**Aata Kay Karal (Home Care):**\n"
+                "- **Pani Pya:** Ek glass sadhe kiva koshmat pani pya — dehydration he dokedukhiche mukhya karan aste.\n"
+                "- **Shant Kholi:** Kahi vel mobile-screen pasun dur rahun shant, kami prakashachya kholit vishranti ghya.\n"
+                "- **Kapalaavar Shek:** Tanavachya dokedukhisathi garam kiva thand kapadyachi patti thevlyas aaram milto.\n\n"
+                "**Doctoranna Kadhi Bhetave (When to See a Doctor):**\n"
+                "- Achanak asahya dokedukhi, drishti dhurkat hone, kiva satat ulti hot aslyas.\n"
+                "- Unch tap kiva maan akhadlyas tatkal doctoranna bheta.\n\n"
+                "**Chhota prashna:** Hi dokedukhi ekach bajula aahe ka purna dokyat, ani kiti velapasun aahe?\n\n"
+                + get_clean_italic_disclaimer("mr", "roman_mr")
+            )
+        if has_stomach:
+            return (
+                "**Potdukhi kiva acidity** bahuda **apachan, jhatpat kiva tikhat jevan, kiva panyachi kamtarata** yamule hote.\n\n"
+                "**Aata Kay Karal (Home Care):**\n"
+                "- **Halke Jevan:** Kahi divas dal-bhat, khichdi, taak kiva kele ya sarkha sopya pachan honara aahar ghya.\n"
+                "- **Thode-Thode Pani:** Ekdam jast panyapeksha thodya-thodya velane pani kiva ORS ghya.\n"
+                "- **Tikhat-Telkat Tala:** Chaha-coffee, tikhat, ani baherache padarth kahi vel talave.\n\n"
+                "**Doctoranna Kadhi Bhetave (When to See a Doctor):**\n"
+                "- Potat asahya vedana, satat ultya, tap kiva sandasamadhe rakta dislyas.\n\n"
+                "**Chhota prashna:** Potdukhi sobat chhatit jaljal (acidity), ulati kiva julab hot aahet ka?\n\n"
+                + get_clean_italic_disclaimer("mr", "roman_mr")
+            )
+        sym_label = ", ".join(symptoms) if symptoms else "lakshane"
+        return (
+            f"Tumchya **{sym_label}** ya lakshanansathi prathamik kalji ani nireekshan mahattvache aahe.\n\n"
+            "**Aata Kay Karal (Home Care):**\n"
+            "- **Vishranti ani Hydration:** Pureshi jhop ghya ani divasbhar koshmat pani/ORS pyat raha.\n"
+            "- **Lakshananchi Nond:** Tap, vedana kiva tras kadhi vadhato yachi nond theva.\n"
+            "- **Swatahun Aushadh Tala:** Doctoranchya sallyashivay antibiotics kiva strong painkillers gheu naka.\n\n"
+            "**Doctoranna Kadhi Bhetave (When to See a Doctor):**\n"
+            "- Lakshane **2-3 divsant kami na jhalyas** kiva achanak vadhlyas.\n"
+            "- Unch tap, shwas ghenyala tras kiva khup ashaktapana janavlyas.\n\n"
+            + build_followup_prompt_line("general", "mr", "roman_mr")
+            + "\n\n"
+            + get_clean_italic_disclaimer("mr", "roman_mr")
+        )
+
+    # 2) Hinglish (Roman Hindi)
+    if d == "hinglish" or lang == "hinglish":
+        if has_fever and (has_cold or has_cough):
+            return (
+                "Aapko **bukhar (fever)** aur **sardi/zukam** hai, jo aam taur par **viral infection** ya mausam badalne (seasonal flu) ki wajah se hota hai. "
+                "Aaram aur sahi dekhbhal se zyadaatar 2-3 dino mein sudhar hota hai.\n\n"
+                "**Abhi Kya Karein (Home Care):**\n"
+                "- **Garam Liquid Aur Hydration:** Gunguna pani, adrak-tulsi chai ya soup piyein — isse gala saaf rehta hai aur kamzori nahi aati.\n"
+                "- **Steam (Bhaap):** Din mein 2 baar saade pani ki bhaap lein taaki band naak khule.\n"
+                "- **Poori Neend Aur Aaram:** Shareer ko viral se ladne ke liye aaram ki zaroorat hoti hai.\n\n"
+                "**Dawa Aur Savdhani (Medicines & Precautions):**\n"
+                "- **Bukhar Ke Liye:** Doctor ya pharmacist ki salah se *Paracetamol* li ja sakti hai; bina doctor ki salah ke antibiotics na lein.\n"
+                "- **Thandi Cheezein Talein:** Thanda pani, ice-cream aur tali-bhuni cheezein kuch din band rakhein.\n\n"
+                "**Doctor Ko Kab Dikhayein (When to See a Doctor):**\n"
+                "- Agar bukhar **102°F** se zyada rahe ya **3 din se zyada** chalta rahe.\n"
+                "- Saans lene mein takleef, seene mein dard ya bahut zyada kamzori mehsoos ho.\n\n"
+                "**Chhota sawaal:** Ye bukhar aur sardi kitne dino se hai, aur kya gale mein dard ya badan dard bhi hai?\n\n"
+                + get_clean_italic_disclaimer("hi", "hinglish")
+            )
+        sym_label = ", ".join(symptoms) if symptoms else "lakshan"
+        return (
+            f"Aapke **{sym_label}** ke liye aaram, hydration aur lakshanon par nazar rakhna sabse zaroori hai.\n\n"
+            "**Abhi Kya Karein (Home Care):**\n"
+            "- **Aaram Aur Hydration:** Poori neend lein aur thode-thode waqt par pani ya ORS piyein.\n"
+            "- **Halka Bhojan:** Asaani se pachne wala ghar ka bana sada khana khayein.\n"
+            "- **Bina Salah Dawa Na Lein:** Khud se antibiotics ya tez painkillers lene se bachein.\n\n"
+            "**Doctor Ko Kab Dikhayein (When to See a Doctor):**\n"
+            "- Agar takleef **2-3 din mein kam na ho** ya tezi se badhe.\n"
+            "- Tez bukhar, saans fulna ya tez dard hone par turant doctor se milein.\n\n"
+            + build_followup_prompt_line("general", "hi", "hinglish")
+            + "\n\n"
+            + get_clean_italic_disclaimer("hi", "hinglish")
+        )
+
+    # 3) Devanagari Marathi (`mr`)
+    if lang == "mr":
+        if has_fever and (has_cold or has_cough):
+            return (
+                "तुम्हाला **ताप आणि सर्दी** ही लक्षणे सामान्य **व्हायरल इन्फेक्शन** किंवा हवामान बदलामुळे (seasonal flu) असण्याची शक्यता आहे. "
+                "पुरेशी विश्रांती आणि घरगुती काळजीने बहुतेक वेळा २–३ दिवसांत आराम मिळतो.\n\n"
+                "**तात्काळ घरगुती उपाय (Home Care):**\n"
+                "- **कोमट पाणी आणि द्रवपदार्थ:** कोमट पाणी, सूप किंवा आले-तुळशीचा चहा घ्या — घसा आणि नाकाला आराम मिळतो.\n"
+                "- **वाफ घेणे (Steam):** दिवसातून २ वेळा वाफ घेतल्यास बंद नाक मोकळे होते.\n"
+                "- **पुरेशी विश्रांती:** शरीराला संसर्गाशी लढण्यासाठी पुरेशी झोप द्या.\n\n"
+                "**औषधे आणि काळजी (Medicines & Precautions):**\n"
+                "- **तापासाठी:** डॉक्टरांच्या किंवा फार्मासिस्टच्या सल्ल्याने *Paracetamol* घेता येते; डॉक्टरांशिवाय अँटीबायोटिक्स घेऊ नका.\n"
+                "- **थंड पदार्थ टाळा:** थंड पाणी, आईस्क्रीम आणि तेलकट पदार्थ काही दिवस टाळा.\n\n"
+                "**डॉक्टरांना कधी भेटावे (When to See a Doctor):**\n"
+                "- ताप **१०२°F पेक्षा जास्त** राहिल्यास किंवा **३ दिवसांपेक्षा जास्त** टिकल्यास.\n"
+                "- श्वास घेण्यास त्रास, छातीत दुखणे किंवा तीव्र अशक्तपणा जाणवल्यास.\n\n"
+                "**पुढचा प्रश्न:** हा ताप आणि सर्दी किती दिवसांपासून आहे आणि सोबत अंगदुखी किंवा घसादुखी आहे का?\n\n"
+                + get_clean_italic_disclaimer("mr", None)
+            )
+        sym_label = ", ".join(symptoms) if symptoms else "ही लक्षणे"
+        return (
+            f"तुमच्या **{sym_label}** या लक्षणांसाठी प्राथमिक विश्रांती आणि लक्षणांचे निरीक्षण महत्त्वाचे आहे.\n\n"
+            "**तात्काळ घरगुती उपाय (Home Care):**\n"
+            "- **विश्रांती आणि पाणी:** दिवसभर पुरेसे कोमट पाणी किंवा ओआरएस घ्या आणि आराम करा.\n"
+            "- **हलका आहार:** पचायला सोपा आणि ताजा घरगुती आहार घ्या.\n"
+            "- **स्वतःहून औषधे टाळा:** वैद्यकीय सल्ल्याशिवाय अँटीबायोटिक्स घेऊ नका.\n\n"
+            "**डॉक्टरांना कधी भेटावे (When to See a Doctor):**\n"
+            "- लक्षणे **२–३ दिवसांत कमी न झाल्यास** किंवा वाढत गेल्यास.\n"
+            "- तीव्र ताप, श्वास घेण्यास त्रास किंवा असह्य वेदना झाल्यास.\n\n"
+            + build_followup_prompt_line("general", "mr", None)
+            + "\n\n"
+            + get_clean_italic_disclaimer("mr", None)
+        )
+
+    # 4) Devanagari Hindi (`hi`)
+    if lang == "hi":
+        if has_fever and (has_cold or has_cough):
+            return (
+                "आपको **बुखार और सर्दी** के लक्षण सामान्य **वायरल संक्रमण** या मौसम बदलने (seasonal flu) के कारण हो सकते हैं। "
+                "सही आराम और घरेलू देखभाल से अधिकांश मामलों में २–३ दिनों में राहत मिल जाती है।\n\n"
+                "**अभी क्या करें (Home Care):**\n"
+                "- **गुनगुना पानी और तरल पदार्थ:** गुनगुना पानी, सूप या अदरक-तुलसी की चाय लें ताकि गले और शरीर को आराम मिले।\n"
+                "- **भाप लें (Steam):** दिन में २ बार भाप लेने से बंद नाक और जकड़न में राहत मिलती है।\n"
+                "- **पर्याप्त आराम:** शरीर को संक्रमण से लड़ने के लिए पूरी नींद दें।\n\n"
+                "**दवा और सावधानी (Medicines & Precautions):**\n"
+                "- **बुखार के लिए:** डॉक्टर या फार्मासिस्ट की सलाह से *Paracetamol* ली जा सकती है; बिना सलाह के एंटीबायोटिक्स न लें।\n"
+                "- **ठंडी चीजें टालें:** ठंडा पानी, आइसक्रीम और तला-भुना खाना कुछ दिन न खाएं।\n\n"
+                "**डॉक्टर को कब दिखाएं (When to See a Doctor):**\n"
+                "- यदि बुखार **१०२°F से अधिक** रहे या **३ दिन से ज्यादा** बना रहे।\n"
+                "- सांस लेने में तकलीफ, सीने में दर्द या बहुत अधिक कमजोरी महसूस होने पर।\n\n"
+                "**अगला सवाल:** यह बुखार और सर्दी कितने दिनों से है, और क्या साथ में गले में दर्द या बदन दर्द भी है?\n\n"
+                + get_clean_italic_disclaimer("hi", None)
+            )
+        sym_label = ", ".join(symptoms) if symptoms else "ये लक्षण"
+        return (
+            f"आपके **{sym_label}** के लिए पर्याप्त आराम, पानी और लक्षणों पर ध्यान देना सबसे जरूरी है।\n\n"
+            "**अभी क्या करें (Home Care):**\n"
+            "- **आराम और हाइड्रेशन:** पर्याप्त नींद लें और दिनभर पानी या ओआरएस पीते रहें।\n"
+            "- **हल्का भोजन:** आसानी से पचने वाला ताजा घरेलू भोजन करें।\n"
+            "- **बिना सलाह दवा न लें:** डॉक्टर की सलाह के बिना एंटीबायोटिक्स या तेज दर्द निवारक न लें।\n\n"
+            "**डॉक्टर को कब दिखाएं (When to See a Doctor):**\n"
+            "- यदि लक्षण **२–३ दिनों में कम न हों** या अचानक बढ़ जाएं।\n"
+            "- तेज बुखार, सांस फूलने या गंभीर दर्द होने पर तुरंत डॉक्टर से मिलें।\n\n"
+            + build_followup_prompt_line("general", "hi", None)
+            + "\n\n"
+            + get_clean_italic_disclaimer("hi", None)
+        )
+
+    # 5) English (`en`)
+    if has_fever and (has_cold or has_cough):
+        return (
+            "Your **fever and cold** symptoms most commonly point to a mild **viral upper respiratory infection** (seasonal flu/common cold). "
+            "With rest and fluids, most viral episodes improve within 2–3 days.\n\n"
+            "**What You Can Do Now (Home Care):**\n"
+            "- **Stay Hydrated:** Drink warm water, clear broths, herbal tea, or electrolyte fluids regularly.\n"
+            "- **Steam & Rest:** Take warm steam inhalation twice daily to ease congestion and prioritize sleep.\n"
+            "- **Lukewarm Compress:** Use a lukewarm cloth on your forehead if fever feels uncomfortable.\n\n"
+            "**Medicines & Precautions:**\n"
+            "- **Fever Relief:** Standard *Paracetamol (Acetaminophen)* may help reduce fever if advised by your doctor/pharmacist; avoid taking antibiotics without a prescription.\n"
+            "- **Avoid Triggers:** Skip very cold beverages, smoking, and dusty air until recovered.\n\n"
+            "**When to See a Doctor:**\n"
+            "- Fever stays **above 102°F (38.9°C)** or lasts longer than **3 days**.\n"
+            "- Shortness of breath, chest pain, severe weakness, or persistent vomiting develops.\n\n"
+            "**Quick check:** How many days have you had the fever and cold, and do you also have body aches or a sore throat?\n\n"
+            + get_clean_italic_disclaimer("en", None)
+        )
+    if has_cough or has_cold:
+        return (
+            "A **cold or cough** is usually triggered by a mild **viral infection** or **environmental irritation/allergies** and typically settles within a few days.\n\n"
+            "**What You Can Do Now (Home Care):**\n"
+            "- **Warm Salt-Water Gargles:** Gargle 2–3 times daily to soothe throat irritation.\n"
+            "- **Steam & Fluids:** Inhale warm steam and sip warm water or honey-lemon tea.\n\n"
+            "**When to See a Doctor:**\n"
+            "- Cough persists beyond **7–10 days** or brings up blood-tinged mucus.\n"
+            "- High fever, wheezing, or difficulty breathing occurs.\n\n"
+            "**Quick check:** Is your cough dry or producing phlegm, and how long has it lasted?\n\n"
+            + get_clean_italic_disclaimer("en", None)
+        )
+    if has_headache:
+        return (
+            "A **headache** is most often linked to **dehydration, eye strain, lack of sleep, tension, or sinus congestion**.\n\n"
+            "**What You Can Do Now (Home Care):**\n"
+            "- **Rehydrate & Rest:** Drink a full glass of water and rest in a quiet, dimly lit room away from screens.\n"
+            "- **Warm or Cool Compress:** Apply a cool compress to your forehead or a warm compress to tight neck muscles.\n\n"
+            "**When to See a Doctor:**\n"
+            "- Sudden severe headache, blurred vision, confusion, or repeated vomiting.\n"
+            "- Headache accompanied by high fever or neck stiffness.\n\n"
+            "**Quick check:** Is the headache throbbing on one side or across the forehead, and how long has it lasted?\n\n"
+            + get_clean_italic_disclaimer("en", None)
+        )
+    if has_stomach:
+        return (
+            "**Stomach discomfort or acidity** is commonly caused by **indigestion, spicy meals, mild gastritis, or dehydration**.\n\n"
+            "**What You Can Do Now (Home Care):**\n"
+            "- **Bland Diet & Small Sips:** Eat light foods (rice, bananas, toast) and sip water or ORS slowly.\n"
+            "- **Avoid Irritants:** Skip caffeine, fried/spicy foods, and lying flat right after eating.\n\n"
+            "**When to See a Doctor:**\n"
+            "- Severe or worsening abdominal pain, persistent vomiting, high fever, or blood in stool.\n\n"
+            "**Quick check:** Are you also having nausea, heartburn, loose stools, or cramping after meals?\n\n"
+            + get_clean_italic_disclaimer("en", None)
+        )
+
+    sym_list_str = ", ".join(symptoms) if symptoms else "your symptoms"
+    return (
+        f"For **{sym_list_str}**, early supportive care and monitoring how your symptoms evolve is the safest first step.\n\n"
+        "**What You Can Do Now (Home Care):**\n"
+        "- **Rest & Hydration:** Get adequate rest and drink fluids consistently throughout the day.\n"
+        "- **Track Changes:** Note when symptoms started, what relieves them, and whether temperature rises.\n"
+        "- **Safe Medication Use:** Avoid self-medicating with antibiotics or high-dose painkillers without guidance.\n\n"
+        "**When to See a Doctor:**\n"
+        "- Symptoms worsen over **24–48 hours** or fail to improve after **3 days**.\n"
+        "- You develop high fever, breathing difficulty, chest pain, or severe weakness.\n\n"
+        + build_followup_prompt_line("general", "en", None)
+        + "\n\n"
+        + get_clean_italic_disclaimer("en", None)
+    )
+
+
+_LEADING_NAME_GREETING_RE = re.compile(
+    r"^(?:[Hh]ello|[Hh]i|[Hh]ey|[Nn]amaste|[Nn]amaskar|नमस्ते|नमस्कार)\s+"
+    r"(?:(?:Dr\.?|Mr\.?|Mrs\.?|Ms\.?)\s+)?[A-Z\u0900-\u097F][a-zA-Z\u0900-\u097F\s]{1,35}[,!:?]\s*(?:\n+)?",
+)
+
+
+def _strip_existing_disclaimers_and_footers(text: str) -> str:
+    """Removes duplicate/unformatted disclaimer lines so one clean italic disclaimer can sit at the end."""
+    cleaned_lines = []
+    for line in (text or "").splitlines():
+        stripped = line.strip()
+        lower = stripped.lower().strip("*_ ")
+        if (
+            lower.startswith("disclaimer:")
+            or lower.startswith("medical disclaimer:")
+            or lower.startswith("अस्वीकरण:")
+            or lower.startswith("note: mi ek ai")
+            or lower.startswith("note: main ek ai")
+            or "i am an ai medical assistant, not a doctor" in lower
+            or "i am an ai assistant, not a doctor" in lower
+            or "i am an ai assistant providing" in lower
+            or "मी एक एआय सहाय्यक आहे, डॉक्टर नाही" in lower
+            or "मी एक एआय वैद्यकीय सहाय्यक आहे" in lower
+            or "मैं एक एआई सहायक हूँ, डॉक्टर नहीं" in lower
+            or "मैं एक एआई मेडिकल असिस्टेंट हूँ" in lower
+        ):
+            continue
+        cleaned_lines.append(line)
+    # Trim trailing blank lines
+    while cleaned_lines and not cleaned_lines[-1].strip():
+        cleaned_lines.pop()
+    return "\n".join(cleaned_lines).strip()
+
+
+def ensure_modern_clinical_formatting(
+    text: str,
+    language: str = "en",
+    dialect: Optional[str] = None,
+    include_followup: bool = True,
+    topic: str = "general",
+    allow_name: bool = False,
+) -> str:
+    """
+    Post-processes any clinical/AI response to match a clean ChatGPT/Gemini style:
+    - Strips repetitive user-name greetings unless `allow_name=True`
+    - Strips redundant disclaimers / walls of boilerplate
+    - Ensures at most ONE crisp follow-up question at the bottom (when `include_followup=True`)
+    - Appends a single clean italic disclaimer line at the bottom.
+    """
+    if not text or not isinstance(text, str):
+        return text
+
+    body = text.strip()
+    if not allow_name:
+        body = _LEADING_NAME_GREETING_RE.sub("", body, count=1).strip()
+
+    body = _strip_existing_disclaimers_and_footers(body)
+    if not body:
+        return get_clean_italic_disclaimer(language, dialect)
+
+    # Collapse 3+ consecutive newlines down to 2
+    body = re.sub(r"\n{3,}", "\n\n", body)
+
+    if include_followup:
+        # Check if last non-empty line already contains a follow-up question
+        non_empty = [ln.strip() for ln in body.splitlines() if ln.strip()]
+        has_tail_question = bool(
+            non_empty
+            and (
+                non_empty[-1].endswith("?")
+                or non_empty[-1].lower().startswith("**quick check:")
+                or non_empty[-1].lower().startswith("**chhota prashna:")
+                or non_empty[-1].lower().startswith("**chhota sawaal:")
+                or "**पुढचा प्रश्न:**" in non_empty[-1]
+                or "**अगला सवाल:**" in non_empty[-1]
+            )
+        )
+        if not has_tail_question:
+            body = f"{body}\n\n{build_followup_prompt_line(topic, language, dialect)}"
+
+    disclaimer = get_clean_italic_disclaimer(language, dialect)
+    return f"{body}\n\n{disclaimer}"
+
